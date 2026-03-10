@@ -103,6 +103,7 @@ Read the following sections before delegating:
 3. Create `backend/app/models/__init__.py` that imports all models so Alembic can detect them.
 4. Run `alembic revision --autogenerate -m "initial"` and verify the generated migration covers all tables.
 5. Run `alembic upgrade head` and confirm all tables are created without errors.
+6. In `backend/migrations/env.py`, guard `fileConfig(config.config_file_name)` with a defensive `try/except` and only call it when the config file exists. This avoids observed Python 3.9/macOS `KeyError: 'formatters'` failures during `flask db upgrade`.
 
 ## Verification
 - `alembic upgrade head` completes without errors.

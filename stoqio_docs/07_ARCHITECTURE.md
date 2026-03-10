@@ -418,6 +418,8 @@ npm install
 npm run dev                   # pokreće se na :5173 (Vite)
 ```
 
+Napomena: `backend/migrations/env.py` treba defensivno guardati `fileConfig(config.config_file_name)` i provjeriti da config file postoji prije poziva. U nekim Python 3.9/macOS/Xcode okruženjima Alembic logging parser inače može srušiti `flask db upgrade` s `KeyError: 'formatters'`.
+
 Frontend dev server (Vite, port 5173) proksira API pozive na Flask (port 5000) via Vite proxy config. Defaultni proxy target za lokalni development treba biti `http://127.0.0.1:5000`, ne `http://localhost:5000`, kako bi se izbjegli konflikti na macOS-u gdje AirPlay Receiver može preuzeti `localhost:5000` preko IPv6 rezolucije. HMR (hot module replacement) radi — promjena u React kodu = automatski refresh u browseru.
 
 ### Git workflow

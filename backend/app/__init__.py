@@ -25,6 +25,9 @@ def create_app(config_override=None):
     jwt.init_app(app)
     migrate.init_app(app, db)
 
+    # Import models so metadata is populated for Alembic
+    from . import models  # noqa: F401
+
     # Register blueprints
     from .api import register_blueprints
 

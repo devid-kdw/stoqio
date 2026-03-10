@@ -63,6 +63,19 @@ wms/
 
 Razlog: na macOS-u AirPlay Receiver može bindati port `5000` i presresti `localhost` promet kada se resolva na IPv6 (`::1`). Korištenje `127.0.0.1` uklanja taj konflikt i daje stabilan Phase 1 development setup.
 
+### Phase 2 — lokalna PostgreSQL verifikacija
+
+Nakon Phase 2 agent isporuke ručno je odrađena lokalna PostgreSQL verifikacija na macOS-u (`PostgreSQL 15` preko Homebrew):
+- `.env` postavljen na `DATABASE_URL=postgresql://grzzi@localhost/wms_dev`
+- kreirana baza `wms_dev`
+- `python3 -m flask db upgrade` inicijalno pao s `KeyError: 'formatters'`
+- nakon fix-a u `backend/migrations/env.py`, upgrade prošao
+- potvrđeno `27` tablica u PostgreSQL-u (`26` entiteta + `alembic_version`)
+
+[ODLUKA] **`backend/migrations/env.py` mora defensivno guardati `fileConfig(config.config_file_name)`.**
+
+Razlog: na nekim Python 3.9/macOS/Xcode setupima Alembic logging config parsiranje ruši `flask db upgrade` s `KeyError: 'formatters'`. Guard s `try/except` uklanja taj problem bez utjecaja na migracije.
+
 ---
 
 ## Što je sljedeće
