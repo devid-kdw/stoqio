@@ -96,6 +96,7 @@ On first login (detected by absence of any `Location` record in the database):
    - **Timezone** (required, dropdown) — default pre-selected: `Europe/Berlin`
 3. On submit, create the `Location` record and redirect to `/approvals` (ADMIN home).
 4. As long as no `Location` record exists, any route other than `/login` and `/setup` redirects to `/setup`.
+5. If a non-ADMIN user logs in before setup is complete, the frontend must block access, show an error message, and return the user to `/login`. This avoids an ADMIN-only `/setup` redirect loop while initialization is still pending.
 
 **Security**: POST `/api/v1/setup` is **not a public endpoint** — it requires a valid admin JWT token. The frontend sends the token obtained at login. This prevents anyone on the local network from creating the initial location without first authenticating as admin.
 

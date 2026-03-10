@@ -54,3 +54,25 @@
 - Docs update required: yes
 
 ---
+
+## DEC-FE-003
+
+- Date: 2026-03-10
+- Phase: phase-04-first-run-setup
+- Source: Frontend agent observation during Phase 4 implementation
+- Decision: While first-run setup is pending, non-ADMIN users who authenticate are shown an error toast and returned to `/login` instead of being redirected to `/setup`. The docs require all normal routes to redirect to `/setup`, but `/setup` must remain ADMIN-only, so sending non-admin users there would create an RBAC conflict and redirect loop.
+- Impact: Preserves ADMIN-only access to `/setup`, blocks non-admin use before initialization, and gives the frontend/backend/testing agents a deterministic behavior for the setup-pending state.
+- Docs update required: yes
+
+---
+
+## DEC-BE-003
+
+- Date: 2026-03-10
+- Phase: phase-04-first-run-setup
+- Source: Orchestrator follow-up after Phase 4 review
+- Decision: Backend first-run setup reserves `Location.id = 1` for the installation's single supported v1 location and treats primary-key conflicts during setup creation as `409 SETUP_ALREADY_COMPLETED`.
+- Impact: Concurrent first-run setup submissions can no longer create duplicate `Location` rows through the application flow; race safety now has DB-backed enforcement without expanding the documented v1 schema.
+- Docs update required: no
+
+---

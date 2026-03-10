@@ -17,7 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <MantineProvider>
-          <Notifications />
+          <Notifications autoClose={4000} limit={1} />
           <App />
         </MantineProvider>
       </QueryClientProvider>
