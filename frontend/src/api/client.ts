@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { authApi } from './auth'
 import { useAuthStore } from '../store/authStore'
 
 const client = axios.create({
@@ -14,21 +15,87 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// Response interceptor — scaffold for future 401 refresh handling
-// TODO (Phase 3 – Auth): implement token refresh flow here.
-//   On 401: call POST /api/v1/auth/refresh with refreshToken,
-//   update the store with the new access token,
-//   then retry the original request.
-//   On refresh failure: call clearAuth() and redirect to /login.
+let isRefreshing = false
+let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = []
+
+const processQueue = (error: unknown, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error)
+    } else if (token) {
+      prom.resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
+const forceLoginRedirect = () => {
+  if (window.location.pathname !== '/login') {
+    window.location.assign('/login')
+  }
+}
+
 client.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Placeholder: refresh flow not implemented in Phase 1.
-      // Do not clear auth here — Phase 3 will add retry logic.
+  async (error) => {
+    const originalRequest = error.config
+
+    if (error.response?.status === 401 && originalRequest) {
+      // Guard against infinite loops on authn/authz endpoints
+      if (
+        originalRequest.url?.includes('/auth/login') ||
+        originalRequest.url?.includes('/auth/refresh') ||
+        originalRequest.url?.includes('/auth/logout')
+      ) {
+        return Promise.reject(error)
+      }
+
+      if (!originalRequest._retry) {
+        if (isRefreshing) {
+          try {
+            const token = await new Promise<string>((resolve, reject) => {
+              failedQueue.push({ resolve, reject })
+            })
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return client(originalRequest)
+          } catch (err) {
+            return Promise.reject(err)
+          }
+        }
+
+        originalRequest._retry = true
+        isRefreshing = true
+
+        const refreshToken = useAuthStore.getState().refreshToken
+
+        if (!refreshToken) {
+          useAuthStore.getState().logout()
+          isRefreshing = false
+          forceLoginRedirect()
+          return Promise.reject(error)
+        }
+
+        try {
+          const data = await authApi.refresh(refreshToken)
+          const newAccessToken = data.access_token
+          useAuthStore.getState().setAccessToken(newAccessToken)
+
+          processQueue(null, newAccessToken)
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+
+          return client(originalRequest)
+        } catch (refreshError) {
+          processQueue(refreshError, null)
+          useAuthStore.getState().logout()
+          forceLoginRedirect()
+          return Promise.reject(refreshError)
+        } finally {
+          isRefreshing = false
+        }
+      }
     }
     return Promise.reject(error)
-  },
+  }
 )
 
 export default client

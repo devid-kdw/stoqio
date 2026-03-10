@@ -12,6 +12,7 @@
   "dependencies": {
     "@mantine/core": "^8.3.16",
     "@mantine/hooks": "^8.3.16",
+    "@mantine/notifications": "^8.3.16",
     "@tanstack/react-query": "^5.90.21",
     "axios": "^1.13.6",
     "i18next": "^25.8.17",
