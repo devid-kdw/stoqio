@@ -240,7 +240,7 @@ Staging tablica — izlaz čeka admin odobrenje.
 | `source_meta` | JSON nullable | Dodatni HW metadata |
 | `client_event_id` | string UNIQUE | Idempotency key |
 | `employee_id_ref` | string nullable | ID zaposlenika koji preuzima materijal (slobodni tekst, bez FK validacije u v1) |
-| `note` | text nullable | Napomena |
+| `note` | text nullable | Legacy line-level note field iz ranijeg Draft Entry dizajna. Nije dio aktualnog v1 UI/API flowa; dnevna napomena sada živi na `DraftGroup.description`. |
 | `created_by` | FK → User | |
 | `created_at` | timestamp UTC | |
 
@@ -254,7 +254,7 @@ Dnevni izlaz — grupa draftova koji se zajedno odobravaju.
 |-------|-----|------|
 | `id` | int PK | |
 | `group_number` | string UNIQUE | Auto-generirani broj izlaza (npr. `IZL-0001`) |
-| `description` | text nullable | Opis izlaza |
+| `description` | text nullable | Napomena / opis za cijeli dnevni draft |
 | `status` | enum | `PENDING` / `APPROVED` / `REJECTED` |
 | `operational_date` | date | Operativni dan (Europe/Berlin tz) |
 | `created_by` | FK → User | |

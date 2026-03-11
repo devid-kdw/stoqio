@@ -76,3 +76,25 @@
 - Docs update required: no
 
 ---
+
+## DEC-FE-004
+
+- Date: 2026-03-11
+- Phase: phase-05-draft-entry
+- Source: Backend code review (`articles/routes.py`) + orchestrator confirmation
+- Decision: `GET /api/v1/articles?q={query}` returns FEFO-ordered batches inline as a `batches[]` array when `has_batch = true`. No separate `/api/v1/articles/{id}/batches` endpoint exists or is needed. `articlesApi.getBatches()` was not implemented — `articlesApi.lookup()` is the sole article-related API call. `frontend/src/api/articles.ts` reflects this design.
+- Impact: Simpler client code — one API call resolves both article metadata and the available batches for the batch dropdown.
+- Docs update required: no
+
+---
+
+## DEC-PROD-001
+
+- Date: 2026-03-11
+- Phase: phase-05-draft-entry follow-up
+- Source: User clarification reviewed by orchestrator
+- Decision: Draft Entry no longer uses line-level notes in the operator workflow. The optional note is now a single draft-level note stored on `DraftGroup.description` and shown at the daily-draft level. `Employee ID` remains optional on input but is removed from the Draft Entry daily table because it has low operational value there and will be more useful in later employee-facing flows.
+- Impact: `09_UI_DRAFT_ENTRY.md`, `04_FEATURE_SPEC.md`, `05_DATA_MODEL.md`, and `10_UI_APPROVALS.md` were updated before code changes. Backend/frontend must now treat draft note as shared per-day state, not per-line state.
+- Docs update required: no
+
+---

@@ -33,6 +33,8 @@ Displays one card or section per day, showing the operational date and total num
 
 Each draft card expands to show the **aggregated lines table**.
 
+If a daily draft has a draft-level note, it is displayed at the card level as contextual information for the whole day.
+
 ### 3.2 Aggregated Lines Table
 
 Lines are grouped by `article + batch`. Each row shows the sum of all operator entries for that article/batch combination on that day.
@@ -58,7 +60,6 @@ Each aggregated row can be expanded to reveal the individual operator entries th
 | Operator | Username of the operator |
 | Quantity | Individual quantity entered |
 | Employee ID | If provided |
-| Note | If provided |
 
 This allows the ADMIN to trace exactly who entered what and when.
 

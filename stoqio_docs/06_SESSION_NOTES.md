@@ -100,3 +100,20 @@ Phase 4 (`/setup` first-run flow) was completed and revalidated after agent deli
 - Backend setup creation now reserves the single supported v1 `Location` row and maps DB conflicts to `409 SETUP_ALREADY_COMPLETED`. This closes the race where two concurrent first-run setup requests could otherwise create multiple locations.
 - Frontend setup submission now follows the documented network-error pattern for this flow: retry once on network / server failure, then show a full-page retry state if the second attempt also fails.
 - Setup-flow docs were updated to clarify non-ADMIN behavior while initialization is still pending: the user is blocked, shown an error, and returned to `/login` instead of being sent into an ADMIN-only `/setup` redirect loop.
+
+---
+
+## Draft Entry follow-up decision (2026-03-11)
+
+User clarification changed the Draft Entry semantics before the next implementation pass:
+
+- line-level `note` is removed from the operator workflow
+- a single optional note now belongs to the whole daily draft (`DraftGroup.description`)
+- `Employee ID` remains an optional input on new entries
+- `Employee ID` is removed from the Draft Entry daily table to free horizontal space for `Description`
+
+Affected docs updated:
+- `stoqio_docs/09_UI_DRAFT_ENTRY.md`
+- `stoqio_docs/04_FEATURE_SPEC.md`
+- `stoqio_docs/05_DATA_MODEL.md`
+- `stoqio_docs/10_UI_APPROVALS.md`

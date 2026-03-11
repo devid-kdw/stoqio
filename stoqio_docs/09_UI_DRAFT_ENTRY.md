@@ -40,7 +40,7 @@ The screen has two sections:
 
 **Top section — Entry form**: fields for adding a new line to today's draft.
 
-**Bottom section — Today's lines**: a table showing all lines entered today (by all operators), with options to edit or delete each line.
+**Bottom section — Today's draft**: the shared draft for the current operational day, including an optional draft-level note and a table of all lines entered today (by all operators), with options to edit or delete each line.
 
 ---
 
@@ -54,7 +54,15 @@ The screen has two sections:
 | UOM | Display only | — | Auto-populated from article master data. Not editable. |
 | Batch | Dropdown / Text input | Conditional | Shown only if article has `has_batch = true`. Required if shown. Displays available batches for the article ordered by expiry date (FEFO). |
 | Employee ID | Text input | No | Optional. ID of the employee receiving the material (from Employee master data). Free text — no lookup validation in v1. |
-| Note | Text input | No | Optional free text. Max 1000 characters. |
+
+### Draft-level note
+
+- The current day's shared draft has a single optional note.
+- This note applies to the entire daily draft (`DraftGroup`), not to individual lines.
+- Max length: 1000 characters.
+- The note is displayed and edited in the **Today's draft** section, not inside each table row.
+- If no draft exists yet, the entered draft note is saved with the first successful line submission.
+- After the day's draft exists, the draft note can be updated without adding a new line.
 
 ### Article number lookup behaviour
 
@@ -83,9 +91,29 @@ The screen has two sections:
   4. On error: show toast with error message.
 - The submit button is disabled and shows a spinner while the request is in flight.
 
+If a draft-level note has been entered before the first line of the day, that note is included with the first successful line submission so the newly created daily draft stores it immediately.
+
 ---
 
-## 7. Today's Lines Table
+## 7. Today's Draft
+
+The bottom section represents the current operational day's shared draft (`DraftGroup`).
+
+It contains:
+- the draft status badge (`OPEN`)
+- an optional draft-level note for the whole day
+- a table of individual draft lines, newest first
+
+Daily drafts are persisted and remain available for later review in the Approvals module history.
+
+### 7.1 Draft-level note
+
+- Label: **"Napomena za današnji draft"**
+- Optional free text
+- Applies to the whole daily draft, not to a single line
+- Saved on the draft group (`DraftGroup.description`)
+
+### 7.2 Today's Lines Table
 
 Displays all draft lines for today's draft, newest first.
 
@@ -99,8 +127,6 @@ Displays all draft lines for today's draft, newest first.
 | Quantity | Formatted per UOM decimal rules |
 | UOM | Unit of measure |
 | Batch | Batch code, or "—" if article has no batch |
-| Employee ID | Employee ID if provided, or "—" |
-| Note | Note if provided, or "—" |
 | Created by | Username of the operator who entered the line |
 | Actions | Edit (pencil icon), Delete (trash icon) |
 
@@ -152,6 +178,7 @@ Displays all draft lines for today's draft, newest first.
 |--------|--------|----------|
 | Get today's draft lines | GET | `/api/v1/drafts?date=today` |
 | Add a line | POST | `/api/v1/drafts` |
+| Update today's draft note | PATCH | `/api/v1/drafts/group` |
 | Edit a line (quantity) | PATCH | `/api/v1/drafts/{id}` |
 | Delete a line | DELETE | `/api/v1/drafts/{id}` |
 | Lookup article by number/barcode | GET | `/api/v1/articles?q={query}` |
@@ -170,7 +197,7 @@ Displays all draft lines for today's draft, newest first.
   "quantity": 2.5,
   "uom": "kg",
   "employee_id_ref": "EMP-042",
-  "note": "12.36-57",
+  "draft_note": "Lakirnica - dnevni izlaz za drugu smjenu",
   "source": "manual",
   "client_event_id": "uuid-generated-by-frontend"
 }
@@ -189,11 +216,30 @@ Displays all draft lines for today's draft, newest first.
   "quantity": 2.5,
   "uom": "kg",
   "employee_id_ref": "EMP-042",
-  "note": "12.36-57",
   "status": "DRAFT",
   "source": "manual",
   "created_by": "operator1",
   "created_at": "2026-03-10T08:42:00Z"
+}
+```
+
+### PATCH `/api/v1/drafts/group` — Update today's draft note
+
+**Request:**
+```json
+{
+  "draft_note": "Lakirnica - dnevni izlaz za drugu smjenu"
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": 5,
+  "group_number": "IZL-0005",
+  "status": "PENDING",
+  "operational_date": "2026-03-10",
+  "draft_note": "Lakirnica - dnevni izlaz za drugu smjenu"
 }
 ```
 
@@ -217,6 +263,7 @@ Displays all draft lines for today's draft, newest first.
 | Article number not found | Inline error below field: `"Article not found."` Block submission. |
 | Article has batches but none exist | Inline error: `"No batches available for this article."` Block submission. |
 | Draft for today does not exist | System creates it automatically on first line submission. No action required from operator. |
+| Draft note entered before the first line exists | The note is saved together with the first successful line submission. |
 | Operator tries to edit an APPROVED line | Edit and delete buttons are hidden/disabled for approved lines. |
 | Two operators submit simultaneously | Backend handles concurrency. Each line is independent — no conflict. |
 | Midnight cutoff reached while operator has unsaved form | Form submission after midnight creates a line on the new day's draft. No warning needed. |

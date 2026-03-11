@@ -36,7 +36,8 @@
 - Artikl (broj artikla ili barkod skeniranje)
 - Količina + UOM
 - Batch (prikazuje se samo ako artikl ima `has_batch = true`)
-- Napomena (opcionalno)
+- Šifra zaposlenika (opcionalno)
+- Napomena za dnevni draft (opcionalno, vrijedi za cijeli današnji draft)
 
 **Hardware identity** (snima se uz draft, za buduću integraciju):
 - `scale_id`, `scanner_id`, `station_id`, `source_label`, `source_meta`

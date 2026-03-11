@@ -71,7 +71,7 @@ export default function LoginPage() {
   return (
     <Container size={420} my={40}>
       <Title ta="center" order={1}>
-        WMS Login
+        STOQIO Login
       </Title>
       <Text c="dimmed" size="sm" ta="center" mt={5}>
         Please sign in with your credentials

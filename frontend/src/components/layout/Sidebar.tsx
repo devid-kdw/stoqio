@@ -51,7 +51,7 @@ export default function Sidebar() {
   return (
     <nav style={{ width: '240px', background: '#f5f5f5', padding: '1rem', borderRight: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
       <div style={{ marginBottom: '2rem' }}>
-        <Text fw={700} size="lg">WMS</Text>
+        <Text fw={700} size="lg">STOQIO</Text>
         <Text size="xs" c="dimmed">User: {user.username} ({user.role})</Text>
       </div>
 
