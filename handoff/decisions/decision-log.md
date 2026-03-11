@@ -98,3 +98,14 @@
 - Docs update required: no
 
 ---
+
+## DEC-BE-004
+
+- Date: 2026-03-11
+- Phase: phase-05-draft-entry follow-up
+- Source: External review accepted by orchestrator
+- Decision: `DraftGroup.group_number` generation no longer derives the next visible `IZL-####` number from `DraftGroup.id`. The backend now computes the next number from the maximum existing numeric suffix in `group_number`, which keeps visible numbering stable even if primary keys are sparse.
+- Impact: Avoids coupling user-facing draft numbers to database row IDs without introducing a new DB sequence in v1. Existing retry-on-conflict behavior remains in place for concurrent creation.
+- Docs update required: no
+
+---

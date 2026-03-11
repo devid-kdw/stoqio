@@ -492,6 +492,47 @@ class TestCreateDraft:
         assert resp.status_code == 201
         assert state["calls"] >= 2
 
+    def test_group_number_uses_max_existing_suffix_not_id(self, client, draft_data, app):
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            legacy_group = DraftGroup(
+                id=47,
+                group_number="IZL-0001",
+                status=DraftGroupStatus.PENDING,
+                operational_date=date(2026, 1, 1),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(legacy_group)
+            _db.session.commit()
+
+        token = _login(client, "draft_operator")
+        resp = client.post(
+            "/api/v1/drafts",
+            json={
+                "article_id": draft_data["article"].id,
+                "quantity": 1,
+                "uom": draft_data["uom"].code,
+                "source": "manual",
+                "client_event_id": str(uuid.uuid4()),
+            },
+            headers=_auth_header(token),
+        )
+
+        assert resp.status_code == 201
+
+        with app.app_context():
+            today_group = (
+                DraftGroup.query
+                .filter(DraftGroup.operational_date != date(2026, 1, 1))
+                .order_by(DraftGroup.id.desc())
+                .first()
+            )
+            assert today_group is not None
+            assert today_group.group_number == "IZL-0002"
+
 
 # ==========================================================================
 # DraftGroup note tests

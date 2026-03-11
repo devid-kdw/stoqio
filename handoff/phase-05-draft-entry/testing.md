@@ -134,3 +134,50 @@ Open Issues / Risks
 
 Next Recommended Step
 - Carry the updated daily-draft note contract into Phase 6 approval verification so test expectations do not regress to the old line-note model.
+
+## [2026-03-11 20:42] Cleanup Revalidation (Codex)
+
+Status
+- completed
+
+Scope
+- Revalidated Phase 5 after two cleanup fixes:
+- HR UI copy alignment on the Draft Entry screen
+- `group_number` generation via max existing numeric suffix instead of `DraftGroup.id`
+
+Docs Read
+- `stoqio_docs/08_SETUP_AND_GLOBALS.md`
+- `stoqio_docs/09_UI_DRAFT_ENTRY.md`
+- `handoff/phase-05-draft-entry/backend.md`
+- `handoff/phase-05-draft-entry/frontend.md`
+- `handoff/README.md`
+
+Files Changed
+- `handoff/phase-05-draft-entry/testing.md`
+
+Commands Run
+```bash
+backend/venv/bin/pytest backend/tests/test_drafts.py -q
+backend/venv/bin/pytest backend/tests -q
+cd frontend && npm run lint -- --max-warnings=0
+cd frontend && npm run build
+rsync -a frontend/dist/ backend/static/
+```
+
+Tests
+- Passed:
+  - `backend/venv/bin/pytest backend/tests/test_drafts.py -q` -> `30 passed`
+  - `backend/venv/bin/pytest backend/tests -q` -> `77 passed`
+  - `cd frontend && npm run lint -- --max-warnings=0` -> pass
+  - `cd frontend && npm run build` -> pass
+- Failed:
+  - None
+- Not run:
+  - Browser-level interactive verification in sandbox
+
+Open Issues / Risks
+- Backend JWT warnings remain the same test-fixture secret warnings already seen in earlier phases and do not affect production configuration.
+- The Vite chunk-size warning remains informational only.
+
+Next Recommended Step
+- Treat these cleanup fixes as part of the closed Phase 5 baseline and carry the updated expectations into Phase 6.

@@ -216,3 +216,43 @@ Open Issues / Risks
 
 Next Recommended Step
 - Keep product branding consistent as `STOQIO` in future frontend modules instead of inheriting the old `WMS` placeholder copy.
+
+## [2026-03-11 20:42] HR Copy Follow-up (Codex)
+
+Status
+- completed
+
+Scope
+- Fixed the remaining Draft Entry screen copy that still violated the global language rule.
+- User-facing non-error UI copy in the Draft Entry module is now Croatian, while error messages remain English per the documented rule.
+
+Docs Read
+- `stoqio_docs/08_SETUP_AND_GLOBALS.md` § 4.1
+- `stoqio_docs/09_UI_DRAFT_ENTRY.md`
+- `handoff/README.md`
+
+Files Changed
+- `frontend/src/pages/drafts/DraftEntryPage.tsx`
+- `stoqio_docs/09_UI_DRAFT_ENTRY.md`
+
+Commands Run
+```bash
+cd frontend && npm run lint -- --max-warnings=0
+cd frontend && npm run build
+rsync -a frontend/dist/ backend/static/
+```
+
+Tests
+- Passed:
+  - `cd frontend && npm run lint -- --max-warnings=0`
+  - `cd frontend && npm run build`
+- Failed:
+  - None
+- Not run:
+  - Interactive browser walkthrough in sandbox
+
+Open Issues / Risks
+- This cleanup was limited to the Phase 5 Draft Entry surface and its supporting docs. Other older scaffold pages may still contain English placeholder copy and should be evaluated phase by phase instead of treated as part of this fix.
+
+Next Recommended Step
+- Continue applying the same rule in future modules: Croatian for normal UI copy, English for errors.

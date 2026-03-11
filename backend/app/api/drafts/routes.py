@@ -7,6 +7,7 @@ Provides:
   DELETE /api/v1/drafts/{id}        — remove a draft line
 """
 
+import re
 from datetime import datetime, timezone
 from time import sleep
 
@@ -34,6 +35,7 @@ drafts_bp = Blueprint("drafts", __name__)
 
 # v1: single location, id = 1
 _V1_LOCATION_ID = 1
+_DRAFT_GROUP_NUMBER_RE = re.compile(r"^IZL-(\d+)$")
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +75,20 @@ def _get_operational_today():
     return datetime.now(tz).date()
 
 
+def _next_draft_group_number() -> str:
+    """Return the next `IZL-####` number based on the max existing suffix."""
+    max_suffix = 0
+    rows = db.session.query(DraftGroup.group_number).all()
+    for (group_number,) in rows:
+        if not group_number:
+            continue
+        match = _DRAFT_GROUP_NUMBER_RE.match(group_number)
+        if not match:
+            continue
+        max_suffix = max(max_suffix, int(match.group(1)))
+    return f"IZL-{max_suffix + 1:04d}"
+
+
 def _get_or_create_draft_group(user_id: int, op_date):
     """Find today's DraftGroup or create a new one.
 
@@ -82,17 +98,8 @@ def _get_or_create_draft_group(user_id: int, op_date):
     if group is not None:
         return group
 
-    # Generate next group_number: IZL-0001, IZL-0002, …
-    last = (
-        DraftGroup.query
-        .order_by(DraftGroup.id.desc())
-        .first()
-    )
-    next_seq = (last.id + 1) if last else 1
-    group_number = f"IZL-{next_seq:04d}"
-
     group = DraftGroup(
-        group_number=group_number,
+        group_number=_next_draft_group_number(),
         status=DraftGroupStatus.PENDING,
         operational_date=op_date,
         created_by=user_id,

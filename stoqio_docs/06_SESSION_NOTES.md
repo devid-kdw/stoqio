@@ -117,3 +117,23 @@ Affected docs updated:
 - `stoqio_docs/04_FEATURE_SPEC.md`
 - `stoqio_docs/05_DATA_MODEL.md`
 - `stoqio_docs/10_UI_APPROVALS.md`
+
+---
+
+## Phase 5 cleanup follow-up (2026-03-11)
+
+External review produced two accepted cleanup items that were implemented after the main Phase 5 closure:
+
+- Draft Entry non-error UI copy was aligned with the global rule: Croatian for normal UI text, English for user-visible errors.
+- `DraftGroup.group_number` generation was changed from `DraftGroup.id + 1` to a max existing `IZL-####` suffix approach so visible numbering is not coupled to sparse primary keys.
+
+Revalidation after the cleanup:
+- `backend/tests/test_drafts.py` -> 30 passed
+- full backend suite -> 77 passed
+- frontend lint -> passed
+- frontend build -> passed
+
+Recommended note for the next orchestrator:
+- do not include `Draft.note` schema removal in the main Phase 6 Approvals prompt
+- finish Phase 6 first, then run a dedicated post-Phase-6 schema cleanup for `Draft.note`
+- rationale: the approval flow is the last place where any hidden dependency on `Draft` shape could surface, so cleanup is safest immediately after Phase 6, not during it

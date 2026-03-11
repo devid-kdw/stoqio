@@ -83,7 +83,7 @@ The screen has two sections:
 
 ## 6. Submitting a Line
 
-- Submit button label: **"Add"**
+- Submit button label: **"Dodaj"**
 - On submit:
   1. Validate all required fields (inline errors if missing).
   2. POST to `/api/v1/drafts` with the line data.
@@ -100,7 +100,7 @@ If a draft-level note has been entered before the first line of the day, that no
 The bottom section represents the current operational day's shared draft (`DraftGroup`).
 
 It contains:
-- the draft status badge (`OPEN`)
+- the draft status badge (`OTVORENO`)
 - an optional draft-level note for the whole day
 - a table of individual draft lines, newest first
 
@@ -109,9 +109,11 @@ Daily drafts are persisted and remain available for later review in the Approval
 ### 7.1 Draft-level note
 
 - Label: **"Napomena za današnji draft"**
+- Save button label: **"Spremi napomenu"**
 - Optional free text
 - Applies to the whole daily draft, not to a single line
 - Saved on the draft group (`DraftGroup.description`)
+- On successful update: show success toast `"Napomena ažurirana."`
 
 ### 7.2 Today's Lines Table
 
@@ -121,18 +123,18 @@ Displays all draft lines for today's draft, newest first.
 
 | Column | Notes |
 |--------|-------|
-| Time | Time the line was created (HH:MM format, local timezone) |
-| Article No. | Article number |
-| Description | Article description |
-| Quantity | Formatted per UOM decimal rules |
-| UOM | Unit of measure |
-| Batch | Batch code, or "—" if article has no batch |
-| Created by | Username of the operator who entered the line |
-| Actions | Edit (pencil icon), Delete (trash icon) |
+| Vrijeme | Time the line was created (HH:MM format, local timezone) |
+| Br. artikla | Article number |
+| Opis | Article description |
+| Količina | Formatted per UOM decimal rules |
+| JMJ | Unit of measure |
+| Šarža | Batch code, or "—" if article has no batch |
+| Unio | Username of the operator who entered the line |
+| Akcije | Edit (pencil icon), Delete (trash icon) |
 
 ### Empty state
 
-`"No entries for today yet."`
+`"Nema unosa za danas."`
 
 ---
 
@@ -141,18 +143,18 @@ Displays all draft lines for today's draft, newest first.
 - Clicking the edit (pencil) icon on a line opens an inline edit form within the table row (or a modal — implementation choice).
 - **Only the Quantity field is editable.** All other fields are read-only after creation.
 - On save: PATCH to `/api/v1/drafts/{id}` with updated quantity.
-- On success: update the row in the table, show success toast `"Entry updated."`.
+- On success: update the row in the table, show success toast `"Unos ažuriran."`.
 - On error: show error toast.
 
 ---
 
 ## 9. Deleting a Line
 
-- Clicking the delete (trash) icon shows a confirmation prompt: `"Delete this entry? This cannot be undone."`
+- Clicking the delete (trash) icon shows a confirmation prompt: `"Obrisati ovaj unos? Ova radnja se ne može poništiti."`
 - On confirm: DELETE to `/api/v1/drafts/{id}`.
-- On success: remove the row from the table, show success toast `"Entry deleted."`.
+- On success: remove the row from the table, show success toast `"Unos obrisan."`.
 - On error: show error toast.
-- Confirmation can be a simple inline confirm (two buttons: Confirm / Cancel) — no modal required.
+- Confirmation can be a simple inline confirm (two buttons: `"Potvrdi"` / `"Odustani"`) — no modal required.
 
 ---
 
@@ -167,7 +169,7 @@ Displays all draft lines for today's draft, newest first.
 
 ## 11. Draft Status Indicator
 
-- Display a status badge at the top of the screen showing the current draft status: **OPEN** (today's draft is active).
+- Display a status badge at the top of the screen showing the current draft status: **OTVORENO** (today's draft is active).
 - If today's draft does not exist yet (no lines entered today): show the empty state in the table and allow adding the first line (which triggers draft creation).
 
 ---

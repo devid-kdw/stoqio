@@ -174,3 +174,45 @@ Open Issues / Risks
 
 Next Recommended Step
 - Keep Phase 6 approvals work aligned with the new shared draft-note semantics and do not reintroduce line-level note handling in approval views.
+
+## [2026-03-11 20:42] Numbering Follow-up (Codex)
+
+Status
+- completed
+
+Scope
+- Replaced the user-facing `DraftGroup.group_number` generation logic so it no longer derives from sparse database IDs.
+- The next `IZL-####` number is now based on the maximum existing numeric suffix in `group_number`, which matches the intended visible numbering better than the previous `id + 1` approach.
+- Clarified in the `Draft` model that the legacy line-level `note` column remains only for schema compatibility and is not part of the active v1 Draft Entry flow.
+
+Docs Read
+- `stoqio_docs/05_DATA_MODEL.md`
+- `handoff/decisions/decision-log.md`
+- `handoff/README.md`
+
+Files Changed
+- `backend/app/api/drafts/routes.py`
+- `backend/app/models/draft.py`
+- `backend/tests/test_drafts.py`
+- `handoff/decisions/decision-log.md`
+
+Commands Run
+```bash
+backend/venv/bin/pytest backend/tests/test_drafts.py -q
+backend/venv/bin/pytest backend/tests -q
+```
+
+Tests
+- Passed:
+  - `backend/venv/bin/pytest backend/tests/test_drafts.py -q` -> `30 passed`
+  - `backend/venv/bin/pytest backend/tests -q` -> `77 passed`
+- Failed:
+  - None
+- Not run:
+  - PostgreSQL-specific concurrent-write smoke test outside the sandbox
+
+Open Issues / Risks
+- The max-suffix strategy is safer than `id + 1` without adding a dedicated DB sequence, but it still depends on the existing `group_number` format staying canonical (`IZL-####`). Future schema work could replace this with a dedicated sequence if numbering requirements grow stricter.
+
+Next Recommended Step
+- Keep `group_number` generation behind helper logic and do not couple it back to primary keys in later phases.

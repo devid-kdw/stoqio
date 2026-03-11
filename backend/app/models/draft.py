@@ -46,6 +46,7 @@ class Draft(db.Model):
     source_meta = db.Column(db.JSON, nullable=True)
     client_event_id = db.Column(db.String, unique=True, nullable=False)
     employee_id_ref = db.Column(db.String, nullable=True)
+    # Legacy line-level note kept for schema compatibility; v1 Draft Entry uses DraftGroup.description.
     note = db.Column(db.Text, nullable=True)
     created_by = db.Column(
         db.Integer, db.ForeignKey("user.id"), nullable=False

@@ -122,3 +122,45 @@ Verification
 
 Next Action
 - Continue using `STOQIO` as the product name in future user-facing frontend work unless a later branding decision supersedes it.
+
+## [2026-03-11 20:42] Cleanup Closure (Codex)
+
+Objective
+- Close the final externally reported Phase 5 deviations that were accepted for implementation:
+- non-error Draft Entry copy must be Croatian
+- `DraftGroup.group_number` must not derive from sparse DB IDs
+
+Changes Applied
+- Frontend/UI:
+  - changed remaining Draft Entry non-error copy to Croatian (`Dodaj`, `Nema unosa za danas.`, Croatian confirm labels, Croatian success toasts)
+  - kept error messages in English, matching `08_SETUP_AND_GLOBALS.md`
+  - updated `09_UI_DRAFT_ENTRY.md` so the documented labels/toasts match the live screen
+- Backend:
+  - replaced `group_number` derivation from `DraftGroup.id` with max existing `IZL-####` suffix parsing
+  - added automated coverage proving visible numbering follows suffix order instead of sparse primary keys
+- Delivery:
+  - rebuilt frontend and synced `frontend/dist` into `backend/static` so Flask serves the updated UI on `:5000`
+
+Verification
+- `backend/venv/bin/pytest backend/tests/test_drafts.py -q` -> `30 passed`
+- `backend/venv/bin/pytest backend/tests -q` -> `77 passed`
+- `cd frontend && npm run lint -- --max-warnings=0` -> pass
+- `cd frontend && npm run build` -> pass
+
+Outcome
+- Phase 5 remains closed.
+- The accepted cleanup items are now implemented, documented, and revalidated.
+
+Next Action
+- Proceed to Phase 6 using this updated Phase 5 state as the baseline.
+
+## Note For Phase 6 Orchestrator
+
+- `Draft.note` still exists in the schema as a documented legacy column and is not part of the active v1 Draft Entry flow.
+- Do not broaden the main Phase 6 Approvals prompt to remove `Draft.note` during core Phase 6 delivery.
+- Recommended sequencing:
+  - first complete Phase 6 and confirm the approval flow does not need any hidden dependency on `Draft.note`
+  - then schedule a small post-Phase-6 schema cleanup task to remove `Draft.note` with a dedicated migration, model cleanup, and revalidation
+- Reason:
+  - Phase 6 is the point where `Draft` and `DraftGroup` usage becomes fully stabilized in the approval path
+  - removing the column before that would add migration risk to the main feature lane with low product value

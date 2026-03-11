@@ -395,7 +395,7 @@ export default function DraftEntryPage() {
 
       setDraftGroup(updatedGroup)
       setDraftNote(updatedGroup.draft_note ?? '')
-      showSuccessToast('Draft note updated.')
+      showSuccessToast('Napomena ažurirana.')
     } catch (err) {
       if (isNetworkOrServerError(err)) {
         setPageError(true)
@@ -460,7 +460,7 @@ export default function DraftEntryPage() {
 
       setLines((prev) => prev.map((l) => (l.id === lineId ? updated : l)))
       setRowActions((prev) => ({ ...prev, [lineId]: { type: 'idle' } }))
-      showSuccessToast('Entry updated.')
+      showSuccessToast('Unos ažuriran.')
     } catch (err) {
       if (isNetworkOrServerError(err)) {
         setPageError(true)
@@ -522,7 +522,7 @@ export default function DraftEntryPage() {
         delete next[lineId]
         return next
       })
-      showSuccessToast('Entry deleted.')
+      showSuccessToast('Unos obrisan.')
     } catch (err) {
       if (isNetworkOrServerError(err)) {
         setPageError(true)
@@ -604,7 +604,7 @@ export default function DraftEntryPage() {
           </Text>
         </Stack>
         <Badge color="green" size="lg" variant="light">
-          OPEN
+          OTVORENO
         </Badge>
       </Group>
 
@@ -700,7 +700,7 @@ export default function DraftEntryPage() {
                 />
               </Box>
               <Button type="submit" loading={submitting} disabled={submitting} size="md">
-                Add
+                Dodaj
               </Button>
             </Group>
           </Stack>
@@ -748,7 +748,7 @@ export default function DraftEntryPage() {
 
         {lines.length === 0 ? (
           <Text c="dimmed" ta="center" py="xl">
-            No entries for today yet.
+            Nema unosa za danas.
           </Text>
         ) : (
           <Box style={{ overflowX: 'auto' }}>
@@ -832,7 +832,7 @@ export default function DraftEntryPage() {
                       <Table.Tr key={line.id} bg="red.0">
                         <Table.Td colSpan={7}>
                           <Text size="sm" c="red.7">
-                            Delete this entry? This cannot be undone.
+                            Obrisati ovaj unos? Ova radnja se ne može poništiti.
                           </Text>
                         </Table.Td>
                         <Table.Td>
@@ -844,7 +844,7 @@ export default function DraftEntryPage() {
                               loading={action.deleting}
                               disabled={action.deleting}
                             >
-                              Confirm
+                              Potvrdi
                             </Button>
                             <Button
                               color="gray"
@@ -853,7 +853,7 @@ export default function DraftEntryPage() {
                               onClick={() => cancelDelete(line.id)}
                               disabled={action.deleting}
                             >
-                              Cancel
+                              Odustani
                             </Button>
                           </Group>
                         </Table.Td>
