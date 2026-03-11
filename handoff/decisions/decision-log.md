@@ -109,3 +109,14 @@
 - Docs update required: no
 
 ---
+
+## DEC-BE-005
+
+- Date: 2026-03-11
+- Phase: phase-06-draft-note-cleanup
+- Source: Post-Phase-6 orchestrator cleanup after approvals validation
+- Decision: Remove the legacy `Draft.note` column from the schema and SQLAlchemy model. The active daily note remains `DraftGroup.description`, and Phase 6 verification confirmed the approval flow has no hidden dependency on the old line-level field.
+- Impact: New databases now reach a head schema without `draft.note`, existing databases require a dedicated Alembic upgrade, and regression coverage must assert the head schema no longer contains the column.
+- Docs update required: yes
+
+---

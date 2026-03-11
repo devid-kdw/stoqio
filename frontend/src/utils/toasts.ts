@@ -5,7 +5,7 @@ const APP_NOTIFICATION_ID = 'app-notification'
 interface ToastOptions {
   title: string
   message: string
-  color: 'green' | 'red'
+  color: 'green' | 'red' | 'yellow'
 }
 
 const showToast = ({ title, message, color }: ToastOptions) => {
@@ -32,5 +32,13 @@ export const showSuccessToast = (message: string) => {
     title: 'Success',
     message,
     color: 'green',
+  })
+}
+
+export const showWarningToast = (message: string) => {
+  showToast({
+    title: 'Warning',
+    message,
+    color: 'yellow',
   })
 }

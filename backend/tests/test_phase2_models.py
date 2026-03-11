@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
     "alembic_version",
     "annual_quota",
     "approval_action",
+    "approval_override",
     "article",
     "article_alias",
     "article_supplier",
@@ -105,6 +106,9 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
     table_names = set(inspector.get_table_names())
 
     assert table_names == EXPECTED_TABLES
+
+    draft_columns = {column["name"] for column in inspector.get_columns("draft")}
+    assert "note" not in draft_columns
 
     check_constraints = inspector.get_check_constraints("stock")
     assert any(

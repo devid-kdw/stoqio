@@ -11,6 +11,7 @@ import { getHomeRouteForRole } from './utils/roles'
 
 // Route-level lazy imports — keeps the main bundle lean.
 const DraftEntryPage = lazy(() => import('./pages/drafts/DraftEntryPage'))
+const ApprovalsPage = lazy(() => import('./pages/approvals/ApprovalsPage'))
 
 // Suspense fallback shared across lazy routes
 const LazyFallback = <FullPageState title="Učitavanje…" loading />
@@ -54,7 +55,14 @@ export default function AppRoutes() {
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
-              <Route path="/approvals" element={<Placeholder name="Approvals" />} />
+              <Route
+                path="/approvals"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <ApprovalsPage />
+                  </Suspense>
+                }
+              />
               <Route path="/receiving" element={<Placeholder name="Receiving" />} />
               <Route path="/inventory" element={<Placeholder name="Inventory Count" />} />
               <Route path="/settings" element={<Placeholder name="Settings" />} />

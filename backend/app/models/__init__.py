@@ -27,3 +27,4 @@ from app.models.annual_quota import AnnualQuota
 from app.models.missing_article_report import MissingArticleReport
 from app.models.system_config import SystemConfig
 from app.models.role_display_name import RoleDisplayName
+from app.models.approval_override import ApprovalOverride
