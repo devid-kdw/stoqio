@@ -198,6 +198,7 @@ Trenutno stanje zaliha po artiklu i šarži.
 
 > **Constraint**: `quantity >= 0` — stock nikad ne ide ispod nule.
 > **Unique**: `(location_id, article_id, batch_id)` — PostgreSQL tretira NULL kao "nema šarže".
+> **Receiving fallback**: ako ad-hoc primka dođe bez `unit_price` i stock red već postoji, `average_price` ostaje nepromijenjen; ako stock red ne postoji, inicijalizira se na `0.0000`.
 
 ---
 

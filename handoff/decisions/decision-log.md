@@ -120,3 +120,25 @@
 - Docs update required: yes
 
 ---
+
+## DEC-BE-006
+
+- Date: 2026-03-13
+- Phase: phase-07-receiving
+- Source: Backend agent implementation choice for an unspecified Receiving dependency contract
+- Decision: For the Phase 7 minimal Receiving-only Orders API, `GET /api/v1/orders?q={order_number}` returns a single exact-match summary object (or `404 ORDER_NOT_FOUND`), and `GET /api/v1/orders/{id}` returns Receiving-oriented detail with only OPEN, non-removed lines plus the per-line metadata needed by the Receiving form.
+- Impact: Frontend Receiving can use `q` lookup to resolve an order id and then fetch only receiving-eligible lines. Later full Orders-module work can broaden these endpoints without conflicting with Phase 7 scope.
+- Docs update required: yes
+
+---
+
+## DEC-BE-007
+
+- Date: 2026-03-13
+- Phase: phase-07-receiving
+- Source: Backend agent implementation choice for unspecified ad-hoc receipt valuation fallback
+- Decision: If an ad-hoc receipt omits `unit_price`, existing stock keeps its current `average_price`; if no stock row exists yet, the newly created stock row initializes `average_price` to `0.0000` to match the non-null stock model contract.
+- Impact: Backend valuation behavior is deterministic even when ad-hoc receipts do not include pricing. Frontend does not need to supply a synthetic fallback value, and later inventory/valuation work must preserve or deliberately revisit this rule.
+- Docs update required: yes
+
+---

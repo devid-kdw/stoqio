@@ -150,6 +150,9 @@ scale_id, scanner_id, station_id, source_label, source_meta (JSON)
 ### 6.2 Ad-hoc receiving
 - Dozvoljeno bez narudžbenice
 - Obavezna explanatory napomena
+- Ako ad-hoc primka nema `unit_price`:
+  - postojeći stock red zadržava postojeći `average_price`
+  - novi stock red se inicijalizira s `average_price = 0.0000`
 
 ---
 

@@ -129,6 +129,63 @@ Each open order line is displayed as a row. Admin fills in:
 
 ## 10. Request / Response Shapes
 
+### GET `/api/v1/orders?q={order_number}` — Look up order by number
+
+- Exact order-number match only (case-insensitive).
+- Response is a single summary object, not an array.
+- If no order matches: `404 ORDER_NOT_FOUND`.
+
+**Response (200):**
+```json
+{
+  "id": 91,
+  "order_number": "ORD-0042",
+  "status": "OPEN",
+  "supplier_id": 7,
+  "supplier_name": "ACME Supplies",
+  "open_line_count": 3,
+  "created_at": "2026-03-13T08:15:00+00:00"
+}
+```
+
+### GET `/api/v1/orders/{id}` — Get receiving-oriented order detail
+
+- Returns order header data plus only receiving-eligible lines:
+  - `status = OPEN`
+  - not `REMOVED`
+- Closed or removed lines are omitted from `lines[]`.
+
+**Response (200):**
+```json
+{
+  "id": 91,
+  "order_number": "ORD-0042",
+  "status": "OPEN",
+  "supplier_id": 7,
+  "supplier_name": "ACME Supplies",
+  "supplier_confirmation_number": "SUP-7781",
+  "note": "Deliver in two batches.",
+  "created_at": "2026-03-13T08:15:00+00:00",
+  "lines": [
+    {
+      "id": 12,
+      "article_id": 42,
+      "article_no": "BOJ-001",
+      "description": "Blue paint",
+      "has_batch": true,
+      "ordered_qty": 25.0,
+      "received_qty": 10.0,
+      "remaining_qty": 15.0,
+      "status": "OPEN",
+      "is_open": true,
+      "uom": "kg",
+      "unit_price": 3.45,
+      "delivery_date": "2026-03-20"
+    }
+  ]
+}
+```
+
 ### POST `/api/v1/receiving` — Submit receipt
 
 **Request (order-linked):**
@@ -183,6 +240,45 @@ Each open order line is displayed as a row. Admin fills in:
     { "article_id": 42, "article_no": "BOJ-001", "quantity_added": 25.0, "uom": "kg" },
     { "article_id": 55, "article_no": "RUK-012", "quantity_added": 10.0, "uom": "kom" }
   ]
+}
+```
+
+### GET `/api/v1/receiving?page=1&per_page=50` — Receipt history
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "id": 201,
+      "received_at": "2026-03-13T10:21:00+00:00",
+      "order_number": "ORD-0042",
+      "article_id": 42,
+      "article_no": "BOJ-001",
+      "description": "Blue paint",
+      "quantity": 25.0,
+      "uom": "kg",
+      "batch_code": "24001",
+      "delivery_note_number": "LS12606198",
+      "received_by": "admin"
+    },
+    {
+      "id": 202,
+      "received_at": "2026-03-13T10:24:00+00:00",
+      "order_number": "Ad-hoc",
+      "article_id": 55,
+      "article_no": "RUK-012",
+      "description": "Work gloves",
+      "quantity": 10.0,
+      "uom": "kom",
+      "batch_code": null,
+      "delivery_note_number": "LS12606200",
+      "received_by": "admin"
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "per_page": 50
 }
 ```
 
