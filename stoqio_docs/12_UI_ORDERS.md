@@ -21,6 +21,8 @@ This replaces the SAP Bestellung process.
 **Main screen** — list of all orders (open on top, closed below).
 **Order detail screen** — full order with all lines, actions, and history.
 
+Client-rendered labels, validation messages, success toasts, warnings, and empty states follow the Croatian UI default from `08_SETUP_AND_GLOBALS.md` § 4.
+
 ---
 
 ## 3. Orders List Screen
@@ -34,11 +36,11 @@ This replaces the SAP Bestellung process.
 
 ### 3.2 Actions on List Screen
 
-- **"New Order"** button — opens a form to create a new order.
+- **"Nova narudžbenica"** button — opens a form to create a new order.
 
 ### 3.3 Empty State
 
-`"No orders found."`
+`"Nema narudžbenica."`
 
 ---
 
@@ -69,15 +71,15 @@ Admin adds one or more lines to the order. Each line has:
 
 ### 4.3 Adding Lines
 
-- "Add line" button appends a new empty row.
+- "Dodaj stavku" button appends a new empty row.
 - Admin fills in article, quantity, price per line.
 - At least one line is required to save the order.
 
 ### 4.4 Submitting
 
-- Submit button label: **"Create Order"**
+- Submit button label: **"Kreiraj narudžbenicu"**
 - On submit: POST to `/api/v1/orders`.
-- On success: redirect to Order Detail screen, show success toast `"Order created."`.
+- On success: redirect to Order Detail screen, show success toast `"Narudžbenica je kreirana."`.
 - On error: show inline errors or error toast.
 
 ---
@@ -109,9 +111,9 @@ Shows: order number, supplier, date, status, supplier confirmation number, note,
 
 ### 5.3 Order Actions
 
-- **"Edit Order"** — edit header fields (supplier confirmation number, note).
-- **"Add Line"** — add a new line to an existing open order.
-- **"Generate PDF"** — generate a PDF of the order for sending to supplier.
+- **"Uredi narudžbenicu"** — edit header fields (supplier confirmation number, note).
+- **"Dodaj stavku"** — add a new line to an existing open order.
+- **"Generiraj PDF"** — generate a PDF of the order for sending to supplier.
 
 ---
 
@@ -148,7 +150,7 @@ Order status is recalculated automatically after every change to a line.
 
 ## 8. PDF Generation
 
-- "Generate PDF" button on the Order Detail screen.
+- "Generiraj PDF" button on the Order Detail screen.
 - Generates a professional PDF of the order containing:
   - Order number, date
   - Supplier name and address
@@ -164,7 +166,7 @@ Order status is recalculated automatically after every change to a line.
 
 - MANAGER role can view the orders list and order detail.
 - No create, edit, or delete actions are available.
-- "Generate PDF" button is visible and usable for MANAGER.
+- "Generiraj PDF" button is visible and usable for MANAGER.
 
 ---
 
@@ -172,6 +174,8 @@ Order status is recalculated automatically after every change to a line.
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
+| Supplier lookup for order form | GET | `/api/v1/orders/lookups/suppliers?q={query}` |
+| Article lookup for order form | GET | `/api/v1/orders/lookups/articles?q={query}&supplier_id={supplier_id}` |
 | Get orders list | GET | `/api/v1/orders?page=1&per_page=50` |
 | Get order detail | GET | `/api/v1/orders/{id}` |
 | Create order | POST | `/api/v1/orders` |
@@ -181,9 +185,116 @@ Order status is recalculated automatically after every change to a line.
 | Remove order line | DELETE | `/api/v1/orders/{id}/lines/{line_id}` |
 | Generate PDF | GET | `/api/v1/orders/{id}/pdf` |
 
+> Compatibility note: `GET /api/v1/orders?q={order_number}` remains reserved for the Receiving module's exact-match lookup flow. The Orders module itself uses the paginated list mode and the full-detail mode documented here.
+
 ---
 
 ## 11. Request / Response Shapes
+
+### GET `/api/v1/orders/lookups/suppliers?q={query}` — Supplier lookup
+
+- Search active suppliers by name or internal code.
+- Used by the Orders create/edit flow.
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "id": 5,
+      "internal_code": "MAN-001",
+      "name": "Mankiewicz Gebr. & Co."
+    }
+  ]
+}
+```
+
+### GET `/api/v1/orders/lookups/articles?q={query}&supplier_id={supplier_id}` — Article lookup for order entry
+
+- Search active articles by article number or description.
+- If `supplier_id` is provided and an `ArticleSupplier` link exists, return `supplier_article_code` and `last_price` for that supplier.
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "article_id": 42,
+      "article_no": "BOJ-001",
+      "description": "Blue paint",
+      "uom": "kg",
+      "supplier_article_code": "34665.5414.7.171",
+      "last_price": 60.10
+    }
+  ]
+}
+```
+
+### GET `/api/v1/orders?page=1&per_page=50` — Orders list
+
+- Default Orders list mode.
+- Open orders appear first. Closed orders follow below them.
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "id": 12,
+      "order_number": "ORD-0042",
+      "supplier_id": 5,
+      "supplier_name": "Mankiewicz Gebr. & Co.",
+      "status": "OPEN",
+      "line_count": 3,
+      "total_value": 480.80,
+      "created_at": "2026-02-23T10:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "per_page": 50
+}
+```
+
+### GET `/api/v1/orders/{id}` — Full order detail
+
+- Returns the full Orders-module detail contract with all lines.
+- Receiving uses the separate compatibility mode documented in `11_UI_RECEIVING.md`.
+
+**Response (200):**
+```json
+{
+  "id": 12,
+  "order_number": "ORD-0042",
+  "supplier_id": 5,
+  "supplier_name": "Mankiewicz Gebr. & Co.",
+  "supplier_address": "Example address 1",
+  "supplier_confirmation_number": "2485602",
+  "status": "OPEN",
+  "note": "Delivery in two batches confirmed.",
+  "total_value": 480.80,
+  "created_at": "2026-02-23T10:00:00Z",
+  "updated_at": "2026-02-24T08:15:00Z",
+  "lines": [
+    {
+      "id": 31,
+      "position": 1,
+      "article_id": 42,
+      "article_no": "BOJ-001",
+      "description": "Blue paint",
+      "supplier_article_code": "34665.5414.7.171",
+      "ordered_qty": 8.0,
+      "received_qty": 0.0,
+      "uom": "kg",
+      "unit_price": 60.10,
+      "total_price": 480.80,
+      "delivery_date": null,
+      "status": "OPEN",
+      "note": null
+    }
+  ]
+}
+```
 
 ### POST `/api/v1/orders` — Create order
 
@@ -230,6 +341,56 @@ Order status is recalculated automatically after every change to a line.
 }
 ```
 
+**Success response (200):**
+
+- Returns the canonical full order-detail contract documented under `GET /api/v1/orders/{id}`.
+
+### POST `/api/v1/orders/{id}/lines` — Add line to open order
+
+**Request:**
+```json
+{
+  "article_id": 42,
+  "supplier_article_code": "34665.5414.7.171",
+  "ordered_qty": 8.0,
+  "uom": "kg",
+  "unit_price": 60.10,
+  "delivery_date": null,
+  "note": null
+}
+```
+
+**Success response (200):**
+
+- Returns the canonical full order-detail contract documented under `GET /api/v1/orders/{id}`.
+
+### PATCH `/api/v1/orders/{id}/lines/{line_id}` — Edit open line
+
+**Request:**
+```json
+{
+  "supplier_article_code": "34665.5414.7.171",
+  "ordered_qty": 10.0,
+  "unit_price": 61.25,
+  "delivery_date": "2026-03-01",
+  "note": "Confirmed with supplier."
+}
+```
+
+**Success response (200):**
+
+- Returns the canonical full order-detail contract documented under `GET /api/v1/orders/{id}`.
+
+### DELETE `/api/v1/orders/{id}/lines/{line_id}` — Remove open line
+
+- Soft-delete behavior only: the line remains in detail/history with `status = REMOVED`.
+- Success response (200) returns the canonical full order-detail contract documented under `GET /api/v1/orders/{id}`.
+
+### GET `/api/v1/orders/{id}/pdf` — Generate PDF
+
+- Returns `application/pdf`.
+- Browser downloads or opens the generated PDF directly.
+
 ---
 
 ## 12. Edge Cases
@@ -238,7 +399,7 @@ Order status is recalculated automatically after every change to a line.
 |-----------|-----------|
 | Order number already exists | Inline error: `"Order number already exists."` |
 | No lines on order | Block submission, inline error: `"At least one line is required."` |
-| Editing a CLOSED order | Edit actions are hidden/disabled. |
+| Editing a CLOSED order | Edit actions are hidden/disabled. If a closed-order mutation is called directly, backend returns `400 ORDER_CLOSED`. |
 | Removing last active line | Order status automatically becomes CLOSED. |
 | Line received qty exceeds ordered qty | Line status becomes CLOSED. Order recalculates. |
 | MANAGER tries to create/edit | Actions are not visible — read-only view only. |

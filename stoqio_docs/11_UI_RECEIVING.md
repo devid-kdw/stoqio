@@ -121,9 +121,11 @@ Each open order line is displayed as a row. Admin fills in:
 | Action | Method | Endpoint |
 |--------|--------|----------|
 | Look up order by number | GET | `/api/v1/orders?q={order_number}` |
-| Get order detail (lines) | GET | `/api/v1/orders/{id}` |
+| Get order detail (lines) | GET | `/api/v1/orders/{id}?view=receiving` |
 | Submit receipt | POST | `/api/v1/receiving` |
 | Get receipt history | GET | `/api/v1/receiving?page=1&per_page=50` |
+
+> Phase 8 compatibility note: `/api/v1/orders` is now the shared Orders-module namespace. Receiving keeps using the exact-match `q` mode for lookup and the explicit `view=receiving` mode for line detail so the canonical Orders detail contract can evolve independently.
 
 ---
 
@@ -148,7 +150,7 @@ Each open order line is displayed as a row. Admin fills in:
 }
 ```
 
-### GET `/api/v1/orders/{id}` — Get receiving-oriented order detail
+### GET `/api/v1/orders/{id}?view=receiving` — Get receiving-oriented order detail
 
 - Returns order header data plus only receiving-eligible lines:
   - `status = OPEN`

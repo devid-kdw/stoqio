@@ -21,7 +21,7 @@ const showToast = ({ title, message, color }: ToastOptions) => {
 
 export const showErrorToast = (message: string) => {
   showToast({
-    title: 'Error',
+    title: 'Greška',
     message,
     color: 'red',
   })
@@ -29,7 +29,7 @@ export const showErrorToast = (message: string) => {
 
 export const showSuccessToast = (message: string) => {
   showToast({
-    title: 'Success',
+    title: 'Uspjeh',
     message,
     color: 'green',
   })
@@ -37,7 +37,7 @@ export const showSuccessToast = (message: string) => {
 
 export const showWarningToast = (message: string) => {
   showToast({
-    title: 'Warning',
+    title: 'Upozorenje',
     message,
     color: 'yellow',
   })

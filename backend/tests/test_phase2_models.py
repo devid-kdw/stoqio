@@ -96,7 +96,7 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
     monkeypatch.chdir(BACKEND_DIR)
     monkeypatch.setenv("FLASK_ENV", "development")
     monkeypatch.setenv("DATABASE_URL", database_url)
-    monkeypatch.setenv("JWT_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-suite-2026-0001")
 
     config = _make_alembic_config(database_url)
     command.upgrade(config, "head")

@@ -11,9 +11,10 @@ class _Base:
     """Shared settings across all environments."""
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    _DEV_DEFAULT_JWT_SECRET = "dev-local-jwt-secret-change-me-2026"
 
     def __init__(self) -> None:
-        self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-me")
+        self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", self._DEV_DEFAULT_JWT_SECRET)
         self.SQLALCHEMY_DATABASE_URI = os.getenv(
             "DATABASE_URL", "postgresql://localhost/wms_dev"
         )
@@ -31,7 +32,14 @@ class Production(_Base):
     DEBUG = False
 
     _WEAK_SECRETS = frozenset(
-        {"", "dev-secret-change-me", "change-me", "secret", "password"}
+        {
+            "",
+            _Base._DEV_DEFAULT_JWT_SECRET,
+            "dev-secret-change-me",
+            "change-me",
+            "secret",
+            "password",
+        }
     )
 
     def __init__(self) -> None:

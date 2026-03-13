@@ -13,6 +13,8 @@ import { getHomeRouteForRole } from './utils/roles'
 const DraftEntryPage = lazy(() => import('./pages/drafts/DraftEntryPage'))
 const ApprovalsPage = lazy(() => import('./pages/approvals/ApprovalsPage'))
 const ReceivingPage = lazy(() => import('./pages/receiving/ReceivingPage'))
+const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'))
+const OrderDetailPage = lazy(() => import('./pages/orders/OrderDetailPage'))
 
 // Suspense fallback shared across lazy routes
 const LazyFallback = <FullPageState title="Učitavanje…" loading />
@@ -77,8 +79,22 @@ export default function AppRoutes() {
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']} />}>
-              <Route path="/orders" element={<Placeholder name="Orders" />} />
-              <Route path="/orders/:id" element={<Placeholder name="Order Detail" />} />
+              <Route
+                path="/orders"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <OrdersPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/orders/:id"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <OrderDetailPage />
+                  </Suspense>
+                }
+              />
               <Route path="/warehouse" element={<Placeholder name="Warehouse" />} />
               <Route path="/warehouse/articles/:id" element={<Placeholder name="Article Detail" />} />
               <Route path="/reports" element={<Placeholder name="Reports" />} />

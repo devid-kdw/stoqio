@@ -894,7 +894,7 @@ class TestReceivingHistoryAndOrderLookup:
         assert lookup_body["status"] == "OPEN"
 
         detail = client.get(
-            f"/api/v1/orders/{order['id']}",
+            f"/api/v1/orders/{order['id']}?view=receiving",
             headers=_auth_header(token),
         )
         assert detail.status_code == 200
@@ -926,7 +926,23 @@ class TestReceivingHistoryAndOrderLookup:
 
 
 class TestReceivingRbac:
-    def test_receiving_and_order_endpoints_are_admin_only(self, client, receiving_data):
+    def test_receiving_is_admin_only_but_orders_get_endpoints_allow_manager(
+        self, client, app, receiving_data
+    ):
+        order = _create_order(
+            app,
+            supplier_id=receiving_data["supplier_id"],
+            created_by_id=receiving_data["admin_id"],
+            lines=[
+                {
+                    "article_id": receiving_data["plain_article_id"],
+                    "ordered_qty": 2,
+                    "uom": receiving_data["plain_uom"],
+                    "unit_price": Decimal("1.0000"),
+                    "status": OrderLineStatus.OPEN,
+                }
+            ],
+        )
         manager_token = _login(client, receiving_data["manager_username"])
 
         receiving_history = client.get(
@@ -936,10 +952,16 @@ class TestReceivingRbac:
         assert receiving_history.status_code == 403
 
         order_lookup = client.get(
-            "/api/v1/orders?q=ORD-ANYTHING",
+            f"/api/v1/orders?q={order['order_number']}",
             headers=_auth_header(manager_token),
         )
-        assert order_lookup.status_code == 403
+        assert order_lookup.status_code == 200
+
+        order_detail = client.get(
+            f"/api/v1/orders/{order['id']}?view=receiving",
+            headers=_auth_header(manager_token),
+        )
+        assert order_detail.status_code == 200
 
         create_receipt = client.post(
             "/api/v1/receiving",

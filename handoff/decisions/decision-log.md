@@ -11,6 +11,17 @@
 
 ---
 
+## DEC-ORD-001
+
+- Date: 2026-03-13
+- Phase: phase-08-orders
+- Source: Orchestrator pre-delegation review of the temporary Phase 7 Receiving Orders scaffold against the Phase 8 Orders-module scope
+- Decision: Phase 8 promotes `/api/v1/orders` to the real Orders-module contract. `GET /api/v1/orders?page=1&per_page=50` is the canonical paginated Orders list, while `GET /api/v1/orders?q={order_number}` remains an exact-match summary mode reserved for Receiving compatibility. `GET /api/v1/orders/{id}` becomes full Orders detail with all lines for the Orders module, and `GET /api/v1/orders/{id}?view=receiving` preserves the filtered receiving-oriented detail contract used by the Receiving screen. Orders-specific form lookups are added under the same module namespace via `GET /api/v1/orders/lookups/suppliers` and `GET /api/v1/orders/lookups/articles` so the existing Draft/Receiving article lookup contract does not need to be repurposed.
+- Impact: Backend, frontend, and testing agents must not continue building on the old Phase 7 assumption that `/api/v1/orders/{id}` is inherently Receiving-oriented. The Receiving client must be updated in Phase 8 to request `view=receiving` explicitly, while the Orders UI must use the default full-detail contract and the dedicated lookup endpoints.
+- Docs update required: yes
+
+---
+
 ## DEC-FE-002
 
 - Date: 2026-03-10
@@ -161,6 +172,39 @@
 - Source: Orchestrator follow-up after post-Phase-7 review of stale Approvals UI copy/spec drift
 - Decision: Approvals client-rendered copy follows the global Croatian UI default for labels, client-side validation, warnings, success states, and empty states. Raw backend/API business-error messages may remain English when surfaced directly. The Phase 6 Approvals spec examples are updated accordingly.
 - Impact: Removes accidental mixed hardcoded copy inside the Approvals frontend and aligns the Phase 6 module spec with the actual frontend language pattern already used elsewhere in v1.
+- Docs update required: yes
+
+---
+
+## DEC-ORD-002
+
+- Date: 2026-03-13
+- Phase: phase-08-orders
+- Source: Backend agent implementation of previously unspecified mutation response shapes
+- Decision: `PATCH /api/v1/orders/{id}`, `POST /api/v1/orders/{id}/lines`, `PATCH /api/v1/orders/{id}/lines/{line_id}`, and `DELETE /api/v1/orders/{id}/lines/{line_id}` return the canonical full Orders detail contract (`GET /api/v1/orders/{id}` shape) after the mutation succeeds. `POST /api/v1/orders` keeps the smaller create-summary response already documented in `12_UI_ORDERS.md`.
+- Impact: Frontend Orders detail can refresh local state directly from mutation responses without an immediate follow-up GET, and testing can assert one stable post-mutation contract instead of per-endpoint ad hoc payloads.
+- Docs update required: yes
+
+---
+
+## DEC-ORD-003
+
+- Date: 2026-03-13
+- Phase: phase-08-orders
+- Source: Orchestrator closeout fix after post-implementation review
+- Decision: Phase 8 Orders mutation transport semantics are locked as follows: `POST /api/v1/orders/{id}/lines` returns `200` because it behaves as an in-place order mutation that returns the canonical full order-detail contract, and closed-order mutations return `400 ORDER_CLOSED` rather than `409` so runtime behavior matches the delegated Phase 8 contract. The Orders frontend also removes the last stray English client-rendered strings and follows the Croatian UI default consistently.
+- Impact: Backend routes, tests, and frontend copy now match the Phase 8 orchestration contract without relying on implicit test rewrites or mixed-language UI drift. Later agents should treat these semantics as the baseline.
+- Docs update required: yes
+
+---
+
+## DEC-BE-009
+
+- Date: 2026-03-13
+- Phase: phase-08-orders
+- Source: Orchestrator backend/dev baseline cleanup after JWT warning review
+- Decision: The shared backend baseline no longer uses sub-32-byte JWT secrets in development or tests. `_TestConfig.JWT_SECRET_KEY`, the Phase 2 migration test override, the development default in `backend/app/config.py`, and the checked-in `.env.example` now use 32+ character placeholders. The local `backend/.env` on this workspace was aligned to the same stronger dev placeholder. Production still rejects the development placeholder as a weak/default secret.
+- Impact: PyJWT `InsecureKeyLengthWarning` is no longer expected in normal backend test runs or local single-machine development when using the repo baseline. Agents should treat any reintroduction of short HS256 secrets as regression unless explicitly justified for isolated experiments.
 - Docs update required: yes
 
 ---

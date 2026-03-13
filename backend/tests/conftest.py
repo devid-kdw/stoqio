@@ -22,7 +22,8 @@ class _TestConfig:
 
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
-    JWT_SECRET_KEY = "test-secret"
+    # Keep test JWTs deterministic while satisfying PyJWT's 32-byte HS256 recommendation.
+    JWT_SECRET_KEY = "test-jwt-secret-key-suite-2026-0001"
     SQLALCHEMY_ENGINE_OPTIONS = {
         "connect_args": {"check_same_thread": False},
         "poolclass": StaticPool,
