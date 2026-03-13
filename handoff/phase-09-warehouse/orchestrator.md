@@ -404,3 +404,91 @@ Residual Notes
 
 Next Action
 - Start Phase 10 on top of the closed Warehouse baseline and treat `DEC-WH-001` through `DEC-WH-004` as the active contract.
+
+## Validation Note - 2026-03-13 18:01:15 CET (Density Hidden In UI)
+
+Status
+- Phase 9 remains closed; post-closeout UI simplification applied.
+
+Accepted Work
+- Orchestrator removed `density` from the visible Warehouse create/edit form and from the Warehouse article detail screen.
+- Warehouse frontend now treats `density` as a hidden technical field and always submits `1.0` in create/edit payloads.
+- Backend/schema behavior is unchanged: `Article.density` still exists in the model/API for compatibility and future use.
+- `DEC-WH-005` and `stoqio_docs/13_UI_WAREHOUSE.md` now document that `density` exists but is not displayed in the v1 Warehouse UI.
+
+Files Changed By Orchestrator
+- `frontend/src/pages/warehouse/WarehouseArticleForm.tsx`
+- `frontend/src/pages/warehouse/ArticleDetailPage.tsx`
+- `frontend/src/pages/warehouse/warehouseUtils.ts`
+- `stoqio_docs/13_UI_WAREHOUSE.md`
+- `handoff/decisions/decision-log.md`
+- `handoff/phase-09-warehouse/orchestrator.md`
+
+Verification
+- `cd frontend && npm run lint -- --max-warnings=0` -> pass
+- `cd frontend && npm run build` -> pass
+- `cp -R frontend/dist/. backend/static/` -> pass
+
+Residual Notes
+- Existing articles with non-`1.0` stored density values remain in the database unless edited through the Warehouse UI. Once saved through the current UI, they are normalized to `1.0`.
+
+Next Action
+- Keep using the hidden-`density` Warehouse baseline from `DEC-WH-005` unless the product requirement changes.
+
+## Validation Note - 2026-03-13 18:22:45 CET (Coverage Days Hidden In UI)
+
+Status
+- Phase 9 remains closed; post-closeout UI simplification applied.
+
+Accepted Work
+- Orchestrator removed `reorder_coverage_days` from the visible Warehouse create/edit form and from the Warehouse article detail screen.
+- Backend/schema behavior is unchanged: `Article.reorder_coverage_days` still exists in the model/API for compatibility and future planning use.
+- Current Warehouse reorder behavior remains unchanged and still depends only on `reorder_threshold`.
+- `DEC-WH-006` and `stoqio_docs/13_UI_WAREHOUSE.md` now document that `reorder_coverage_days` exists but is not displayed in the v1 Warehouse UI.
+
+Files Changed By Orchestrator
+- `frontend/src/pages/warehouse/WarehouseArticleForm.tsx`
+- `frontend/src/pages/warehouse/ArticleDetailPage.tsx`
+- `stoqio_docs/13_UI_WAREHOUSE.md`
+- `handoff/decisions/decision-log.md`
+- `handoff/phase-09-warehouse/orchestrator.md`
+
+Verification
+- `cd frontend && npm run lint -- --max-warnings=0` -> pass
+- `cd frontend && npm run build` -> pass
+- `cp -R frontend/dist/. backend/static/` -> pass
+
+Residual Notes
+- Existing `reorder_coverage_days` values remain stored in the database and continue to round-trip through the backend API, but the current Warehouse UI no longer exposes them.
+
+Next Action
+- Keep using the hidden-`reorder_coverage_days` Warehouse baseline from `DEC-WH-006` unless the future reorder-automation feature is explicitly scheduled.
+
+## Validation Note - 2026-03-13 18:36:56 CET (Batch Tracking Label Clarified)
+
+Status
+- Phase 9 remains closed; post-closeout terminology clarification applied.
+
+Accepted Work
+- Orchestrator renamed the visible Warehouse UI label for `has_batch` from `"Praćenje po šaržama"` to `"Artikl sa šaržom"` in the create/edit form, article detail screen, and shared Warehouse API/error label mapping.
+- Backend/API naming and behavior are unchanged: the stored field remains `has_batch`.
+- `DEC-WH-007` and `stoqio_docs/13_UI_WAREHOUSE.md` now document the revised Croatian wording as the canonical Warehouse UI label.
+
+Files Changed By Orchestrator
+- `frontend/src/pages/warehouse/WarehouseArticleForm.tsx`
+- `frontend/src/pages/warehouse/ArticleDetailPage.tsx`
+- `frontend/src/pages/warehouse/warehouseUtils.ts`
+- `stoqio_docs/13_UI_WAREHOUSE.md`
+- `handoff/decisions/decision-log.md`
+- `handoff/phase-09-warehouse/orchestrator.md`
+
+Verification
+- `cd frontend && npm run lint -- --max-warnings=0` -> pass
+- `cd frontend && npm run build` -> pass
+- `cp -R frontend/dist/. backend/static/` -> pass
+
+Residual Notes
+- This is a terminology/UI-only adjustment. No backend schema, API contract, or test behavior changed.
+
+Next Action
+- Use the `DEC-WH-007` terminology baseline in future Warehouse work unless product wording changes again.

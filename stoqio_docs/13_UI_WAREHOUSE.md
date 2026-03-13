@@ -66,7 +66,10 @@ Subtle colour indicator per row — not aggressive, just a soft visual cue:
 ## 4. Creating a New Article
 
 - Clicking "Novi artikl" opens a form (modal or separate page — implementation choice).
-- Fields match the Article data model: article_no, description, category, base_uom, pack_size, pack_uom, has_batch, reorder_threshold, reorder_coverage_days, density, manufacturer, manufacturer_art_number, is_active.
+- Visible fields match the Article data model except `density` and `reorder_coverage_days`: article_no, description, category, base_uom, pack_size, pack_uom, has_batch, reorder_threshold, manufacturer, manufacturer_art_number, is_active.
+- In the v1 Croatian UI, `has_batch` is shown with the label `"Artikl sa šaržom"` rather than a process-oriented phrase such as `"Praćenje po šarži"`.
+- `density` remains a backend/master-data field but is hidden in the v1 Warehouse UI. Warehouse create/edit flows submit it as `1.0`.
+- `reorder_coverage_days` remains a backend/planning field but is hidden in the v1 Warehouse UI until automated reorder-threshold logic is introduced in a later phase.
 - On submit: POST to `/api/v1/articles`.
 - On success: show success toast `"Artikl je kreiran."`, redirect to article detail screen.
 
@@ -78,7 +81,7 @@ Accessible by clicking any row in the articles list.
 
 ### 5.1 Header Section
 
-Displays all article master data fields. "Uredi" button allows inline editing of all fields directly on this screen.
+Displays all article master data fields relevant to the v1 Warehouse UI. `density` and `reorder_coverage_days` are not displayed. The visible label for `has_batch` remains `"Artikl sa šaržom"`. "Uredi" button allows inline editing of the visible fields directly on this screen.
 
 ### 5.2 Stock & Surplus Section
 
@@ -186,7 +189,7 @@ Paginated list of all inventory transactions for this article, newest first.
   "has_batch": true,
   "reorder_threshold": 20.0,
   "reorder_coverage_days": 30,
-  "density": 1.2,
+  "density": 1.0,
   "is_active": true
 }
 ```

@@ -57,7 +57,7 @@ export function createArticleFormState(
     hasBatch: article?.has_batch ?? false,
     reorderThreshold: article?.reorder_threshold ?? '',
     reorderCoverageDays: article?.reorder_coverage_days ?? '',
-    density: article?.density ?? 1,
+    density: 1,
     isActive: article?.is_active ?? true,
   }
 }
@@ -248,7 +248,7 @@ const ARTICLE_API_FIELD_LABELS: Record<string, string> = {
   reorder_threshold: 'Prag naručivanja',
   reorder_coverage_days: 'Pokrivenost u danima',
   density: 'Gustoća',
-  has_batch: 'Praćenje po šaržama',
+  has_batch: 'Artikl sa šaržom',
   is_active: 'Aktivnost artikla',
   page: 'Stranica',
   per_page: 'Broj stavki po stranici',
@@ -458,7 +458,7 @@ export function buildArticlePayload(form: WarehouseArticleFormState): ArticleMut
     has_batch: form.hasBatch,
     reorder_threshold: parseOptionalNumber(form.reorderThreshold),
     reorder_coverage_days: parseOptionalInteger(form.reorderCoverageDays),
-    density: parseOptionalNumber(form.density) ?? 1,
+    density: 1,
     is_active: form.isActive,
   }
 }

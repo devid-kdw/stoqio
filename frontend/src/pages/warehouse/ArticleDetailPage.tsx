@@ -477,7 +477,7 @@ export default function ArticleDetailPage() {
               <DetailField label="Barkod" value={article.barcode ?? '—'} />
               <DetailField label="Proizvođač" value={article.manufacturer ?? '—'} />
               <DetailField label="Šifra proizvođača" value={article.manufacturer_art_number ?? '—'} />
-              <DetailField label="Praćenje po šaržama" value={article.has_batch ? 'Da' : 'Ne'} />
+              <DetailField label="Artikl sa šaržom" value={article.has_batch ? 'Da' : 'Ne'} />
               <DetailField
                 label="Prag naručivanja"
                 value={
@@ -486,11 +486,6 @@ export default function ArticleDetailPage() {
                     : formatQuantity(article.reorder_threshold, article.base_uom, uomMap)
                 }
               />
-              <DetailField
-                label="Pokrivenost u danima"
-                value={article.reorder_coverage_days === null ? '—' : String(article.reorder_coverage_days)}
-              />
-              <DetailField label="Gustoća" value={formatDecimal(article.density)} />
               <DetailField label="Kreirano" value={formatDateTime(article.created_at)} />
               <DetailField label="Zadnja promjena" value={formatDateTime(article.updated_at)} />
             </SimpleGrid>

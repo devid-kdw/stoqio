@@ -164,36 +164,11 @@ export default function WarehouseArticleForm({
           decimalScale={getQuantityScale(form.baseUom, uomMap)}
           disabled={disabled}
         />
-
-        <NumberInput
-          label="Pokrivenost u danima"
-          placeholder="30"
-          value={form.reorderCoverageDays}
-          onChange={(value) => onChange('reorderCoverageDays', value)}
-          error={errors.reorderCoverageDays}
-          min={0}
-          step={1}
-          decimalScale={0}
-          disabled={disabled}
-        />
-
-        <NumberInput
-          label="Gustoća"
-          placeholder="1"
-          required
-          value={form.density}
-          onChange={(value) => onChange('density', value)}
-          error={errors.density}
-          min={0}
-          step={0.01}
-          decimalScale={3}
-          disabled={disabled}
-        />
       </SimpleGrid>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
         <Switch
-          label="Praćenje po šaržama"
+          label="Artikl sa šaržom"
           checked={form.hasBatch}
           onChange={(event) => onChange('hasBatch', event.currentTarget.checked)}
           disabled={disabled}

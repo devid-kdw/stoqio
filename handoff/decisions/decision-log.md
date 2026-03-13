@@ -263,3 +263,36 @@
 - Docs update required: yes
 
 ---
+
+## DEC-WH-005
+
+- Date: 2026-03-13
+- Phase: phase-09-warehouse
+- Source: User clarification accepted by orchestrator after Phase 9 closeout
+- Decision: `Article.density` remains in the backend schema/API for future KG↔L logic, but it is not shown in the v1 Warehouse UI. Warehouse create/edit frontend flows now treat it as a hidden technical field and always submit `1.0`.
+- Impact: Frontend agents should not render a visible density control or detail field in Warehouse unless the product requirement changes again. Backend and data-model agents must keep the field in place for compatibility, but should treat `1.0` as the active UI baseline.
+- Docs update required: yes
+
+---
+
+## DEC-WH-006
+
+- Date: 2026-03-13
+- Phase: phase-09-warehouse
+- Source: User clarification accepted by orchestrator after Phase 9 closeout
+- Decision: `Article.reorder_coverage_days` remains in the backend schema/API as a future planning field, but it is not shown in the v1 Warehouse UI. The current Warehouse reorder behavior continues to use only `reorder_threshold`; automated threshold proposals based on average consumption × coverage days are deferred until a later post-Phase-15 enhancement.
+- Impact: Frontend agents should not render a visible `reorder_coverage_days` control or detail field in Warehouse unless the future reorder-automation feature is explicitly scheduled. Backend and data-model agents keep the field for compatibility, but current UI/UX should not imply that it affects runtime reorder status today.
+- Docs update required: yes
+
+---
+
+## DEC-WH-007
+
+- Date: 2026-03-13
+- Phase: phase-09-warehouse
+- Source: User clarification accepted by orchestrator after Phase 9 closeout
+- Decision: In the Croatian Warehouse UI, `Article.has_batch` is presented with the visible label `"Artikl sa šaržom"`. Backend/API naming stays `has_batch`; only the user-facing wording changes from the earlier `"Praćenje po šaržama"` phrasing.
+- Impact: Frontend agents should use `"Artikl sa šaržom"` anywhere the `has_batch` boolean is surfaced to users in Warehouse. Backend agents keep the existing field name and semantics. Future specs, tests, and screenshots should treat the revised Croatian phrasing as canonical.
+- Docs update required: yes
+
+---
