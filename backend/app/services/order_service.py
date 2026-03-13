@@ -15,6 +15,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import case, func
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models.article import Article
@@ -23,12 +24,15 @@ from app.models.enums import OrderLineStatus, OrderStatus
 from app.models.order import Order
 from app.models.order_line import OrderLine
 from app.models.supplier import Supplier
+from app.models.system_config import SystemConfig
 from app.models.uom_catalog import UomCatalog
 from app.utils.validators import validate_note, validate_quantity
 
 _QTY_QUANT = Decimal("0.001")
 _PRICE_QUANT = Decimal("0.0001")
 _ORDER_NUMBER_RE = re.compile(r"^ORD-(\d+)$", re.IGNORECASE)
+_ORDER_NUMBER_COUNTER_KEY = "order_number_next"
+_ORDER_NUMBER_COUNTER_RETRIES = 3
 
 
 class OrderServiceError(Exception):
@@ -219,7 +223,7 @@ def _get_order_number_suffix(order_number: str) -> int | None:
     return int(match.group(1))
 
 
-def _generate_order_number() -> str:
+def _compute_initial_order_number_suffix() -> int:
     max_suffix = 0
     rows = db.session.query(Order.order_number).all()
     for (order_number,) in rows:
@@ -228,7 +232,98 @@ def _generate_order_number() -> str:
         suffix = _get_order_number_suffix(order_number)
         if suffix is not None:
             max_suffix = max(max_suffix, suffix)
-    return f"ORD-{max_suffix + 1:04d}"
+    return max_suffix + 1
+
+
+def _parse_order_number_counter_value(counter: SystemConfig) -> int:
+    try:
+        next_suffix = int(counter.value)
+    except (TypeError, ValueError):
+        raise OrderServiceError(
+            "INTERNAL_ERROR",
+            "Stored order-number counter is invalid.",
+            500,
+            {"key": _ORDER_NUMBER_COUNTER_KEY},
+        ) from None
+    if next_suffix < 1:
+        raise OrderServiceError(
+            "INTERNAL_ERROR",
+            "Stored order-number counter must be positive.",
+            500,
+            {"key": _ORDER_NUMBER_COUNTER_KEY},
+        )
+    return next_suffix
+
+
+def _get_order_number_counter(*, for_update: bool = False) -> SystemConfig | None:
+    query = db.session.query(SystemConfig).filter_by(key=_ORDER_NUMBER_COUNTER_KEY)
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
+
+
+def _create_order_number_counter(min_next_suffix: int) -> SystemConfig:
+    next_suffix = max(min_next_suffix, _compute_initial_order_number_suffix())
+    counter = SystemConfig(
+        key=_ORDER_NUMBER_COUNTER_KEY,
+        value=str(next_suffix),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.session.add(counter)
+    db.session.flush()
+    return counter
+
+
+def _with_order_number_counter_retry(action):
+    last_error: IntegrityError | None = None
+    for _ in range(_ORDER_NUMBER_COUNTER_RETRIES):
+        try:
+            return action()
+        except IntegrityError as exc:
+            last_error = exc
+            db.session.rollback()
+    raise OrderServiceError(
+        "INTERNAL_ERROR",
+        "Could not reserve the next order number.",
+        500,
+        {"key": _ORDER_NUMBER_COUNTER_KEY},
+    ) from last_error
+
+
+def _reserve_next_order_number() -> str:
+    def _action() -> str:
+        counter = _get_order_number_counter(for_update=True)
+        if counter is None:
+            counter = _create_order_number_counter(min_next_suffix=1)
+
+        next_suffix = _parse_order_number_counter_value(counter)
+        counter.value = str(next_suffix + 1)
+        counter.updated_at = datetime.now(timezone.utc)
+        db.session.flush()
+        return f"ORD-{next_suffix:04d}"
+
+    return _with_order_number_counter_retry(_action)
+
+
+def _sync_order_number_counter(order_number: str) -> None:
+    suffix = _get_order_number_suffix(order_number)
+    if suffix is None:
+        return
+
+    def _action() -> None:
+        counter = _get_order_number_counter(for_update=True)
+        min_next_suffix = suffix + 1
+        if counter is None:
+            _create_order_number_counter(min_next_suffix=min_next_suffix)
+            return
+
+        current_suffix = _parse_order_number_counter_value(counter)
+        if current_suffix < min_next_suffix:
+            counter.value = str(min_next_suffix)
+            counter.updated_at = datetime.now(timezone.utc)
+            db.session.flush()
+
+    _with_order_number_counter_retry(_action)
 
 
 def _order_number_exists(order_number: str, *, exclude_order_id: int | None = None) -> bool:
@@ -243,9 +338,9 @@ def _order_number_exists(order_number: str, *, exclude_order_id: int | None = No
 def _resolve_order_number(raw_value: Any) -> str:
     manual_value = _normalize_optional_text(raw_value)
     if manual_value is None:
-        generated = _generate_order_number()
+        generated = _reserve_next_order_number()
         while _order_number_exists(generated):
-            generated = _generate_order_number()
+            generated = _reserve_next_order_number()
         return generated
 
     if len(manual_value) > 100:
@@ -261,6 +356,7 @@ def _resolve_order_number(raw_value: Any) -> str:
             409,
             {"order_number": manual_value},
         )
+    _sync_order_number_counter(manual_value)
     return manual_value
 
 

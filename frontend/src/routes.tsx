@@ -15,6 +15,8 @@ const ApprovalsPage = lazy(() => import('./pages/approvals/ApprovalsPage'))
 const ReceivingPage = lazy(() => import('./pages/receiving/ReceivingPage'))
 const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'))
 const OrderDetailPage = lazy(() => import('./pages/orders/OrderDetailPage'))
+const WarehousePage = lazy(() => import('./pages/warehouse/WarehousePage'))
+const ArticleDetailPage = lazy(() => import('./pages/warehouse/ArticleDetailPage'))
 
 // Suspense fallback shared across lazy routes
 const LazyFallback = <FullPageState title="Učitavanje…" loading />
@@ -95,8 +97,22 @@ export default function AppRoutes() {
                   </Suspense>
                 }
               />
-              <Route path="/warehouse" element={<Placeholder name="Warehouse" />} />
-              <Route path="/warehouse/articles/:id" element={<Placeholder name="Article Detail" />} />
+              <Route
+                path="/warehouse"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <WarehousePage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/warehouse/articles/:id"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <ArticleDetailPage />
+                  </Suspense>
+                }
+              />
               <Route path="/reports" element={<Placeholder name="Reports" />} />
             </Route>
 

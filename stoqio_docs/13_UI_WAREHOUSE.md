@@ -55,20 +55,20 @@ Subtle colour indicator per row — not aggressive, just a soft visual cue:
 
 ### 3.4 Actions on List Screen
 
-- **"New Article"** button — opens the article creation form.
+- **"Novi artikl"** button — opens the article creation form.
 
 ### 3.5 Empty State
 
-`"No articles found."`
+`"Nema pronađenih artikala."`
 
 ---
 
 ## 4. Creating a New Article
 
-- Clicking "New Article" opens a form (modal or separate page — implementation choice).
+- Clicking "Novi artikl" opens a form (modal or separate page — implementation choice).
 - Fields match the Article data model: article_no, description, category, base_uom, pack_size, pack_uom, has_batch, reorder_threshold, reorder_coverage_days, density, manufacturer, manufacturer_art_number, is_active.
 - On submit: POST to `/api/v1/articles`.
-- On success: show success toast `"Article created."`, redirect to article detail screen.
+- On success: show success toast `"Artikl je kreiran."`, redirect to article detail screen.
 
 ---
 
@@ -78,7 +78,7 @@ Accessible by clicking any row in the articles list.
 
 ### 5.1 Header Section
 
-Displays all article master data fields. "Edit" button allows inline editing of all fields directly on this screen.
+Displays all article master data fields. "Uredi" button allows inline editing of all fields directly on this screen.
 
 ### 5.2 Stock & Surplus Section
 
@@ -119,26 +119,27 @@ Paginated list of all inventory transactions for this article, newest first.
 
 ### 5.5 Article Actions
 
-- **"Edit"** — enables inline editing of all article master data fields on this screen.
-- **"Deactivate"** — deactivates the article. Shows confirmation: `"Deactivate this article? It will no longer appear in the active article list."` Deactivated articles remain in the database and their history is preserved.
-- **"Print barcode"** — generates and downloads a PDF barcode label for this article.
+- **"Uredi"** — enables inline editing of all article master data fields on this screen.
+- **"Deaktiviraj"** — deactivates the article. Shows confirmation: `"Deaktivirati ovaj artikl? Više se neće prikazivati na popisu aktivnih artikala."` Deactivated articles remain in the database and their history is preserved.
+- Detail payload must include `has_pending_drafts` and `pending_draft_count` so the UI can render the open-drafts deactivation warning without an extra API call.
+- **"Ispis barkoda"** — generates and downloads a PDF barcode label for this article.
 
 ---
 
 ## 6. Editing an Article
 
-- Admin clicks "Edit" on the article detail screen.
+- Admin clicks "Uredi" on the article detail screen.
 - All fields become editable inline.
-- Save / Cancel buttons appear.
+- `"Spremi"` / `"Odustani"` buttons appear.
 - On save: PUT to `/api/v1/articles/{id}`.
-- On success: show success toast `"Article updated."`, fields return to read-only display.
+- On success: show success toast `"Artikl je ažuriran."`, fields return to read-only display.
 - On error: show inline errors or error toast.
 
 ---
 
 ## 7. Barcode Printing
 
-- "Print barcode" button on the article detail screen.
+- "Ispis barkoda" button on the article detail screen.
 - Generates a PDF barcode label for the article.
 - PDF is downloaded directly in the browser.
 - Barcode format is configurable in Settings (EAN-13 or Code128).
@@ -211,9 +212,9 @@ Paginated list of all inventory transactions for this article, newest first.
 
 | Situation | Behaviour |
 |-----------|-----------|
-| Article number already exists | Inline error: `"Article number already exists."` |
-| Deactivating article with open drafts | Show warning: `"This article has pending drafts. Deactivating will not affect existing drafts."` Allow deactivation. |
-| Deactivating article with stock > 0 | Show warning: `"This article still has stock on hand."` Allow deactivation. |
-| No transactions for article | Empty state in transaction history: `"No transactions found."` |
+| Article number already exists | Inline error: `"Broj artikla već postoji."` |
+| Deactivating article with open drafts | Show warning: `"Ovaj artikl ima otvorene draftove. Deaktivacija neće utjecati na postojeće draftove."` Allow deactivation. |
+| Deactivating article with stock > 0 | Show warning: `"Ovaj artikl još uvijek ima zalihu na stanju."` Allow deactivation. |
+| No transactions for article | Empty state in transaction history: `"Nema pronađenih transakcija."` |
 | No batches for article | Batch section not shown if `has_batch = false`. |
-| Search returns no results | Empty state: `"No articles found."` |
+| Search returns no results | Empty state: `"Nema pronađenih artikala."` |

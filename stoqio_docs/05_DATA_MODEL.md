@@ -509,6 +509,12 @@ Seeded ključevi pri prvom pokretanju:
 
 > `Location.timezone` i `Location.name` ostaju na Location entitetu — pokrivaju "general" settings zajedno s ovim ključevima.
 
+Runtime-managed ključevi:
+
+| Key | Primjer vrijednosti | Opis |
+|-----|---------------------|------|
+| `order_number_next` | `43` | Sljedeći slobodni numeric suffix za auto-generirani `ORD-####` niz. Održava ga backend Orders servis; nije user-facing postavka. |
+
 ---
 
 ### 26. RoleDisplayName (Prikaz naziva rola)

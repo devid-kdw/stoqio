@@ -1,100 +1,203 @@
-"""Article lookup routes for Draft Entry.
+"""Articles API routes for Phase 9 Warehouse + Draft compatibility."""
 
-Provides:
-  GET /api/v1/articles?q={query}  — search by article_no or barcode
-"""
+from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-from app.models.article import Article
-from app.models.batch import Batch
-from app.models.uom_catalog import UomCatalog
-from app.utils.auth import require_role
+from app.services import article_service
+from app.services.article_service import ArticleServiceError
+from app.utils.auth import get_current_user, require_role
 
 articles_bp = Blueprint("articles", __name__)
 
+_WAREHOUSE_LIST_PARAMS = {"page", "per_page", "category", "include_inactive"}
 
-def _serialize_article(article: Article) -> dict:
-    """Build the article response dict with UOM code and optional batches."""
-    uom = db.session.get(UomCatalog, article.base_uom)
-    uom_code = uom.code if uom else str(article.base_uom)
 
-    data: dict = {
-        "id": article.id,
-        "article_no": article.article_no,
-        "description": article.description,
-        "base_uom": uom_code,
-        "has_batch": article.has_batch,
-    }
-
-    if article.has_batch:
-        batches = (
-            Batch.query
-            .filter_by(article_id=article.id)
-            .order_by(Batch.expiry_date.asc())
-            .all()
-        )
-        data["batches"] = [
+def _error(error: str, message: str, status_code: int, details=None):
+    return (
+        jsonify(
             {
-                "id": b.id,
-                "batch_code": b.batch_code,
-                "expiry_date": b.expiry_date.isoformat(),
+                "error": error,
+                "message": message,
+                "details": details or {},
             }
-            for b in batches
-        ]
+        ),
+        status_code,
+    )
 
-    return data
+
+def _forbidden(role: str):
+    return _error(
+        "FORBIDDEN",
+        f"Role '{role}' is not permitted for this endpoint.",
+        403,
+    )
+
+
+def _parse_positive_int(value, *, field_name: str, default: int) -> int:
+    raw_value = default if value is None else value
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        raise ArticleServiceError(
+            "VALIDATION_ERROR",
+            f"{field_name} must be a valid integer.",
+            400,
+        ) from None
+    if parsed <= 0:
+        raise ArticleServiceError(
+            "VALIDATION_ERROR",
+            f"{field_name} must be greater than zero.",
+            400,
+        )
+    return parsed
+
+
+def _parse_bool_query(value, *, field_name: str, default: bool) -> bool:
+    if value is None:
+        return default
+
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1"}:
+        return True
+    if normalized in {"false", "0"}:
+        return False
+    raise ArticleServiceError(
+        "VALIDATION_ERROR",
+        f"{field_name} must be 'true' or 'false'.",
+        400,
+    )
+
+
+def _is_warehouse_list_request() -> bool:
+    return any(param in request.args for param in _WAREHOUSE_LIST_PARAMS)
+
+
+def _current_role() -> str:
+    user = get_current_user()
+    return user.role.value if hasattr(user.role, "value") else str(user.role)
+
+
+@articles_bp.route("/articles/lookups/categories", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_category_lookups():
+    return jsonify(article_service.lookup_categories()), 200
+
+
+@articles_bp.route("/articles/lookups/uoms", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_uom_lookups():
+    return jsonify(article_service.lookup_uoms()), 200
 
 
 @articles_bp.route("/articles", methods=["GET"])
-@require_role("OPERATOR", "ADMIN")
-def search_articles():
-    """Lookup article by article_no or barcode.
+@require_role("ADMIN", "MANAGER", "OPERATOR")
+def get_articles():
+    role = _current_role()
+    try:
+        if _is_warehouse_list_request():
+            if role not in {"ADMIN", "MANAGER"}:
+                return _forbidden(role)
 
-    Query param ``q`` is matched case-insensitively against article_no
-    (stored uppercase) and barcode.  Returns a list (typically 0 or 1
-    match) so the frontend can handle no-match gracefully.
-    """
-    q = (request.args.get("q") or "").strip()
-
-    if not q:
-        return (
-            jsonify(
-                {
-                    "error": "VALIDATION_ERROR",
-                    "message": "Query parameter 'q' is required.",
-                    "details": {},
-                }
-            ),
-            400,
-        )
-
-    normalized = q.upper()
-
-    # Search by exact article_no (normalized uppercase) or barcode
-    article = (
-        Article.query
-        .filter(
-            db.or_(
-                Article.article_no == normalized,
-                Article.barcode == q,
+            page = _parse_positive_int(request.args.get("page"), field_name="page", default=1)
+            per_page = _parse_positive_int(
+                request.args.get("per_page"),
+                field_name="per_page",
+                default=50,
             )
+            include_inactive = _parse_bool_query(
+                request.args.get("include_inactive"),
+                field_name="include_inactive",
+                default=False,
+            )
+            result = article_service.list_articles(
+                page,
+                per_page,
+                q=request.args.get("q"),
+                category_key=request.args.get("category"),
+                include_inactive=include_inactive,
+            )
+            return jsonify(result), 200
+
+        if role not in {"ADMIN", "OPERATOR"}:
+            return _forbidden(role)
+
+        result = article_service.find_article_for_lookup(request.args.get("q"))
+        return jsonify(result), 200
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles", methods=["POST"])
+@require_role("ADMIN")
+def create_article():
+    try:
+        result = article_service.create_article(request.get_json(silent=True) or {})
+        return jsonify(result), 201
+    except ArticleServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_article_detail(article_id: int):
+    try:
+        return jsonify(article_service.get_article_detail(article_id)), 200
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>", methods=["PUT"])
+@require_role("ADMIN")
+def update_article(article_id: int):
+    try:
+        result = article_service.update_article(
+            article_id,
+            request.get_json(silent=True) or {},
         )
-        .filter(Article.is_active.is_(True))
-        .first()
+        return jsonify(result), 200
+    except ArticleServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>/deactivate", methods=["PATCH"])
+@require_role("ADMIN")
+def deactivate_article(article_id: int):
+    try:
+        return jsonify(article_service.deactivate_article(article_id)), 200
+    except ArticleServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>/transactions", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_article_transactions(article_id: int):
+    try:
+        page = _parse_positive_int(request.args.get("page"), field_name="page", default=1)
+        per_page = _parse_positive_int(
+            request.args.get("per_page"),
+            field_name="per_page",
+            default=50,
+        )
+        result = article_service.list_article_transactions(article_id, page, per_page)
+        return jsonify(result), 200
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>/barcode", methods=["GET"])
+@require_role("ADMIN")
+def get_article_barcode(article_id: int):
+    try:
+        article_service.get_article_detail(article_id)
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+    return _error(
+        "NOT_IMPLEMENTED",
+        "Barcode generation is not implemented in Phase 9.",
+        501,
     )
-
-    if article is None:
-        return (
-            jsonify(
-                {
-                    "error": "ARTICLE_NOT_FOUND",
-                    "message": "Article not found.",
-                    "details": {},
-                }
-            ),
-            404,
-        )
-
-    return jsonify(_serialize_article(article)), 200

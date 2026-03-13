@@ -398,3 +398,106 @@ Residual Notes
 
 Next Action
 - Keep using 32+ character JWT secrets in dev/test/prod paths; treat short HS256 secrets as an avoidable regression.
+
+## Validation Note - 2026-03-13 15:45:51 CET
+
+Status
+- Closed; browser-facing Flask static output refreshed.
+
+Accepted Work
+- Browser verification exposed that `/orders` was still rendering the old placeholder when served through Flask on `:5000`.
+- Root cause was stale generated assets in `backend/static`, not stale source code: Flask serves `backend/static/index.html` and hashed assets directly.
+- Orchestrator ran the standard frontend sync step via `./scripts/build.sh`, which rebuilt `frontend/dist` and copied the result into `backend/static`.
+- `backend/static` now contains the real Orders bundles (`OrdersPage`, `OrderDetailPage`, `orders`, `orderUtils`) and the new `index` entrypoint references them.
+
+Files Changed By Orchestrator
+- `backend/static/` (generated frontend assets refreshed via `./scripts/build.sh`)
+- `handoff/phase-08-orders/orchestrator.md`
+
+Verification
+- `./scripts/build.sh` -> pass
+- Confirmed generated Flask-served assets now include:
+  - `backend/static/assets/OrdersPage-*.js`
+  - `backend/static/assets/OrderDetailPage-*.js`
+  - `backend/static/assets/orders-*.js`
+  - updated `backend/static/assets/index-*.js` lazy imports for `/orders` and `/orders/:id`
+
+Residual Notes
+- If a browser tab was already open against the old Flask-served bundle, a hard refresh may still be needed to bust cached hashed assets.
+
+Next Action
+- Before any browser verification against Flask-served UI, keep `backend/static` in sync with `frontend/dist` using `./scripts/build.sh`.
+
+## Validation Note - 2026-03-13 16:05:57 CET (Orders Numbering Hardening)
+
+Status
+- Closed; post-closeout backend hardening applied.
+
+Accepted Work
+- Orchestrator replaced the previous per-request full scan of all `order.order_number` values with a persistent counter-based allocator built on `SystemConfig.key = order_number_next`.
+- Auto-generated `ORD-####` numbers now reserve the next suffix through the stored counter instead of recalculating it from the whole Orders table every create.
+- Manual order numbers that also match `ORD-####` now raise the counter floor so future auto-generated numbers continue above that manual suffix.
+- No schema migration was required because the implementation reuses the existing `system_config` table.
+- `DEC-ORD-004` records the new numbering baseline for future agents.
+
+Files Changed By Orchestrator
+- `backend/app/services/order_service.py`
+- `backend/tests/test_orders.py`
+- `stoqio_docs/02_DOMAIN_KNOWLEDGE.md`
+- `stoqio_docs/05_DATA_MODEL.md`
+- `handoff/decisions/decision-log.md`
+- `handoff/phase-08-orders/orchestrator.md`
+
+Verification
+- `backend/venv/bin/pytest backend/tests/test_orders.py -q` -> `10 passed`
+- `backend/venv/bin/pytest backend/tests -q` -> `117 passed`
+
+Residual Notes
+- Counter bootstrap still scans existing `ORD-####` values once if the `order_number_next` key does not exist yet. After bootstrap, normal order creation uses the persistent counter path.
+
+Next Action
+- Keep `order_number_next` semantics intact in any future order import, reset, or seed tooling.
+
+## Final Closeout - 2026-03-13 16:16:19 CET
+
+Status
+- Phase 8 formally closed.
+
+Accepted Work
+- Backend Orders delivery is accepted on the current baseline:
+  - canonical `/api/v1/orders` list/detail contract
+  - explicit Receiving compatibility via exact-match `q` lookup and `view=receiving`
+  - locked mutation semantics from `DEC-ORD-002` and `DEC-ORD-003`
+  - PDF generation and ADMIN/MANAGER RBAC behavior
+  - persistent `order_number_next` allocator from `DEC-ORD-004`
+- Frontend Orders delivery is accepted on the current baseline:
+  - real `/orders` and `/orders/:id` screens replaced the placeholders
+  - MANAGER remains read-only except for PDF generation
+  - Receiving now requests the explicit compatibility detail mode
+  - Flask-served static assets were refreshed so the served UI matches source reality
+- Testing delivery is accepted on the current baseline:
+  - dedicated Orders backend coverage exists
+  - Receiving compatibility regressions were rechecked
+  - the current repo state passes the backend suite and frontend production build
+- Cross-agent baseline decisions for this phase are now the locked reference:
+  - `DEC-ORD-001`
+  - `DEC-ORD-002`
+  - `DEC-ORD-003`
+  - `DEC-BE-009`
+  - `DEC-ORD-004`
+
+Rejected / Missing Items
+- None blocking Phase 8 closure.
+- Modules outside Phase 8 Orders scope remain separate future work and are not part of this closeout.
+
+Verification
+- Reviewed completed Phase 8 handoffs in `handoff/phase-08-orders/backend.md`, `handoff/phase-08-orders/frontend.md`, and `handoff/phase-08-orders/testing.md`.
+- `backend/venv/bin/pytest backend/tests -q` -> `117 passed`
+- `cd frontend && npm run build` -> pass
+
+Residual Notes
+- This file now contains the full Phase 8 review trail: initial review findings, corrective pass, JWT baseline cleanup, Flask static sync, numbering hardening, and final closure.
+- Future agents should treat the current post-hardening runtime + docs baseline as authoritative, not the original pre-delegation assumptions at the top of this file.
+
+Next Action
+- Begin Phase 9 orchestration on top of the closed Phase 8 baseline documented here and in `handoff/decisions/decision-log.md`.

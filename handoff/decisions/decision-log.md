@@ -208,3 +208,58 @@
 - Docs update required: yes
 
 ---
+
+## DEC-ORD-004
+
+- Date: 2026-03-13
+- Phase: phase-08-orders
+- Source: Orchestrator post-closeout Orders hardening after external review of auto-numbering scalability
+- Decision: Orders auto-numbering no longer scans all existing orders on every create. The backend now persists the next `ORD-####` suffix in `SystemConfig.key = order_number_next` and reserves numbers through that counter. If a manual order number also matches the `ORD-####` format, the counter is advanced so future auto-generated numbers continue above the highest manual `ORD` suffix seen through the API.
+- Impact: Auto-generated order numbers remain sequential for normal API usage without O(n) full-table scans on every create, and future agents working on imports/resets must preserve the `order_number_next` counter semantics.
+- Docs update required: yes
+
+---
+
+## DEC-WH-001
+
+- Date: 2026-03-13
+- Phase: phase-09-warehouse
+- Source: Orchestrator pre-delegation review of the Warehouse scope against the existing Draft Entry / Receiving article lookup contract and Warehouse form/filter requirements
+- Decision: Phase 9 promotes `/api/v1/articles` to the shared Articles/Warehouse namespace. `GET /api/v1/articles?page=1&per_page=50&q={query}&category={key}&include_inactive={bool}` is the canonical paginated Warehouse list. `GET /api/v1/articles?q={query}` with no pagination/filter params remains the exact-match single-article lookup mode reserved for Draft Entry and Receiving compatibility, preserving inline FEFO `batches[]` for batch-tracked articles. Warehouse form/filter lookups are added under `GET /api/v1/articles/lookups/categories` and `GET /api/v1/articles/lookups/uoms`. `reorder_status` is computed from `available_qty = stock_total + surplus_total` and uses `NORMAL | YELLOW | RED`.
+- Impact: Backend, frontend, and testing agents must not silently repurpose the existing Draft/Receiving lookup into the Warehouse list contract or hardcode category/UOM options from docs. Warehouse UI must use the canonical paginated list and the new lookup endpoints, while Draft Entry and Receiving keep using the exact-match compatibility mode.
+- Docs update required: yes
+
+---
+
+## DEC-WH-002
+
+- Date: 2026-03-13
+- Phase: phase-09-warehouse
+- Source: Backend agent implementation choice for the otherwise ambiguous bare `GET /api/v1/articles` request shape
+- Decision: Warehouse list mode is activated only when at least one list-specific query parameter is present: `page`, `per_page`, `category`, or `include_inactive`. A bare `GET /api/v1/articles` request therefore remains on the legacy compatibility path and still returns `400 VALIDATION_ERROR` when `q` is missing, while `GET /api/v1/articles?q={query}` continues to behave as the Draft Entry / Receiving exact-match lookup.
+- Impact: Frontend Warehouse calls must send pagination parameters explicitly, even for the default first-page load. Testing should preserve the existing bare-request `400` expectation from the Draft Entry compatibility contract.
+- Docs update required: yes
+
+---
+
+## DEC-WH-003
+
+- Date: 2026-03-13
+- Phase: phase-09-warehouse
+- Source: Backend agent observation while implementing Warehouse UOM lookups and validation against the current v1 schema
+- Decision: Phase 9 treats all `UomCatalog` rows as active because the current schema/model does not include a UOM-level `is_active` field. `GET /api/v1/articles/lookups/uoms` therefore returns all catalog rows, and article create/edit validation checks UOM existence but cannot enforce inactive-UOM rejection until the schema grows an activation flag in a later phase.
+- Impact: Frontend and testing agents must not expect inactive-UOM filtering behavior in Phase 9. If UOM deactivation becomes a requirement, it needs a schema/model update before the Warehouse API contract can enforce it.
+- Docs update required: yes
+
+---
+
+## DEC-WH-004
+
+- Date: 2026-03-13
+- Phase: phase-09-warehouse
+- Source: Orchestrator post-review remediation after Phase 9 validation findings
+- Decision: Warehouse article detail now exposes `has_pending_drafts` and `pending_draft_count` so the deactivate confirmation can warn about open drafts without an extra request. Warehouse client-rendered copy, including translated API/fallback error messages surfaced in the Warehouse UI, is locked to Croatian-by-default. The shared sidebar labels were also localized to Croatian so the module entrypoint does not reintroduce mixed-language navigation.
+- Impact: Backend, frontend, and testing agents should treat the pending-draft detail fields as part of the accepted Phase 9 baseline and should not rely on English Warehouse UI strings in future changes. Any new Warehouse-screen copy or surfaced article-API error path must stay Croatian unless the product docs explicitly change.
+- Docs update required: yes
+
+---

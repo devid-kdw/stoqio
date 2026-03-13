@@ -3,9 +3,17 @@ import { useAuthStore } from '../../store/authStore'
 import { Button, Stack, Text } from '@mantine/core'
 import { authApi } from '../../api/auth'
 
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: 'Administrator',
+  MANAGER: 'Voditelj',
+  WAREHOUSE_STAFF: 'Skladišno osoblje',
+  VIEWER: 'Pregled',
+  OPERATOR: 'Operater',
+}
+
 export default function Sidebar() {
   const { user, refreshToken, logout } = useAuthStore()
-  
+
   const handleLogout = async () => {
     try {
       if (refreshToken) {
@@ -39,38 +47,91 @@ export default function Sidebar() {
     textDecoration: 'none',
     color: '#333',
     borderRadius: '4px',
-    marginBottom: '0.25rem'
+    marginBottom: '0.25rem',
   }
 
   const activeStyle = {
     ...linkStyle,
     background: '#e0e0e0',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
   }
 
   return (
-    <nav style={{ width: '240px', background: '#f5f5f5', padding: '1rem', borderRight: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
+    <nav
+      style={{
+        width: '240px',
+        background: '#f5f5f5',
+        padding: '1rem',
+        borderRight: '1px solid #ddd',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <div style={{ marginBottom: '2rem' }}>
-        <Text fw={700} size="lg">STOQIO</Text>
-        <Text size="xs" c="dimmed">User: {user.username} ({user.role})</Text>
+        <Text fw={700} size="lg">
+          STOQIO
+        </Text>
+        <Text size="xs" c="dimmed">
+          Korisnik: {user.username} ({ROLE_LABELS[user.role] ?? user.role})
+        </Text>
       </div>
 
       <Stack gap={4} style={{ flex: 1 }}>
-        {canSeeApprovals && <NavLink to="/approvals" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Approvals</NavLink>}
-        {canSeeDrafts && <NavLink to="/drafts" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Drafts</NavLink>}
-        {canSeeWarehouse && <NavLink to="/warehouse" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Warehouse</NavLink>}
-        {canSeeIdentifier && <NavLink to="/identifier" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Identifier</NavLink>}
-        {canSeeOrders && <NavLink to="/orders" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Orders</NavLink>}
-        {canSeeReceiving && <NavLink to="/receiving" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Receiving</NavLink>}
-        {canSeeEmployees && <NavLink to="/employees" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Employees</NavLink>}
-        {canSeeInventory && <NavLink to="/inventory" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Inventory Count</NavLink>}
-        {canSeeReports && <NavLink to="/reports" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Reports</NavLink>}
-        {canSeeSettings && <NavLink to="/settings" style={({ isActive }) => isActive ? activeStyle : linkStyle}>Settings</NavLink>}
+        {canSeeApprovals && (
+          <NavLink to="/approvals" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Odobravanja
+          </NavLink>
+        )}
+        {canSeeDrafts && (
+          <NavLink to="/drafts" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Unos izlaza
+          </NavLink>
+        )}
+        {canSeeWarehouse && (
+          <NavLink to="/warehouse" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Skladište
+          </NavLink>
+        )}
+        {canSeeIdentifier && (
+          <NavLink to="/identifier" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Identifikacija
+          </NavLink>
+        )}
+        {canSeeOrders && (
+          <NavLink to="/orders" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Narudžbenice
+          </NavLink>
+        )}
+        {canSeeReceiving && (
+          <NavLink to="/receiving" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Zaprimanje
+          </NavLink>
+        )}
+        {canSeeEmployees && (
+          <NavLink to="/employees" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Zaposlenici
+          </NavLink>
+        )}
+        {canSeeInventory && (
+          <NavLink to="/inventory" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Inventura
+          </NavLink>
+        )}
+        {canSeeReports && (
+          <NavLink to="/reports" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Izvještaji
+          </NavLink>
+        )}
+        {canSeeSettings && (
+          <NavLink to="/settings" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
+            Postavke
+          </NavLink>
+        )}
       </Stack>
 
       <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #ddd' }}>
         <Button variant="outline" color="red" fullWidth onClick={handleLogout}>
-          Logout
+          Odjava
         </Button>
       </div>
     </nav>

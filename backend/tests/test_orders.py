@@ -19,6 +19,7 @@ from app.models.order_line import OrderLine
 from app.models.receiving import Receiving
 from app.models.stock import Stock
 from app.models.supplier import Supplier
+from app.models.system_config import SystemConfig
 from app.models.transaction import Transaction
 from app.models.uom_catalog import UomCatalog
 from app.models.user import User
@@ -191,6 +192,7 @@ def clean_orders_state(app):
         _db.session.query(Batch).delete()
         _db.session.query(OrderLine).delete()
         _db.session.query(Order).delete()
+        _db.session.query(SystemConfig).filter_by(key="order_number_next").delete()
         _db.session.commit()
         yield
 
@@ -490,6 +492,98 @@ class TestOrdersMutations:
         assert response.status_code == 201
         body = response.get_json()
         assert body["order_number"] == "MANUAL-201-XYZ"
+
+    def test_auto_number_sequence_tracks_manual_ord_numbers_but_not_non_ord_manuals(
+        self, client, app, orders_data
+    ):
+        token = _login(client, orders_data["admin_username"])
+
+        manual_ord = client.post(
+            "/api/v1/orders",
+            json={
+                "order_number": "ORD-0042",
+                "supplier_id": orders_data["supplier_id"],
+                "lines": [
+                    {
+                        "article_id": orders_data["linked_article_id"],
+                        "ordered_qty": 1,
+                        "uom": orders_data["qty_uom"],
+                        "unit_price": 10,
+                    }
+                ],
+            },
+            headers=_auth_header(token),
+        )
+        assert manual_ord.status_code == 201
+        assert manual_ord.get_json()["order_number"] == "ORD-0042"
+
+        generated_after_ord = client.post(
+            "/api/v1/orders",
+            json={
+                "supplier_id": orders_data["supplier_id"],
+                "lines": [
+                    {
+                        "article_id": orders_data["linked_article_id"],
+                        "ordered_qty": 1,
+                        "uom": orders_data["qty_uom"],
+                        "unit_price": 11,
+                    }
+                ],
+            },
+            headers=_auth_header(token),
+        )
+        assert generated_after_ord.status_code == 201
+        assert generated_after_ord.get_json()["order_number"] == "ORD-0043"
+
+        with app.app_context():
+            counter = SystemConfig.query.filter_by(key="order_number_next").one()
+            assert counter.value == "44"
+
+    def test_auto_number_sequence_starts_at_ord_0001_after_non_ord_manual_number(
+        self, client, app, orders_data
+    ):
+        token = _login(client, orders_data["admin_username"])
+
+        manual_non_ord = client.post(
+            "/api/v1/orders",
+            json={
+                "order_number": "260100",
+                "supplier_id": orders_data["supplier_id"],
+                "lines": [
+                    {
+                        "article_id": orders_data["linked_article_id"],
+                        "ordered_qty": 1,
+                        "uom": orders_data["qty_uom"],
+                        "unit_price": 10,
+                    }
+                ],
+            },
+            headers=_auth_header(token),
+        )
+        assert manual_non_ord.status_code == 201
+        assert manual_non_ord.get_json()["order_number"] == "260100"
+
+        generated = client.post(
+            "/api/v1/orders",
+            json={
+                "supplier_id": orders_data["supplier_id"],
+                "lines": [
+                    {
+                        "article_id": orders_data["linked_article_id"],
+                        "ordered_qty": 1,
+                        "uom": orders_data["qty_uom"],
+                        "unit_price": 11,
+                    }
+                ],
+            },
+            headers=_auth_header(token),
+        )
+        assert generated.status_code == 201
+        assert generated.get_json()["order_number"] == "ORD-0001"
+
+        with app.app_context():
+            counter = SystemConfig.query.filter_by(key="order_number_next").one()
+            assert counter.value == "2"
 
     def test_create_order_validates_duplicate_number_supplier_and_uom(
         self, client, app, orders_data

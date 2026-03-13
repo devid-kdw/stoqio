@@ -166,6 +166,8 @@ OPEN → CLOSED (automatski kad su sve aktivne linije ispunjene)
 ### 7.2 Order number format
 Auto-generirani: `ORD-0001`, `ORD-0002`, ...
 Može biti i manual (mora biti jedinstven)
+Auto-generirani `ORD-####` niz koristi persistentni counter po instalaciji.
+Ako admin ručno spremi broj koji također odgovara `ORD-####` formatu, sljedeći auto-generirani broj nastavlja iznad tog suffixa.
 
 ### 7.3 Order line statusi
 `OPEN | CLOSED | REMOVED`
