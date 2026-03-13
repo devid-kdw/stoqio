@@ -17,6 +17,7 @@ const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'))
 const OrderDetailPage = lazy(() => import('./pages/orders/OrderDetailPage'))
 const WarehousePage = lazy(() => import('./pages/warehouse/WarehousePage'))
 const ArticleDetailPage = lazy(() => import('./pages/warehouse/ArticleDetailPage'))
+const IdentifierPage = lazy(() => import('./pages/identifier/IdentifierPage'))
 
 // Suspense fallback shared across lazy routes
 const LazyFallback = <FullPageState title="Učitavanje…" loading />
@@ -117,7 +118,14 @@ export default function AppRoutes() {
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'WAREHOUSE_STAFF', 'VIEWER']} />}>
-              <Route path="/identifier" element={<Placeholder name="Identifier" />} />
+              <Route
+                path="/identifier"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <IdentifierPage />
+                  </Suspense>
+                }
+              />
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE_STAFF']} />}>

@@ -480,10 +480,13 @@ Definira koliko čega zaposlenik može primiti godišnje.
 | `reported_by` | FK → User | |
 | `search_term` | string | Što je korisnik tražio |
 | `normalized_term` | string | Normaliziran term za dedupliciranje |
+| `report_count` | int | Broj puta koliko je isti otvoreni report prijavljen |
 | `status` | enum | `OPEN` / `RESOLVED` |
 | `resolution_note` | text nullable | Admin napomena pri zatvaranju |
 | `created_at` | timestamp UTC | |
 | `resolved_at` | timestamp UTC nullable | |
+
+> V1 baseline after Phase 10: u jednom trenutku smije postojati najviše jedan `OPEN` report po `normalized_term`. Ta jedinstvenost se provodi parcijalnim unique indeksom nad otvorenim prijavama.
 
 ---
 

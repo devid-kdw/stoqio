@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -19,7 +19,8 @@ from app.models.article_supplier import ArticleSupplier
 from app.models.batch import Batch
 from app.models.category import Category
 from app.models.draft import Draft
-from app.models.enums import DraftStatus
+from app.models.enums import DraftStatus, MissingArticleReportStatus
+from app.models.missing_article_report import MissingArticleReport
 from app.models.stock import Stock
 from app.models.surplus import Surplus
 from app.models.transaction import Transaction
@@ -66,6 +67,15 @@ class PreparedArticlePayload:
     is_active: bool
 
 
+@dataclass(slots=True)
+class IdentifierMatch:
+    """Resolved Identifier search match metadata for one article."""
+
+    matched_via: str
+    matched_alias: str | None
+    sort_rank: int
+
+
 def _quantize_quantity(value: Decimal) -> Decimal:
     return value.quantize(_QTY_QUANT, rounding=ROUND_HALF_UP)
 
@@ -83,6 +93,13 @@ def _normalize_optional_text(value: Any) -> str | None:
         value = str(value)
     trimmed = value.strip()
     return trimmed or None
+
+
+def _normalize_identifier_term(value: Any) -> str | None:
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return None
+    return normalized.lower()
 
 
 def _validate_allowed_fields(
@@ -474,6 +491,18 @@ def _serialize_alias(alias: ArticleAlias) -> dict[str, Any]:
     }
 
 
+def _serialize_missing_article_report(report: MissingArticleReport) -> dict[str, Any]:
+    return {
+        "id": report.id,
+        "search_term": report.search_term,
+        "report_count": int(report.report_count or 0),
+        "status": report.status.value if hasattr(report.status, "value") else report.status,
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+        "resolution_note": report.resolution_note,
+        "resolved_at": report.resolved_at.isoformat() if report.resolved_at else None,
+    }
+
+
 def _serialize_lookup_article(article: Article) -> dict[str, Any]:
     data: dict[str, Any] = {
         "id": article.id,
@@ -529,6 +558,80 @@ def _serialize_list_item(
         ),
         "is_active": article.is_active,
     }
+
+
+def _resolve_identifier_match(
+    article: Article,
+    aliases: list[ArticleAlias],
+    *,
+    normalized_query: str,
+) -> IdentifierMatch | None:
+    article_no = (article.article_no or "").strip().lower()
+    barcode = (article.barcode or "").strip().lower()
+    description = (article.description or "").strip().lower()
+
+    exact_alias = next(
+        (
+            alias
+            for alias in aliases
+            if normalized_query == _normalize_identifier_term(alias.normalized)
+        ),
+        None,
+    )
+    partial_alias = next(
+        (
+            alias
+            for alias in aliases
+            if normalized_query in (_normalize_identifier_term(alias.normalized) or "")
+        ),
+        None,
+    )
+
+    if article_no == normalized_query:
+        return IdentifierMatch("article_no", None, 0)
+    if barcode and barcode == normalized_query:
+        return IdentifierMatch("barcode", None, 1)
+    if exact_alias is not None:
+        return IdentifierMatch("alias", exact_alias.alias, 2)
+    if normalized_query in article_no:
+        return IdentifierMatch("article_no", None, 3)
+    if barcode and normalized_query in barcode:
+        return IdentifierMatch("barcode", None, 4)
+    if partial_alias is not None:
+        return IdentifierMatch("alias", partial_alias.alias, 5)
+    if normalized_query in description:
+        return IdentifierMatch("description", None, 6)
+    return None
+
+
+def _serialize_identifier_item(
+    article: Article,
+    *,
+    stock_total: Decimal,
+    surplus_total: Decimal,
+    match: IdentifierMatch,
+    role: str,
+) -> dict[str, Any]:
+    item = {
+        "id": article.id,
+        "article_no": article.article_no,
+        "description": article.description,
+        "category_label_hr": article.category.label_hr if article.category else None,
+        "base_uom": _serialize_uom_code(article.base_uom_ref, article.base_uom),
+        "decimal_display": (
+            bool(article.base_uom_ref.decimal_display)
+            if article.base_uom_ref is not None
+            else None
+        ),
+        "matched_via": match.matched_via,
+        "matched_alias": match.matched_alias,
+    }
+    if role == "VIEWER":
+        item["in_stock"] = (stock_total + surplus_total) > 0
+    else:
+        item["stock"] = float(stock_total)
+        item["surplus"] = float(surplus_total)
+    return item
 
 
 def _serialize_detail(article: Article) -> dict[str, Any]:
@@ -887,6 +990,90 @@ def list_articles(
     }
 
 
+def search_identifier_articles(query: str | None, *, role: str) -> dict[str, Any]:
+    """Search active articles across identifier fields for the Identifier module."""
+    normalized_query = _normalize_identifier_term(query)
+    if normalized_query is None or len(normalized_query) < 2:
+        return {
+            "items": [],
+            "total": 0,
+        }
+
+    like_pattern = f"%{normalized_query}%"
+    article_id_rows = (
+        db.session.query(Article.id)
+        .outerjoin(ArticleAlias, ArticleAlias.article_id == Article.id)
+        .filter(Article.is_active.is_(True))
+        .filter(
+            or_(
+                func.lower(Article.article_no).like(like_pattern),
+                func.lower(Article.description).like(like_pattern),
+                func.lower(func.coalesce(Article.barcode, "")).like(like_pattern),
+                func.lower(ArticleAlias.normalized).like(like_pattern),
+            )
+        )
+        .distinct()
+        .all()
+    )
+    article_ids = [article_id for article_id, in article_id_rows]
+    if not article_ids:
+        return {
+            "items": [],
+            "total": 0,
+        }
+
+    articles = (
+        Article.query
+        .options(
+            joinedload(Article.category),
+            joinedload(Article.base_uom_ref),
+        )
+        .filter(Article.id.in_(article_ids))
+        .all()
+    )
+    alias_rows = (
+        ArticleAlias.query
+        .filter(ArticleAlias.article_id.in_(article_ids))
+        .order_by(ArticleAlias.article_id.asc(), ArticleAlias.id.asc())
+        .all()
+    )
+    aliases_by_article: dict[int, list[ArticleAlias]] = {}
+    for alias in alias_rows:
+        aliases_by_article.setdefault(alias.article_id, []).append(alias)
+
+    totals = _build_article_totals_map(article_ids)
+    matched_rows: list[tuple[int, str, dict[str, Any]]] = []
+    for article in articles:
+        match = _resolve_identifier_match(
+            article,
+            aliases_by_article.get(article.id, []),
+            normalized_query=normalized_query,
+        )
+        if match is None:
+            continue
+        stock_total, surplus_total = totals.get(article.id, (Decimal("0"), Decimal("0")))
+        matched_rows.append(
+            (
+                match.sort_rank,
+                article.article_no or "",
+                _serialize_identifier_item(
+                    article,
+                    stock_total=stock_total,
+                    surplus_total=surplus_total,
+                    match=match,
+                    role=role,
+                ),
+            )
+        )
+
+    matched_rows.sort(key=lambda row: (row[0], row[1].lower()))
+    items = [item for _rank, _article_no, item in matched_rows]
+    return {
+        "items": items,
+        "total": len(items),
+    }
+
+
 def get_article_detail(article_id: int) -> dict[str, Any]:
     """Return the canonical Warehouse detail payload."""
     return _serialize_detail(_get_article(article_id))
@@ -1012,6 +1199,150 @@ def list_article_transactions(article_id: int, page: int, per_page: int) -> dict
         "page": page,
         "per_page": per_page,
     }
+
+
+def _get_latest_open_missing_article_report(
+    normalized_term: str,
+) -> MissingArticleReport | None:
+    return (
+        MissingArticleReport.query
+        .filter(
+            MissingArticleReport.normalized_term == normalized_term,
+            MissingArticleReport.status == MissingArticleReportStatus.OPEN,
+        )
+        .order_by(
+            MissingArticleReport.created_at.desc(),
+            MissingArticleReport.id.desc(),
+        )
+        .first()
+    )
+
+
+def _increment_missing_article_report_count(report_id: int) -> MissingArticleReport:
+    db.session.execute(
+        update(MissingArticleReport)
+        .where(MissingArticleReport.id == report_id)
+        .values(report_count=MissingArticleReport.report_count + 1)
+    )
+    db.session.commit()
+
+    report = db.session.get(MissingArticleReport, report_id)
+    if report is None:
+        raise ArticleServiceError(
+            "MISSING_ARTICLE_REPORT_NOT_FOUND",
+            "Missing article report not found.",
+            404,
+            {"report_id": report_id},
+        )
+    return report
+
+
+def submit_missing_article_report(
+    payload: dict[str, Any] | None,
+    *,
+    reported_by_id: int,
+) -> tuple[dict[str, Any], bool]:
+    """Create or merge a missing-article report."""
+    body = payload or {}
+    _validate_allowed_fields(body, allowed_fields={"search_term"})
+
+    search_term = _require_text(
+        body.get("search_term"),
+        field_name="search_term",
+        max_length=255,
+    )
+    normalized_term = _normalize_identifier_term(search_term)
+    assert normalized_term is not None
+
+    existing = _get_latest_open_missing_article_report(normalized_term)
+    if existing is not None:
+        merged = _increment_missing_article_report_count(existing.id)
+        return _serialize_missing_article_report(merged), False
+
+    report = MissingArticleReport(
+        reported_by=reported_by_id,
+        search_term=search_term,
+        normalized_term=normalized_term,
+        report_count=1,
+        status=MissingArticleReportStatus.OPEN,
+    )
+    db.session.add(report)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = _get_latest_open_missing_article_report(normalized_term)
+        if existing is None:
+            raise ArticleServiceError(
+                "MISSING_ARTICLE_REPORT_CONFLICT",
+                "Missing article report merge failed after a concurrent conflict.",
+                409,
+                {"normalized_term": normalized_term},
+            ) from None
+
+        merged = _increment_missing_article_report_count(existing.id)
+        return _serialize_missing_article_report(merged), False
+    return _serialize_missing_article_report(report), True
+
+
+def _parse_missing_article_report_status(value: Any) -> MissingArticleReportStatus:
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return MissingArticleReportStatus.OPEN
+    try:
+        return MissingArticleReportStatus(normalized.upper())
+    except ValueError:
+        raise ArticleServiceError(
+            "VALIDATION_ERROR",
+            "status must be 'OPEN' or 'RESOLVED'.",
+            400,
+            {"status": normalized},
+        ) from None
+
+
+def list_missing_article_reports(status: str | None = None) -> dict[str, Any]:
+    """Return the Identifier missing-article report queue."""
+    report_status = _parse_missing_article_report_status(status)
+    reports = (
+        MissingArticleReport.query
+        .filter(MissingArticleReport.status == report_status)
+        .order_by(
+            MissingArticleReport.created_at.desc(),
+            MissingArticleReport.id.desc(),
+        )
+        .all()
+    )
+    items = [_serialize_missing_article_report(report) for report in reports]
+    return {
+        "items": items,
+        "total": len(items),
+    }
+
+
+def resolve_missing_article_report(
+    report_id: int,
+    payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Resolve an Identifier missing-article report."""
+    body = payload or {}
+    _validate_allowed_fields(body, allowed_fields={"resolution_note"})
+
+    report = db.session.get(MissingArticleReport, report_id)
+    if report is None:
+        raise ArticleServiceError(
+            "MISSING_ARTICLE_REPORT_NOT_FOUND",
+            "Missing article report not found.",
+            404,
+            {"report_id": report_id},
+        )
+
+    if report.status != MissingArticleReportStatus.RESOLVED:
+        report.status = MissingArticleReportStatus.RESOLVED
+        report.resolution_note = _normalize_optional_text(body.get("resolution_note"))
+        report.resolved_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+    return _serialize_missing_article_report(report)
 
 
 def lookup_categories() -> list[dict[str, Any]]:

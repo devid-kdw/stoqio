@@ -296,3 +296,34 @@
 - Docs update required: yes
 
 ---
+
+## DEC-ID-001
+
+- Date: 2026-03-13
+- Phase: phase-10-identifier
+- Source: Backend agent implementation against the Identifier UI contract and the current `MissingArticleReport` schema gap
+- Decision: `MissingArticleReport` now persists `report_count` as a non-null integer defaulting to `1`. Duplicate submissions merge only into an existing `OPEN` report with the same lowercase-trimmed `normalized_term`; resolved reports stay historical rows, so a new submission after resolution creates a new row instead of mutating the resolved record.
+- Impact: Backend, frontend, and testing can rely on `report_count` in Identifier submit/queue/resolve responses and on the rule that only open reports absorb duplicates.
+- Docs update required: yes
+
+---
+
+## DEC-ID-002
+
+- Date: 2026-03-13
+- Phase: phase-10-identifier
+- Source: Frontend agent implementation against the Identifier stock-visibility rules and the current Identifier search payload shape
+- Decision: The Phase 10 Identifier frontend formats exact quantities from `GET /api/v1/identifier` using UOM-code heuristics when `decimal_display` is not available in the payload. Codes equal to or ending in `kom`, `pak`, `par`, or `pár` are treated as integer-display units; all others render with 2 decimals. This covers the seeded/default units and current custom test fixtures such as `whkom`.
+- Impact: ADMIN, MANAGER, and WAREHOUSE_STAFF get stable quantity display without widening Phase 10 backend scope or calling the ADMIN/MANAGER-only Warehouse UOM lookup from Identifier. If future custom integer UOM codes do not follow those markers, the backend contract should expose `decimal_display` directly in Identifier search results or via a lookup allowed for Identifier roles.
+- Docs update required: yes
+
+---
+
+## DEC-ID-003
+
+- Date: 2026-03-13
+- Phase: phase-10-identifier
+- Source: Orchestrator post-review remediation after Phase 10 validation
+- Decision: Identifier missing-article deduplication is now DB-backed as well as application-backed. `missing_article_report` enforces one OPEN row per `normalized_term` via the partial unique index `uq_missing_article_report_open_normalized_term`, and the submit path retries as a merge after an insert conflict so concurrent identical submissions still collapse into one OPEN report with an incremented `report_count`. The Identifier search payload now also exposes `decimal_display` from the base UOM so the frontend formats exact quantities from authoritative UOM metadata rather than code-name heuristics.
+- Impact: Future backend agents should treat duplicate OPEN missing-article rows for the same normalized term as a data anomaly, not expected behavior. Future frontend agents should consume `decimal_display` from the Identifier payload and must not reintroduce heuristic quantity formatting.
+- Docs update required: yes

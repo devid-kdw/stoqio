@@ -91,6 +91,59 @@ def get_uom_lookups():
     return jsonify(article_service.lookup_uoms()), 200
 
 
+@articles_bp.route("/identifier", methods=["GET"])
+@require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF", "VIEWER")
+def search_identifier():
+    try:
+        result = article_service.search_identifier_articles(
+            request.args.get("q"),
+            role=_current_role(),
+        )
+        return jsonify(result), 200
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/identifier/reports", methods=["POST"])
+@require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF", "VIEWER")
+def submit_missing_article_report():
+    try:
+        current_user = get_current_user()
+        result, created = article_service.submit_missing_article_report(
+            request.get_json(silent=True) or {},
+            reported_by_id=current_user.id,
+        )
+        return jsonify(result), 201 if created else 200
+    except ArticleServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/identifier/reports", methods=["GET"])
+@require_role("ADMIN")
+def get_missing_article_reports():
+    try:
+        return jsonify(
+            article_service.list_missing_article_reports(request.args.get("status"))
+        ), 200
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/identifier/reports/<int:report_id>/resolve", methods=["POST"])
+@require_role("ADMIN")
+def resolve_missing_article_report(report_id: int):
+    try:
+        result = article_service.resolve_missing_article_report(
+            report_id,
+            request.get_json(silent=True) or {},
+        )
+        return jsonify(result), 200
+    except ArticleServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
 @articles_bp.route("/articles", methods=["GET"])
 @require_role("ADMIN", "MANAGER", "OPERATOR")
 def get_articles():

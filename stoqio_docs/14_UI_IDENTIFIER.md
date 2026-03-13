@@ -133,8 +133,9 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
       "id": 42,
       "article_no": "BOJ-001",
       "description": "ALEXIT-FST Strukturlack 346-65",
-      "category": "operational_supplies",
+      "category_label_hr": "Operativni potrošni materijal",
       "base_uom": "kg",
+      "decimal_display": true,
       "stock": 42.50,
       "surplus": 0.0,
       "matched_via": "alias",
@@ -146,6 +147,7 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
 ```
 
 > For VIEWER role, `stock` is replaced with `in_stock: true/false` and `surplus` is omitted.
+> `decimal_display` follows the base UOM catalog entry so the client can format exact quantities without guessing from the UOM code.
 
 ### POST `/api/v1/identifier/reports` — Submit report
 
@@ -161,8 +163,31 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
 {
   "id": 5,
   "search_term": "12.36-57",
+  "report_count": 1,
   "status": "OPEN",
   "created_at": "2026-03-10T09:00:00Z"
+}
+```
+
+> If an OPEN report with the same lowercase-trimmed `normalized_term` already exists, the backend returns `200` and increments `report_count` on that existing row instead of creating a duplicate.
+
+### GET `/api/v1/identifier/reports?status=open` — Admin queue
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "id": 5,
+      "search_term": "12.36-57",
+      "report_count": 3,
+      "status": "OPEN",
+      "created_at": "2026-03-10T09:00:00Z",
+      "resolution_note": null,
+      "resolved_at": null
+    }
+  ],
+  "total": 1
 }
 ```
 
@@ -191,7 +216,7 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
 
 | Situation | Behaviour |
 |-----------|-----------|
-| Search term less than 2 characters | No search triggered. Results area is empty. |
+| Search term less than 2 characters | Frontend does not trigger search. If the endpoint is called anyway, backend returns `200` with an empty `items[]` payload. |
 | Multiple articles match | All matching articles shown as cards. |
 | Same search term reported multiple times | Report counter incremented, no duplicate record created. |
 | VIEWER tries to see exact stock | Stock shown as "In stock" or "Out of stock" only. |

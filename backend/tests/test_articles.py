@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db as _db
@@ -21,10 +22,12 @@ from app.models.enums import (
     DraftSource,
     DraftStatus,
     DraftType,
+    MissingArticleReportStatus,
     TxType,
     UserRole,
 )
 from app.models.location import Location
+from app.models.missing_article_report import MissingArticleReport
 from app.models.stock import Stock
 from app.models.supplier import Supplier
 from app.models.surplus import Surplus
@@ -107,6 +110,26 @@ def warehouse_data(app):
                 is_active=True,
             )
             _db.session.add(manager)
+
+        staff = User.query.filter_by(username="warehouse_staff").first()
+        if staff is None:
+            staff = User(
+                username="warehouse_staff",
+                password_hash=generate_password_hash("pass", method="pbkdf2:sha256"),
+                role=UserRole.WAREHOUSE_STAFF,
+                is_active=True,
+            )
+            _db.session.add(staff)
+
+        viewer = User.query.filter_by(username="warehouse_viewer").first()
+        if viewer is None:
+            viewer = User(
+                username="warehouse_viewer",
+                password_hash=generate_password_hash("pass", method="pbkdf2:sha256"),
+                role=UserRole.VIEWER,
+                is_active=True,
+            )
+            _db.session.add(viewer)
 
         operator = User.query.filter_by(username="warehouse_operator").first()
         if operator is None:
@@ -454,6 +477,8 @@ def warehouse_data(app):
             "inactive_category": inactive_category,
             "admin": admin,
             "manager": manager,
+            "staff": staff,
+            "viewer": viewer,
             "operator": operator,
             "active_article": active_article,
             "batch_article": batch_article,
@@ -483,6 +508,32 @@ def _login(client, username: str) -> str:
 
 def _auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _create_missing_article_report(
+    *,
+    reported_by: int,
+    search_term: str,
+    normalized_term: str,
+    report_count: int = 1,
+    status: MissingArticleReportStatus = MissingArticleReportStatus.OPEN,
+    created_at: datetime | None = None,
+    resolved_at: datetime | None = None,
+    resolution_note: str | None = None,
+) -> MissingArticleReport:
+    report = MissingArticleReport(
+        reported_by=reported_by,
+        search_term=search_term,
+        normalized_term=normalized_term,
+        report_count=report_count,
+        status=status,
+        created_at=created_at or datetime.now(timezone.utc),
+        resolved_at=resolved_at,
+        resolution_note=resolution_note,
+    )
+    _db.session.add(report)
+    _db.session.flush()
+    return report
 
 
 class TestWarehouseArticles:
@@ -777,3 +828,254 @@ class TestWarehouseArticles:
         )
         assert response.status_code == 501
         assert response.get_json()["error"] == "NOT_IMPLEMENTED"
+
+
+class TestIdentifier:
+    def test_identifier_search_by_article_no(self, client, warehouse_data):
+        token = _login(client, "warehouse_staff")
+        response = client.get(
+            "/api/v1/identifier?q=wh-batch-002",
+            headers=_auth_header(token),
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["total"] == 1
+
+        item = payload["items"][0]
+        assert item["article_no"] == "WH-BATCH-002"
+        assert item["matched_via"] == "article_no"
+
+    def test_identifier_search_short_query_returns_empty(self, client, warehouse_data):
+        token = _login(client, "warehouse_staff")
+        response = client.get(
+            "/api/v1/identifier?q=a",
+            headers=_auth_header(token),
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["total"] == 0
+        assert payload["items"] == []
+
+    def test_identifier_search_returns_alias_match_with_exact_quantities(
+        self, client, warehouse_data
+    ):
+        token = _login(client, "warehouse_staff")
+        response = client.get(
+            "/api/v1/identifier?q=p-9000",
+            headers=_auth_header(token),
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["total"] == 1
+
+        item = payload["items"][0]
+        assert item["article_no"] == "WH-BATCH-002"
+        assert item["description"] == "Warehouse batch tracked article"
+        assert item["category_label_hr"] == "Warehouse Batch"
+        assert item["base_uom"] == "whkg"
+        assert item["decimal_display"] is True
+        assert item["matched_via"] == "alias"
+        assert item["matched_alias"] == "P-9000"
+        assert item["stock"] == 103.0
+        assert item["surplus"] == 5.0
+
+    def test_identifier_search_viewer_receives_in_stock_only(
+        self, client, warehouse_data
+    ):
+        token = _login(client, "warehouse_viewer")
+        response = client.get(
+            "/api/v1/identifier?q=whbar001",
+            headers=_auth_header(token),
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["total"] == 1
+
+        item = payload["items"][0]
+        assert item["id"] == warehouse_data["active_article"].id
+        assert item["matched_via"] == "barcode"
+        assert item["in_stock"] is True
+        assert "stock" not in item
+        assert "surplus" not in item
+
+    def test_missing_report_submit_merges_duplicates_by_normalized_term(
+        self, client, app, warehouse_data
+    ):
+        viewer_token = _login(client, "warehouse_viewer")
+        manager_token = _login(client, "warehouse_manager")
+        first_response = client.post(
+            "/api/v1/identifier/reports",
+            json={"search_term": "  Identifier Merge Term 001  "},
+            headers=_auth_header(viewer_token),
+        )
+
+        assert first_response.status_code == 201
+        first_payload = first_response.get_json()
+        assert first_payload["search_term"] == "Identifier Merge Term 001"
+        assert first_payload["report_count"] == 1
+        assert first_payload["status"] == "OPEN"
+
+        second_response = client.post(
+            "/api/v1/identifier/reports",
+            json={"search_term": "identifier merge term 001"},
+            headers=_auth_header(manager_token),
+        )
+
+        assert second_response.status_code == 200
+        second_payload = second_response.get_json()
+        assert second_payload["id"] == first_payload["id"]
+        assert second_payload["search_term"] == "Identifier Merge Term 001"
+        assert second_payload["report_count"] == 2
+        assert second_payload["resolved_at"] is None
+
+        with app.app_context():
+            stored = _db.session.get(MissingArticleReport, first_payload["id"])
+            assert stored is not None
+            assert stored.normalized_term == "identifier merge term 001"
+            assert stored.report_count == 2
+
+    def test_missing_article_report_open_rows_are_unique_by_normalized_term(
+        self, app, warehouse_data
+    ):
+        with app.app_context():
+            _create_missing_article_report(
+                reported_by=warehouse_data["viewer"].id,
+                search_term="Identifier Unique Open",
+                normalized_term="identifier unique open",
+                report_count=1,
+            )
+            _db.session.commit()
+
+            duplicate_open = MissingArticleReport(
+                reported_by=warehouse_data["staff"].id,
+                search_term="Identifier Unique Open Duplicate",
+                normalized_term="identifier unique open",
+                report_count=1,
+                status=MissingArticleReportStatus.OPEN,
+            )
+            _db.session.add(duplicate_open)
+            with pytest.raises(IntegrityError):
+                _db.session.commit()
+            _db.session.rollback()
+
+            resolved_duplicate = MissingArticleReport(
+                reported_by=warehouse_data["admin"].id,
+                search_term="Identifier Unique Open Resolved",
+                normalized_term="identifier unique open",
+                report_count=1,
+                status=MissingArticleReportStatus.RESOLVED,
+            )
+            _db.session.add(resolved_duplicate)
+            _db.session.commit()
+            assert resolved_duplicate.id is not None
+
+    def test_admin_report_queue_defaults_to_open_and_orders_newest_first(
+        self, client, app, warehouse_data
+    ):
+        admin_token = _login(client, "warehouse_admin")
+        with app.app_context():
+            old_report = _create_missing_article_report(
+                reported_by=warehouse_data["viewer"].id,
+                search_term="Identifier Queue Old",
+                normalized_term="identifier queue old",
+                report_count=2,
+                created_at=datetime(2026, 12, 31, 22, 58, tzinfo=timezone.utc),
+            )
+            new_report = _create_missing_article_report(
+                reported_by=warehouse_data["staff"].id,
+                search_term="Identifier Queue New",
+                normalized_term="identifier queue new",
+                report_count=4,
+                created_at=datetime(2026, 12, 31, 22, 59, tzinfo=timezone.utc),
+            )
+            _create_missing_article_report(
+                reported_by=warehouse_data["admin"].id,
+                search_term="Identifier Queue Resolved",
+                normalized_term="identifier queue resolved",
+                report_count=3,
+                status=MissingArticleReportStatus.RESOLVED,
+                created_at=datetime(2026, 12, 31, 22, 57, tzinfo=timezone.utc),
+                resolved_at=datetime(2026, 12, 31, 23, 0, tzinfo=timezone.utc),
+                resolution_note="Handled already",
+            )
+            _db.session.commit()
+            old_report_id = old_report.id
+            new_report_id = new_report.id
+
+        response = client.get(
+            "/api/v1/identifier/reports",
+            headers=_auth_header(admin_token),
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["total"] >= 2
+        assert payload["items"][0]["id"] == new_report_id
+        assert payload["items"][0]["search_term"] == "Identifier Queue New"
+        assert payload["items"][0]["report_count"] == 4
+        assert payload["items"][1]["id"] == old_report_id
+        assert payload["items"][1]["search_term"] == "Identifier Queue Old"
+        assert all(item["status"] == "OPEN" for item in payload["items"])
+
+        resolved_response = client.get(
+            "/api/v1/identifier/reports?status=resolved",
+            headers=_auth_header(admin_token),
+        )
+        assert resolved_response.status_code == 200
+        resolved_terms = {
+            item["search_term"] for item in resolved_response.get_json()["items"]
+        }
+        assert "Identifier Queue Resolved" in resolved_terms
+
+    def test_identifier_report_queue_and_resolve_are_admin_only(
+        self, client, app, warehouse_data
+    ):
+        manager_token = _login(client, "warehouse_manager")
+        admin_token = _login(client, "warehouse_admin")
+
+        with app.app_context():
+            report = _create_missing_article_report(
+                reported_by=warehouse_data["viewer"].id,
+                search_term="Identifier Resolve Term",
+                normalized_term="identifier resolve term",
+                report_count=1,
+                created_at=datetime(2026, 12, 31, 22, 55, tzinfo=timezone.utc),
+            )
+            _db.session.commit()
+            report_id = report.id
+
+        queue_response = client.get(
+            "/api/v1/identifier/reports",
+            headers=_auth_header(manager_token),
+        )
+        assert queue_response.status_code == 403
+
+        manager_resolve = client.post(
+            f"/api/v1/identifier/reports/{report_id}/resolve",
+            json={"resolution_note": "Manager should not resolve"},
+            headers=_auth_header(manager_token),
+        )
+        assert manager_resolve.status_code == 403
+
+        admin_resolve = client.post(
+            f"/api/v1/identifier/reports/{report_id}/resolve",
+            json={"resolution_note": "Article added as WH-RESOLVE-001."},
+            headers=_auth_header(admin_token),
+        )
+        assert admin_resolve.status_code == 200
+        resolve_payload = admin_resolve.get_json()
+        assert resolve_payload["id"] == report_id
+        assert resolve_payload["status"] == "RESOLVED"
+        assert resolve_payload["resolution_note"] == "Article added as WH-RESOLVE-001."
+        assert resolve_payload["resolved_at"] is not None
+
+        with app.app_context():
+            stored = _db.session.get(MissingArticleReport, report_id)
+            assert stored is not None
+            assert stored.status == MissingArticleReportStatus.RESOLVED
+            assert stored.resolution_note == "Article added as WH-RESOLVE-001."
+            assert stored.resolved_at is not None
