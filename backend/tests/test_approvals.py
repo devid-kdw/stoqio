@@ -33,6 +33,7 @@ from app.models.surplus import Surplus
 from app.models.transaction import Transaction
 from app.models.uom_catalog import UomCatalog
 from app.models.user import User
+from app.services import approval_service
 from werkzeug.security import generate_password_hash
 
 
@@ -473,17 +474,61 @@ class TestApprovalsAction:
             st = Stock.query.filter_by(article_id=app_data["art_no_batch"].id).first()
             assert st.quantity == Decimal("10.0")
             assert len(Transaction.query.all()) == 0
-            
-            # The backend can implement this via an adjustment draft or overriding lines.
-            # We must just ensure the next GET reflects 8.0
+            override = ApprovalOverride.query.filter_by(
+                draft_group_id=group_id,
+                article_id=app_data["art_no_batch"].id,
+                batch_key="__NO_BATCH__",
+            ).first()
+            assert override is not None
+            assert override.override_quantity == Decimal("8.0")
             
         data = _get_detail(client, token, group_id)
         assert "rows" in data, "Detailed response missing 'rows'"
         line = data["rows"][0]
         assert line["total_quantity"] == 8.0
         assert line["uom"] == "akg"
-        # Optional: check if operator history is preserved
-        # Not explicitly asserted here to strictly fail, but logged if doesn't match standard.
+        assert [entry["quantity"] for entry in line["entries"]] == [2.0, 3.0]
+
+    def test_approve_all_unexpected_failure_rolls_back_all_changes(self, client, app, app_data, monkeypatch):
+        """Bulk approval should not leave partial commits on unexpected failures."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, draft_ids = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 4.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "quantity": 3.0, "uom": "akg"},
+        ])
+
+        original_approve_pending_bucket = approval_service._approve_pending_bucket
+        call_count = {"value": 0}
+
+        def _crash_on_second_bucket(user_id, group_id_arg, line_id):
+            call_count["value"] += 1
+            if call_count["value"] == 2:
+                raise RuntimeError("simulated bulk approval failure")
+            return original_approve_pending_bucket(user_id, group_id_arg, line_id)
+
+        monkeypatch.setattr(approval_service, "_approve_pending_bucket", _crash_on_second_bucket)
+
+        token = _login(client, "appr_admin")
+        with pytest.raises(RuntimeError, match="simulated bulk approval failure"):
+            client.post(
+                f"/api/v1/approvals/{group_id}/approve",
+                headers=_auth_header(token),
+            )
+
+        with app.app_context():
+            d1 = _db.session.get(Draft, draft_ids[0])
+            d2 = _db.session.get(Draft, draft_ids[1])
+            assert d1.status == DraftStatus.DRAFT
+            assert d2.status == DraftStatus.DRAFT
+
+            stock_no_batch = Stock.query.filter_by(article_id=app_data["art_no_batch"].id).first()
+            stock_batch = Stock.query.filter_by(article_id=app_data["art_with_batch"].id).first()
+            assert stock_no_batch.quantity == Decimal("10.0")
+            assert stock_batch.quantity == Decimal("10.0")
+            assert Transaction.query.count() == 0
 
     def test_reject_single_row_with_reason(self, client, app, app_data):
         """8. Reject single row with reason."""

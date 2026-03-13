@@ -89,3 +89,42 @@ cd frontend && npm run build
 
 ### Next Recommended Step
 - Sync the latest frontend build into the backend-served static output before browser smoke testing if the app is being served through Flask static assets.
+
+## 2026-03-13 11:17 CET Orchestrator Follow-up
+
+### Status
+- completed
+
+### Scope
+- Reduced the pre-existing Vite main-bundle size warning by introducing explicit vendor `manualChunks`.
+- Rebuilt the frontend and synced the generated `dist` output into `backend/static` using the project build script so Flask-served assets now match the latest source state.
+
+### Docs Read
+- `handoff/README.md`
+- `handoff/phase-07-receiving/frontend.md`
+
+### Files Changed
+- `frontend/vite.config.ts`
+- `backend/static/` (generated assets refreshed via `scripts/build.sh`)
+- `handoff/phase-07-receiving/frontend.md`
+
+### Commands Run
+```bash
+./scripts/build.sh
+```
+
+### Tests
+- Passed:
+  - `./scripts/build.sh`
+  - embedded `frontend` production build inside the script
+- Failed:
+  - None.
+- Not run:
+  - Browser smoke test after static sync.
+
+### Open Issues / Risks
+- No build warning about oversized JS chunks remains after the `manualChunks` split.
+- Browser cache may still serve old assets until a hard refresh.
+
+### Next Recommended Step
+- Hard refresh the browser on the Flask-served app and do a short smoke test of `/approvals` and `/receiving`.

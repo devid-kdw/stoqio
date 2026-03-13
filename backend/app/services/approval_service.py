@@ -158,7 +158,7 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
         ApprovalOverride.draft_group_id == group_id
     ).all()
     override_map = {
-        (override.article_id, override.batch_id): float(override.override_quantity)
+        (override.article_id, override.batch_key): float(override.override_quantity)
         for override in overrides
     }
 
@@ -190,7 +190,7 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
         article = articles.get(article_id)
         batch = batches.get(batch_id) if batch_id is not None else None
 
-        override_qty = override_map.get((article_id, batch_id))
+        override_qty = override_map.get((article_id, _override_batch_key(batch_id)))
         total_quantity = (
             override_qty
             if override_qty is not None
@@ -276,14 +276,8 @@ def edit_aggregated_line(group_id: int, line_id: int, new_quantity: Decimal) -> 
     return get_draft_group_detail(group_id)
 
 
-def approve_line(user_id: int, group_id: int, line_id: int) -> dict:
-    """
-    Approve an aggregated row.
-    Finds all drafts for this (article, batch).
-    Calculates total needed (override if exists, else sum).
-    Applies surplus-first logic. Raises ValueError if insufficient stock.
-    Creates transactions and updates draft statuses.
-    """
+def _approve_pending_bucket(user_id: int, group_id: int, line_id: int) -> dict:
+    """Approve one pending aggregated bucket without committing the session."""
     draft = db.session.get(Draft, line_id)
     if not draft or draft.draft_group_id != group_id:
         raise ValueError("Line not found in this group.")
@@ -307,7 +301,7 @@ def approve_line(user_id: int, group_id: int, line_id: int) -> dict:
     else:
         total_quantity = sum(Decimal(str(d.quantity)) for d in bucket_drafts)
 
-    location_id = bucket_drafts[0].location_id # Assume all in same location for this line
+    location_id = bucket_drafts[0].location_id  # Assume all in same location for this line
     uom = bucket_drafts[0].uom
 
     # Lock stock and surplus
@@ -348,41 +342,47 @@ def approve_line(user_id: int, group_id: int, line_id: int) -> dict:
 
     # Apply deductions
     if deducted_from_surplus > 0:
-        surplus.quantity = float(Decimal(str(surplus.quantity)) - deducted_from_surplus)
-        if surplus.quantity == 0:
+        if not surplus:
+            raise ValueError("Surplus row missing for approval.")
+        next_surplus_quantity = Decimal(str(surplus.quantity)) - deducted_from_surplus
+        if next_surplus_quantity <= Decimal("0"):
             db.session.delete(surplus)
-        
-        # Transaction for surplus
+        else:
+            surplus.quantity = next_surplus_quantity
+
         db.session.add(Transaction(
             tx_type=TxType.SURPLUS_CONSUMED,
             location_id=location_id,
             article_id=draft.article_id,
             batch_id=draft.batch_id,
-            quantity=float(-deducted_from_surplus),
+            quantity=-deducted_from_surplus,
             uom=uom,
             user_id=user_id,
             reference_type="draft",
             reference_id=line_id,
-            unit_price=stock.average_price if stock else 0
+            unit_price=stock.average_price if stock and stock.average_price is not None else Decimal("0")
         ))
 
+    stock_after = Decimal(str(stock.quantity)) if stock else Decimal("0")
     if deducted_from_stock > 0:
-        stock.quantity = float(Decimal(str(stock.quantity)) - deducted_from_stock)
-        # Transaction for stock
+        if not stock:
+            raise ValueError("Stock row missing for approval.")
+        stock_after = Decimal(str(stock.quantity)) - deducted_from_stock
+        if stock_after < Decimal("0"):
+            raise ValueError("Insufficient stock.")
+        stock.quantity = stock_after
         db.session.add(Transaction(
             tx_type=TxType.STOCK_CONSUMED,
             location_id=location_id,
             article_id=draft.article_id,
             batch_id=draft.batch_id,
-            quantity=float(-deducted_from_stock),
+            quantity=-deducted_from_stock,
             uom=uom,
             user_id=user_id,
             reference_type="draft",
             reference_id=line_id,
             unit_price=stock.average_price
         ))
-
-    stock_after = float(stock.quantity) if stock else 0.0
 
     # Mark drafts as APPROVED and create actions
     for d in bucket_drafts:
@@ -397,11 +397,8 @@ def approve_line(user_id: int, group_id: int, line_id: int) -> dict:
     article = db.session.get(Article, draft.article_id)
     reorder_warning = False
     if article and article.reorder_threshold is not None:
-        if Decimal(str(stock_after)) < Decimal(str(article.reorder_threshold)):
+        if stock_after < Decimal(str(article.reorder_threshold)):
             reorder_warning = True
-
-    db.session.commit()
-    _update_group_status_if_done(group_id)
 
     return {
         "line_id": line_id,
@@ -409,17 +406,25 @@ def approve_line(user_id: int, group_id: int, line_id: int) -> dict:
         "article_no": article.article_no if article else None,
         "approved_quantity": float(total_quantity),
         "uom": uom,
-        "stock_after": stock_after,
+        "stock_after": float(stock_after),
         "surplus_consumed": float(deducted_from_surplus),
         "stock_consumed": float(deducted_from_stock),
         "reorder_warning": reorder_warning
     }
 
 
+def approve_line(user_id: int, group_id: int, line_id: int) -> dict:
+    result = _approve_pending_bucket(user_id, group_id, line_id)
+    _update_group_status_if_done(group_id)
+    db.session.commit()
+    return result
+
+
 def approve_all(user_id: int, group_id: int) -> dict:
     """
     Approve all pending buckets in the group.
-    Survives ValueError("Insufficient stock") for individual lines, marking them skipped.
+    Skips insufficient-stock buckets, but keeps the whole request atomic for
+    unexpected failures by committing only once after the full loop finishes.
     """
     # 1. find all representative lines
     drafts = db.session.query(Draft).filter_by(
@@ -435,26 +440,26 @@ def approve_all(user_id: int, group_id: int) -> dict:
     approved = []
     skipped = []
 
-    for bucket_key, bucket_drafts in buckets.items():
-        sorted_drafts = sorted(bucket_drafts, key=lambda d: d.id)
-        line_id = sorted_drafts[0].id
+    try:
+        for bucket_drafts in buckets.values():
+            sorted_drafts = sorted(bucket_drafts, key=lambda d: d.id)
+            line_id = sorted_drafts[0].id
 
-        try:
-            # We must run this logic within its own nested savepoint or sequentially
-            # Since approve_line handles its own commit(), doing this in a loop is fine
-            # as long as we evaluate them one by one.
-            res = approve_line(user_id, group_id, line_id)
-            approved.append(res)
-        except ValueError as e:
-            if str(e) == "Insufficient stock.":
-                skipped.append(line_id)
-            else:
-                # E.g. "This line has already been approved"
-                pass
+            try:
+                res = _approve_pending_bucket(user_id, group_id, line_id)
+                approved.append(res)
+            except ValueError as e:
+                if str(e) == "Insufficient stock.":
+                    skipped.append(line_id)
+                    continue
+                raise
 
-    _update_group_status_if_done(group_id)
-
-    return {"approved": approved, "skipped": skipped}
+        _update_group_status_if_done(group_id)
+        db.session.commit()
+        return {"approved": approved, "skipped": skipped}
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def reject_line(user_id: int, group_id: int, line_id: int, reason: str) -> dict:
@@ -483,9 +488,8 @@ def reject_line(user_id: int, group_id: int, line_id: int, reason: str) -> dict:
             action=ApprovalActionType.REJECTED,
             note=reason
         ))
-    
-    db.session.commit()
     _update_group_status_if_done(group_id)
+    db.session.commit()
 
     return {"status": "REJECTED", "reason": reason}
 
@@ -509,8 +513,8 @@ def reject_group(user_id: int, group_id: int, reason: str) -> dict:
             note=reason
         ))
 
-    db.session.commit()
     _update_group_status_if_done(group_id)
+    db.session.commit()
 
     return {"status": "REJECTED", "reason": reason}
 
@@ -533,7 +537,5 @@ def _update_group_status_if_done(group_id: int):
             pass
         elif status == "APPROVED":
             group.status = DraftGroupStatus.APPROVED
-            db.session.commit()
         elif status == "REJECTED":
             group.status = DraftGroupStatus.REJECTED
-            db.session.commit()

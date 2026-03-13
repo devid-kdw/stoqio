@@ -131,8 +131,8 @@ export default function DraftGroupCard({
         onFatalError?.()
       } else {
         const message = axios.isAxiosError(err)
-          ? err.response?.data?.message || 'Failed to load draft details.'
-          : 'Failed to load draft details.'
+          ? err.response?.data?.message || 'Ucitavanje detalja drafta nije uspjelo.'
+          : 'Ucitavanje detalja drafta nije uspjelo.'
         showErrorToast(message)
       }
       return null
@@ -170,7 +170,7 @@ export default function DraftGroupCard({
     if (!editingRow) return
     const qty = typeof editingRow.qty === 'string' ? parseFloat(editingRow.qty) : editingRow.qty
     if (isNaN(qty) || qty <= 0) {
-      showErrorToast('Quantity must be greater than zero.')
+      showErrorToast('Kolicina mora biti veca od nule.')
       return
     }
 
@@ -189,7 +189,9 @@ export default function DraftGroupCard({
         onFatalError?.()
         return
       }
-      const msg = axios.isAxiosError(err) ? err.response?.data?.message || 'Failed to update quantity.' : 'Failed to update quantity.'
+      const msg = axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Azuriranje kolicine nije uspjelo.'
+        : 'Azuriranje kolicine nije uspjelo.'
       showErrorToast(msg)
     } finally {
       setIsSavingEdit(false)
@@ -202,7 +204,7 @@ export default function DraftGroupCard({
     try {
       const res = await runWithRetry(() => approvalsApi.approveLine(summary.draft_group_id, lineId))
       if (res.reorder_warning) {
-        showWarningToast(`Stock for ${res.article_no ?? 'this article'} will fall below minimum after this approval.`)
+        showWarningToast(`Zaliha za ${res.article_no ?? 'ovaj artikl'} past ce ispod minimalne razine nakon ovog odobrenja.`)
       }
       
       const nextDetail = await fetchDetail()
@@ -214,7 +216,7 @@ export default function DraftGroupCard({
       }
       const msg = axios.isAxiosError(err) ? err.response?.data?.message || 'Odobravanje nije uspjelo.' : 'Odobravanje nije uspjelo.'
       if (msg.includes('Insufficient stock')) {
-        setRowErrors(prev => ({ ...prev, [lineId]: 'Insufficient stock.' }))
+        setRowErrors(prev => ({ ...prev, [lineId]: 'Nedovoljna zaliha.' }))
       } else {
         showErrorToast(msg)
       }
@@ -230,13 +232,13 @@ export default function DraftGroupCard({
       const res = await runWithRetry(() => approvalsApi.approveAll(summary.draft_group_id))
       const warnings = res.approved.filter(r => r.reorder_warning).length
       if (warnings > 0) {
-        showWarningToast(`Stock for ${warnings} article(s) will fall below minimum after this approval.`)
+        showWarningToast(`Zaliha za ${warnings} artikala past ce ispod minimalne razine nakon ovog odobrenja.`)
       }
       
       if (res.skipped.length > 0) {
         const newErrors = { ...rowErrors }
         res.skipped.forEach(skippedId => {
-          newErrors[skippedId] = 'Insufficient stock.'
+          newErrors[skippedId] = 'Nedovoljna zaliha.'
         })
         setRowErrors(prev => ({ ...prev, ...newErrors }))
       } else {
@@ -530,7 +532,7 @@ export default function DraftGroupCard({
               </Box>
             </Stack>
           ) : (
-            <Text ta="center" c="dimmed">No content available.</Text>
+            <Text ta="center" c="dimmed">Nema dostupnog sadrzaja.</Text>
           )}
         </Box>
       </Collapse>

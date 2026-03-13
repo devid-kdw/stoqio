@@ -14,6 +14,8 @@ The Approvals screen is where the ADMIN reviews, corrects, and approves (or reje
 
 The system automatically aggregates draft lines by article, so the ADMIN sees one row per article (with total quantity) instead of individual operator entries.
 
+Client-rendered UI copy follows the global Croatian default. Raw backend/API error messages may remain English when surfaced directly.
+
 ---
 
 ## 2. Screen Layout
@@ -21,7 +23,7 @@ The system automatically aggregates draft lines by article, so the ADMIN sees on
 The screen has two tabs or sections:
 
 **Pending** (default view) — drafts waiting for approval.
-**History** — all past drafts (approved, rejected, or older pending).
+**History** — all fully resolved drafts (approved, rejected, or partial).
 
 ---
 
@@ -71,8 +73,8 @@ This allows the ADMIN to trace exactly who entered what and when.
 
 - Click the checkmark icon on a row.
 - System applies surplus-first logic: consumes surplus first, then stock.
-- If stock would go below zero: block approval, show inline error `"Insufficient stock."`.
-- If stock would fall below reorder threshold after approval: show warning toast `"Stock for [article] will fall below minimum after this approval."` — approval is still allowed.
+- If stock would go below zero: block approval, show inline error `"Nedovoljna zaliha."`.
+- If stock would fall below reorder threshold after approval: show warning toast `"Zaliha za [article] past će ispod minimalne razine nakon ovog odobrenja."` — approval is still allowed.
 - On success: row moves to approved state (greyed out or removed from pending view).
 
 ### 4.2 Approve All
@@ -88,7 +90,7 @@ This allows the ADMIN to trace exactly who entered what and when.
 
 - ADMIN can edit the **quantity** of any pending aggregated line before approving.
 - Click pencil icon → inline edit field appears for quantity.
-- On save: PATCH to `/api/v1/approvals/{draft_group_id}/lines/{article_id}` with updated quantity.
+- On save: PATCH to `/api/v1/approvals/{draft_group_id}/lines/{line_id}` with updated quantity.
 - Editing the aggregated quantity overwrites the total — individual operator entries are preserved in history but the approved quantity reflects the ADMIN's correction.
 - On success: updated quantity shown in the row.
 
@@ -178,9 +180,9 @@ This allows the ADMIN to trace exactly who entered what and when.
 
 | Situation | Behaviour |
 |-----------|-----------|
-| Insufficient stock for approval | Block approval, show inline error `"Insufficient stock."` |
+| Insufficient stock for approval | Block approval, show inline error `"Nedovoljna zaliha."` |
 | Stock falls below reorder threshold after approval | Allow approval, show warning toast |
 | Approving a line that was already approved | Return 409, show error toast `"This line has already been approved."` |
 | Rejecting without entering a reason | Block submission, show inline error `"Reason is required."` |
 | Draft has mix of approved and rejected lines | Draft status shown as `PARTIAL` in history |
-| No pending drafts | Empty state: `"No pending drafts."` |
+| No pending drafts | Empty state: `"Nema draftova na čekanju."` |

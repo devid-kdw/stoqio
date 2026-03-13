@@ -142,3 +142,25 @@
 - Docs update required: yes
 
 ---
+
+## DEC-BE-008
+
+- Date: 2026-03-13
+- Phase: phase-06-approvals-followup
+- Source: Orchestrator follow-up after post-Phase-7 review of latent Approvals defects
+- Decision: `approve_all` now evaluates approval buckets inside one session transaction and commits only once after the full bulk request finishes. `INSUFFICIENT_STOCK` remains a per-line skip condition, but any unexpected failure rolls back the entire bulk approval request instead of leaving partially committed approvals behind.
+- Impact: Eliminates the previous intermediate-commit risk in bulk approval while preserving the documented skip-on-insufficient-stock behavior for valid business conflicts.
+- Docs update required: no
+
+---
+
+## DEC-FE-005
+
+- Date: 2026-03-13
+- Phase: phase-06-approvals-followup
+- Source: Orchestrator follow-up after post-Phase-7 review of stale Approvals UI copy/spec drift
+- Decision: Approvals client-rendered copy follows the global Croatian UI default for labels, client-side validation, warnings, success states, and empty states. Raw backend/API business-error messages may remain English when surfaced directly. The Phase 6 Approvals spec examples are updated accordingly.
+- Impact: Removes accidental mixed hardcoded copy inside the Approvals frontend and aligns the Phase 6 module spec with the actual frontend language pattern already used elsewhere in v1.
+- Docs update required: yes
+
+---

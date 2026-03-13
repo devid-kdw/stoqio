@@ -160,7 +160,8 @@ Valid examples: `1234`, `12345`, `123456789`, `123456789012`
 ### 4.1 Language
 
 - All UI copy: **Croatian (HR)** as default.
-- All error messages shown to users: **English**.
+- Client-rendered validation, warning, success, and empty-state copy: **Croatian (HR)** by default.
+- Raw backend/API business-error messages may remain **English** when surfaced directly.
 - All internal code, API error codes, enum values: **English**.
 - i18n keys exist for EN, DE, HU but are scaffold only in v1.
 

@@ -47,3 +47,7 @@ Residual Notes
 Next Action
 - Phase 6 can be treated as closed on the current codebase and documentation baseline.
 - Apply `alembic upgrade head` on any existing local/dev/prod database before further manual verification or deployment.
+
+Post-Closeout Follow-up
+- A later review after Phase 7 found a small set of latent Phase 6 Approvals issues that were not part of Receiving scope.
+- Those fixes are tracked separately in `handoff/phase-06-approvals-followup/` so the original Phase 6 closure remains readable while the follow-up trail stays explicit.
