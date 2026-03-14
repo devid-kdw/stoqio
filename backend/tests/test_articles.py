@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
+import re
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -28,9 +29,11 @@ from app.models.enums import (
 )
 from app.models.location import Location
 from app.models.missing_article_report import MissingArticleReport
+from app.models.receiving import Receiving
 from app.models.stock import Stock
 from app.models.supplier import Supplier
 from app.models.surplus import Surplus
+from app.models.system_config import SystemConfig
 from app.models.transaction import Transaction
 from app.models.uom_catalog import UomCatalog
 from app.models.user import User
@@ -140,6 +143,18 @@ def warehouse_data(app):
                 is_active=True,
             )
             _db.session.add(operator)
+
+        for key, value in (
+            ("default_language", "hr"),
+            ("barcode_format", "Code128"),
+            ("barcode_printer", ""),
+            ("export_format", "generic"),
+        ):
+            config_row = SystemConfig.query.filter_by(key=key).first()
+            if config_row is None:
+                _db.session.add(SystemConfig(key=key, value=value))
+            else:
+                config_row.value = value
 
         supplier_primary = Supplier.query.filter_by(internal_code="WH-SUP-001").first()
         if supplier_primary is None:
@@ -437,6 +452,42 @@ def warehouse_data(app):
                 )
             )
 
+        if not Receiving.query.filter_by(delivery_note_number="WH-REC-001", batch_id=batch_early.id).first():
+            _db.session.add(
+                Receiving(
+                    order_line_id=None,
+                    article_id=batch_article.id,
+                    batch_id=batch_early.id,
+                    location_id=location.id,
+                    quantity=Decimal("25.000"),
+                    uom="whkg",
+                    unit_price=Decimal("4.2000"),
+                    delivery_note_number="WH-REC-001",
+                    note="Warehouse barcode seed 1",
+                    barcodes_printed=4,
+                    received_by=admin.id,
+                    received_at=datetime(2026, 3, 10, 8, 15, tzinfo=timezone.utc),
+                )
+            )
+
+        if not Receiving.query.filter_by(delivery_note_number="WH-REC-002", batch_id=batch_early.id).first():
+            _db.session.add(
+                Receiving(
+                    order_line_id=None,
+                    article_id=batch_article.id,
+                    batch_id=batch_early.id,
+                    location_id=location.id,
+                    quantity=Decimal("15.000"),
+                    uom="whkg",
+                    unit_price=Decimal("4.3000"),
+                    delivery_note_number="WH-REC-002",
+                    note="Warehouse barcode seed 2",
+                    barcodes_printed=2,
+                    received_by=admin.id,
+                    received_at=datetime(2026, 3, 11, 9, 0, tzinfo=timezone.utc),
+                )
+            )
+
         draft_group = DraftGroup.query.filter_by(group_number="WH-DR-0001").first()
         if draft_group is None:
             draft_group = DraftGroup(
@@ -508,6 +559,19 @@ def _login(client, username: str) -> str:
 
 def _auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _set_system_config(key: str, value: str) -> None:
+    row = SystemConfig.query.filter_by(key=key).first()
+    if row is None:
+        _db.session.add(SystemConfig(key=key, value=value))
+    else:
+        row.value = value
+    _db.session.commit()
+
+
+def _count_pdf_pages(content: bytes) -> int:
+    return len(re.findall(rb"/Type\s*/Page\b", content))
 
 
 def _create_missing_article_report(
@@ -820,14 +884,120 @@ class TestWarehouseArticles:
         uom_codes = {row["code"] for row in uoms_response.get_json()}
         assert {"whkg", "whkom"}.issubset(uom_codes)
 
-    def test_barcode_endpoint_returns_501(self, client, warehouse_data):
+    def test_barcode_routes_are_admin_only(self, client, app, warehouse_data):
+        manager_token = _login(client, "warehouse_manager")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+
+        article_response = client.get(
+            f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode",
+            headers=_auth_header(manager_token),
+        )
+        assert article_response.status_code == 403
+
+        batch_response = client.get(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode",
+            headers=_auth_header(manager_token),
+        )
+        assert batch_response.status_code == 403
+
+    def test_article_barcode_download_returns_pdf_for_admin(self, client, app, warehouse_data):
         token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            active_article = _db.session.get(Article, warehouse_data["active_article"].id)
+            article_no = active_article.article_no
+
         response = client.get(
+            f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        assert response.mimetype == "application/pdf"
+        assert f"wms_article_{article_no}_barcode.pdf" in response.headers["Content-Disposition"]
+        assert _count_pdf_pages(response.data) == 1
+        assert b"Article Barcode" in response.data
+        assert article_no.encode() in response.data
+        assert b"WHBAR001" in response.data
+
+    def test_article_barcode_generation_persists_missing_value_idempotently(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            batch_article = _db.session.get(Article, warehouse_data["batch_article"].id)
+            batch_article.barcode = None
+            _db.session.commit()
+            _set_system_config("barcode_format", "EAN-13")
+
+        first_response = client.get(
             f"/api/v1/articles/{warehouse_data['batch_article'].id}/barcode",
             headers=_auth_header(token),
         )
-        assert response.status_code == 501
-        assert response.get_json()["error"] == "NOT_IMPLEMENTED"
+        assert first_response.status_code == 200
+        assert first_response.mimetype == "application/pdf"
+        assert _count_pdf_pages(first_response.data) == 1
+
+        with app.app_context():
+            stored = _db.session.get(Article, warehouse_data["batch_article"].id)
+            generated_barcode = stored.barcode
+            assert generated_barcode is not None
+            assert re.fullmatch(r"\d{13}", generated_barcode)
+
+        second_response = client.get(
+            f"/api/v1/articles/{warehouse_data['batch_article'].id}/barcode",
+            headers=_auth_header(token),
+        )
+        assert second_response.status_code == 200
+
+        with app.app_context():
+            stored = _db.session.get(Article, warehouse_data["batch_article"].id)
+            assert stored.barcode == generated_barcode
+
+    def test_batch_barcode_download_returns_one_label_per_batch(self, client, app, warehouse_data):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            batch = _db.session.get(Batch, warehouse_data["batch_early"].id)
+            batch.barcode = None
+            _db.session.commit()
+            _set_system_config("barcode_format", "Code128")
+
+        response = client.get(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        assert response.mimetype == "application/pdf"
+        assert "wms_batch_WH-BATCH-002_24001_barcode.pdf" in response.headers["Content-Disposition"]
+        assert _count_pdf_pages(response.data) == 1
+        assert b"Batch Barcode" in response.data
+        assert b"WH-BATCH-002" in response.data
+        assert b"24001" in response.data
+
+        with app.app_context():
+            stored_batch = _db.session.get(Batch, warehouse_data["batch_early"].id)
+            assert stored_batch.barcode is not None
+            assert re.fullmatch(r"\d{13}", stored_batch.barcode)
+
+    def test_barcode_route_rejects_ean13_for_incompatible_existing_value(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            active_article = _db.session.get(Article, warehouse_data["active_article"].id)
+            active_article.barcode = "WHBAR001"
+            _db.session.commit()
+            _set_system_config("barcode_format", "EAN-13")
+
+        response = client.get(
+            f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "INVALID_BARCODE_VALUE"
+
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
 
 
 class TestIdentifier:

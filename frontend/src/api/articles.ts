@@ -1,5 +1,33 @@
 import client from './client'
 
+function getPdfFilename(contentDisposition: string | undefined, fallbackName: string): string {
+  if (!contentDisposition) {
+    return fallbackName
+  }
+
+  const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/i)
+  if (!filenameMatch?.[1]) {
+    return fallbackName
+  }
+
+  return filenameMatch[1]
+}
+
+function sanitizeFilenamePart(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'barcode'
+}
+
+function triggerDownload(blob: Blob, filename: string): void {
+  const objectUrl = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(objectUrl)
+}
+
 /** A batch returned inline with the article lookup response (FEFO-ordered). */
 export interface ArticleBatch {
   id: number
@@ -223,6 +251,35 @@ export const articlesApi = {
       }
     )
     return response.data
+  },
+
+  downloadBarcode: async (articleId: number, fallbackArticleNo?: string): Promise<void> => {
+    const response = await client.get<Blob>(`/articles/${articleId}/barcode`, {
+      responseType: 'blob',
+    })
+
+    const fallbackName = `wms_article_${sanitizeFilenamePart(
+      fallbackArticleNo ?? `article-${articleId}`
+    )}_barcode.pdf`
+    const filename = getPdfFilename(response.headers['content-disposition'], fallbackName)
+
+    triggerDownload(response.data, filename)
+  },
+
+  downloadBatchBarcode: async (
+    batchId: number,
+    options?: { articleNo?: string; batchCode?: string }
+  ): Promise<void> => {
+    const response = await client.get<Blob>(`/batches/${batchId}/barcode`, {
+      responseType: 'blob',
+    })
+
+    const fallbackName = `wms_batch_${sanitizeFilenamePart(
+      options?.articleNo ?? 'article'
+    )}_${sanitizeFilenamePart(options?.batchCode ?? `batch-${batchId}`)}_barcode.pdf`
+    const filename = getPdfFilename(response.headers['content-disposition'], fallbackName)
+
+    triggerDownload(response.data, filename)
   },
 
   lookupCategories: async (): Promise<ArticleCategoryLookupItem[]> => {

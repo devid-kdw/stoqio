@@ -26,6 +26,7 @@ import FullPageState from '../../components/shared/FullPageState'
 import { useAuthStore } from '../../store/authStore'
 import {
   getApiErrorBody,
+  getApiErrorBodyAsync,
   isNetworkOrServerError,
   runWithRetry,
 } from '../../utils/http'
@@ -90,6 +91,8 @@ export default function ArticleDetailPage() {
   const [editErrors, setEditErrors] = useState<WarehouseArticleFormErrors>({})
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [deactivateSubmitting, setDeactivateSubmitting] = useState(false)
+  const [barcodeSubmitting, setBarcodeSubmitting] = useState(false)
+  const [batchBarcodeSubmittingId, setBatchBarcodeSubmittingId] = useState<number | null>(null)
 
   const initialLoadDoneRef = useRef(false)
   const uomMap = useMemo(() => buildUomMap(uoms), [uoms])
@@ -331,6 +334,62 @@ export default function ArticleDetailPage() {
     }
   }, [applyArticleState, article])
 
+  const handleBarcodePrint = useCallback(async () => {
+    if (!article) {
+      return
+    }
+
+    setBarcodeSubmitting(true)
+
+    try {
+      await runWithRetry(() => articlesApi.downloadBarcode(article.id, article.article_no))
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        setFatalError(true)
+        return
+      }
+
+      const apiError = await getApiErrorBodyAsync(error)
+      showErrorToast(
+        translateArticleApiMessage(apiError, 'Ispis barkoda nije uspio.')
+      )
+    } finally {
+      setBarcodeSubmitting(false)
+    }
+  }, [article])
+
+  const handleBatchBarcodePrint = useCallback(
+    async (batchId: number, batchCode: string) => {
+      if (!article) {
+        return
+      }
+
+      setBatchBarcodeSubmittingId(batchId)
+
+      try {
+        await runWithRetry(() =>
+          articlesApi.downloadBatchBarcode(batchId, {
+            articleNo: article.article_no,
+            batchCode,
+          })
+        )
+      } catch (error) {
+        if (isNetworkOrServerError(error)) {
+          setFatalError(true)
+          return
+        }
+
+        const apiError = await getApiErrorBodyAsync(error)
+        showErrorToast(
+          translateArticleApiMessage(apiError, 'Ispis barkoda šarže nije uspio.')
+        )
+      } finally {
+        setBatchBarcodeSubmittingId(null)
+      }
+    },
+    [article]
+  )
+
   const transactionTotalPages = Math.max(1, Math.ceil(transactionsTotal / TRANSACTIONS_PER_PAGE))
 
   if (fatalError) {
@@ -400,11 +459,7 @@ export default function ArticleDetailPage() {
 
         {isAdmin ? (
           <Group>
-            <Button
-              variant="default"
-              disabled
-              title="Generiranje barkoda nije implementirano u fazi 9."
-            >
+            <Button variant="default" onClick={() => void handleBarcodePrint()} loading={barcodeSubmitting}>
               Ispis barkoda
             </Button>
             {!editMode ? (
@@ -546,6 +601,7 @@ export default function ArticleDetailPage() {
                       <Table.Th>Rok trajanja</Table.Th>
                       <Table.Th>Količina zalihe</Table.Th>
                       <Table.Th>Količina viška</Table.Th>
+                      {isAdmin ? <Table.Th>Akcije</Table.Th> : null}
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -557,6 +613,18 @@ export default function ArticleDetailPage() {
                         <Table.Td>
                           {formatOptionalQuantity(batch.surplus_total, article.base_uom, uomMap)}
                         </Table.Td>
+                        {isAdmin ? (
+                          <Table.Td>
+                            <Button
+                              size="xs"
+                              variant="default"
+                              onClick={() => void handleBatchBarcodePrint(batch.id, batch.batch_code)}
+                              loading={batchBarcodeSubmittingId === batch.id}
+                            >
+                              Ispis barkoda
+                            </Button>
+                          </Table.Td>
+                        ) : null}
                       </Table.Tr>
                     ))}
                   </Table.Tbody>

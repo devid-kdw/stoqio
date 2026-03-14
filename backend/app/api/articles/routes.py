@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+from io import BytesIO
+
+from flask import Blueprint, jsonify, request, send_file
 
 from app.extensions import db
 from app.services import article_service
 from app.services.article_service import ArticleServiceError
+from app.services.barcode_service import BarcodeServiceError
+from app.services import barcode_service
 from app.utils.auth import get_current_user, require_role
 
 articles_bp = Blueprint("articles", __name__)
@@ -246,11 +250,33 @@ def get_article_transactions(article_id: int):
 @require_role("ADMIN")
 def get_article_barcode(article_id: int):
     try:
-        article_service.get_article_detail(article_id)
-    except ArticleServiceError as exc:
+        content, filename, mimetype = barcode_service.generate_article_barcode_pdf(
+            article_id
+        )
+        return send_file(
+            BytesIO(content),
+            mimetype=mimetype,
+            download_name=filename,
+            as_attachment=True,
+        )
+    except BarcodeServiceError as exc:
+        db.session.rollback()
         return _error(exc.error, exc.message, exc.status_code, exc.details)
-    return _error(
-        "NOT_IMPLEMENTED",
-        "Barcode generation is not implemented in Phase 9.",
-        501,
-    )
+
+
+@articles_bp.route("/batches/<int:batch_id>/barcode", methods=["GET"])
+@require_role("ADMIN")
+def get_batch_barcode(batch_id: int):
+    try:
+        content, filename, mimetype = barcode_service.generate_batch_barcode_pdf(
+            batch_id
+        )
+        return send_file(
+            BytesIO(content),
+            mimetype=mimetype,
+            download_name=filename,
+            as_attachment=True,
+        )
+    except BarcodeServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)

@@ -16,7 +16,7 @@ cd "$ROOT_DIR"
 
 if [ -f "$BACKEND_DIR/alembic.ini" ]; then
   cd "$BACKEND_DIR"
-  alembic upgrade head
+  PYTHONPATH="$BACKEND_DIR${PYTHONPATH:+:$PYTHONPATH}" alembic upgrade head
 fi
 
 if command -v systemctl >/dev/null 2>&1; then

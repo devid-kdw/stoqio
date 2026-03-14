@@ -858,6 +858,23 @@ def _build_export_filename(report_type: str, export_format: str) -> str:
     return f"wms_{report_type}_{export_date}.{export_format}"
 
 
+def _exported_at_line() -> str:
+    return f"Exported at: {datetime.now(timezone.utc).isoformat()}"
+
+
+def _format_export_quantity(value: Any, uom: str | None) -> str:
+    numeric_value = _as_float(_decimal_from_model(value), _QTY_QUANT)
+    if uom:
+        return f"{numeric_value} {uom}"
+    return str(numeric_value)
+
+
+def _format_coverage_for_export(item: dict[str, Any]) -> Any:
+    if item["coverage_months"] is None and (item["outbound"] in (None, 0, 0.0)):
+        return "∞"
+    return item["coverage_months"]
+
+
 def _autofit_columns(worksheet) -> None:
     for column_cells in worksheet.columns:
         max_length = 0
@@ -968,7 +985,6 @@ def export_stock_overview(
         "Stock",
         "Surplus",
         "Total available",
-        "UOM",
         "Inbound",
         "Outbound",
         "Avg monthly consumption",
@@ -981,15 +997,18 @@ def export_stock_overview(
             item["article_no"],
             item["description"],
             item["supplier_name"] or "-",
-            item["stock"],
-            item["surplus"],
-            item["total_available"],
-            item["uom"],
-            item["inbound"],
-            item["outbound"],
-            item["avg_monthly_consumption"],
-            item["coverage_months"],
-            item["reorder_threshold"],
+            _format_export_quantity(item["stock"], item["uom"]),
+            _format_export_quantity(item["surplus"], item["uom"]),
+            _format_export_quantity(item["total_available"], item["uom"]),
+            _format_export_quantity(item["inbound"], item["uom"]),
+            _format_export_quantity(item["outbound"], item["uom"]),
+            _format_export_quantity(item["avg_monthly_consumption"], item["uom"]),
+            _format_coverage_for_export(item),
+            (
+                _format_export_quantity(item["reorder_threshold"], item["uom"])
+                if item["reorder_threshold"] is not None
+                else "-"
+            ),
             item["reorder_status"],
         ]
         for item in report["items"]
@@ -1003,7 +1022,7 @@ def export_stock_overview(
 
     subtitle_lines = [
         f"Date range: {report['period']['date_from']} to {report['period']['date_to']}",
-        f"Exported at: {datetime.now(timezone.utc).isoformat()}",
+        _exported_at_line(),
     ]
     return (
         _build_pdf(
@@ -1027,7 +1046,6 @@ def export_surplus_report(*, export_format: Any) -> tuple[bytes, str, str]:
         "Batch",
         "Expiry date",
         "Surplus qty",
-        "UOM",
         "Discovered",
     ]
     rows = [
@@ -1036,8 +1054,7 @@ def export_surplus_report(*, export_format: Any) -> tuple[bytes, str, str]:
             item["description"],
             item["batch_code"] or "-",
             item["expiry_date"] or "-",
-            item["surplus_qty"],
-            item["uom"],
+            _format_export_quantity(item["surplus_qty"], item["uom"]),
             item["discovered"],
         ]
         for item in report["items"]
@@ -1049,7 +1066,7 @@ def export_surplus_report(*, export_format: Any) -> tuple[bytes, str, str]:
             _EXPORT_XLSX_MIMETYPE,
         )
 
-    subtitle_lines = [f"Exported at: {datetime.now(timezone.utc).isoformat()}"]
+    subtitle_lines = [_exported_at_line()]
     return (
         _build_pdf(
             title="Surplus List",
@@ -1085,7 +1102,6 @@ def export_transaction_log(
         "Description",
         "Type",
         "Quantity",
-        "UOM",
         "Batch",
         "Reference",
         "User",
@@ -1096,8 +1112,7 @@ def export_transaction_log(
             item["article_no"],
             item["description"],
             item["type"],
-            item["quantity"],
-            item["uom"],
+            _format_export_quantity(item["quantity"], item["uom"]),
             item["batch_code"] or "-",
             item["reference"] or "-",
             item["user"] or "-",
@@ -1111,7 +1126,7 @@ def export_transaction_log(
             _EXPORT_XLSX_MIMETYPE,
         )
 
-    subtitle_lines = [f"Exported at: {datetime.now(timezone.utc).isoformat()}"]
+    subtitle_lines = [_exported_at_line()]
     if date_from not in (None, "") or date_to not in (None, ""):
         subtitle_lines.insert(
             0,

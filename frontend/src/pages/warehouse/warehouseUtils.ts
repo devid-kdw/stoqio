@@ -289,12 +289,43 @@ export function translateArticleApiMessage(
     return 'Artikl nije pronađen.'
   }
 
+  if (message === 'Batch not found.') {
+    return 'Šarža nije pronađena.'
+  }
+
   if (message === "Query parameter 'q' is required.") {
     return "Parametar 'q' je obavezan."
   }
 
   if (message === 'Barcode generation is not implemented in Phase 9.') {
     return 'Generiranje barkoda nije implementirano u fazi 9.'
+  }
+
+  if (message === 'Article barcode must contain 12 or 13 digits for EAN-13.') {
+    return 'Barkod artikla mora sadržavati 12 ili 13 znamenki za EAN-13.'
+  }
+
+  if (message === 'Batch barcode must contain 12 or 13 digits for EAN-13.') {
+    return 'Barkod šarže mora sadržavati 12 ili 13 znamenki za EAN-13.'
+  }
+
+  if (message === 'Article barcode is not a valid EAN-13 value.') {
+    return 'Barkod artikla nije valjana EAN-13 vrijednost.'
+  }
+
+  if (message === 'Batch barcode is not a valid EAN-13 value.') {
+    return 'Barkod šarže nije valjana EAN-13 vrijednost.'
+  }
+
+  if (message === 'Barcode value is incompatible with the configured format.') {
+    return 'Vrijednost barkoda nije kompatibilna s odabranim formatom.'
+  }
+
+  const unsupportedBarcodeFormatMatch = message.match(
+    /^Configured barcode format '(.+)' is not supported\.$/
+  )
+  if (unsupportedBarcodeFormatMatch) {
+    return `Konfigurirani format barkoda '${unsupportedBarcodeFormatMatch[1]}' nije podržan.`
   }
 
   const unsupportedFieldsMatch = message.match(/^Unsupported fields: (.+)\.$/)

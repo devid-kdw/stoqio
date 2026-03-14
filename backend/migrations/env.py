@@ -1,16 +1,21 @@
 """Alembic env.py — reads DB URL from Flask app config."""
 
 from logging.config import fileConfig
+import os
+import sys
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+_BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 from app import create_app
 from app.extensions import db
 
 # Alembic Config
 config = context.config
-import os
 if config.config_file_name is not None and os.path.isfile(config.config_file_name):
     try:
         fileConfig(config.config_file_name)

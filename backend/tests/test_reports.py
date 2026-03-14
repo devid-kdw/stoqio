@@ -826,58 +826,161 @@ def test_transaction_log_pagination_returns_expected_page_slice(client, reports_
 # ---------------------------------------------------------------------------
 
 
+def test_stock_overview_export_xlsx_has_expected_sheet_headers_rows_and_widths(
+    client,
+    reports_data,
+):
+    response = client.get(
+        "/api/v1/reports/stock-overview/export"
+        f"?format=xlsx&date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}"
+        f"&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert _extract_filename(response.headers["Content-Disposition"]) == "wms_stock_overview_2026-03-14.xlsx"
+
+    workbook = load_workbook(BytesIO(response.data))
+    assert workbook.sheetnames == ["Stock Overview"]
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0] == (
+        "Article No.",
+        "Description",
+        "Supplier",
+        "Stock",
+        "Surplus",
+        "Total available",
+        "Inbound",
+        "Outbound",
+        "Avg monthly consumption",
+        "Coverage (months)",
+        "Reorder threshold",
+        "Status",
+    )
+
+    rows_by_article = {row[0]: row for row in rows[1:] if row[0]}
+    assert rows_by_article["REP13-001"][3:] == (
+        "8.0 rep13_kg",
+        "3.0 rep13_kg",
+        "11.0 rep13_kg",
+        "50.0 rep13_kg",
+        "16.0 rep13_kg",
+        "16.16 rep13_kg",
+        0.7,
+        "10.0 rep13_kg",
+        "YELLOW",
+    )
+    assert rows_by_article["REP13-002"][9] == "∞"
+    assert rows_by_article["REP13-003"][11] == "NORMAL"
+    assert sheet.column_dimensions["B"].width >= len("Yellow reorder article") + 1
+
+
+def test_surplus_export_xlsx_has_expected_sheet_headers_rows_and_widths(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/surplus/export?format=xlsx",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert _extract_filename(response.headers["Content-Disposition"]) == "wms_surplus_2026-03-14.xlsx"
+
+    workbook = load_workbook(BytesIO(response.data))
+    assert workbook.sheetnames == ["Surplus"]
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0] == (
+        "Article No.",
+        "Description",
+        "Batch",
+        "Expiry date",
+        "Surplus qty",
+        "Discovered",
+    )
+
+    rows_by_article = {row[0]: row for row in rows[1:] if row[0]}
+    assert rows_by_article["REP13-001"] == (
+        "REP13-001",
+        "Yellow reorder article",
+        "-",
+        "-",
+        "3.0 rep13_kg",
+        "2026-03-12",
+    )
+    assert rows_by_article["REP13-003"] == (
+        "REP13-003",
+        "Normal reorder article",
+        "REP13-B003",
+        "2026-12-31",
+        "6.0 rep13_kg",
+        "2026-03-13",
+    )
+    assert sheet.column_dimensions["E"].width >= len("6.0 rep13_kg") + 1
+
+
+def test_transaction_export_xlsx_has_expected_sheet_headers_rows_and_widths(
+    client,
+    reports_data,
+):
+    response = client.get(
+        "/api/v1/reports/transactions/export?format=xlsx"
+        f"&article_id={reports_data['article_yellow_id']}"
+        "&date_from=2026-03-01&date_to=2026-03-31",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert _extract_filename(response.headers["Content-Disposition"]) == "wms_transactions_2026-03-14.xlsx"
+
+    workbook = load_workbook(BytesIO(response.data))
+    assert workbook.sheetnames == ["Transactions"]
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0] == (
+        "Occurred at",
+        "Article No.",
+        "Description",
+        "Type",
+        "Quantity",
+        "Batch",
+        "Reference",
+        "User",
+    )
+    assert [row[3] for row in rows[1:]] == [
+        "OUTBOUND",
+        "SURPLUS_CONSUMED",
+        "STOCK_CONSUMED",
+        "STOCK_RECEIPT",
+    ]
+    assert rows[1][4] == "-1.0 rep13_kg"
+    assert rows[-1][6] == "REP13-DN-001"
+    assert sheet.column_dimensions["A"].width >= len("Occurred at") + 8
+
+
 @pytest.mark.parametrize(
-    ("path", "expected_filename", "expected_mimetype", "expected_sheet"),
+    ("path", "expected_filename"),
     [
-        (
-            f"/api/v1/reports/stock-overview/export?format=xlsx&date_from={REPORT_DATE_FROM}"
-            f"&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
-            "wms_stock_overview_2026-03-14.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Stock Overview",
-        ),
         (
             f"/api/v1/reports/stock-overview/export?format=pdf&date_from={REPORT_DATE_FROM}"
             f"&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
             "wms_stock_overview_2026-03-14.pdf",
-            "application/pdf",
-            None,
         ),
-        (
-            "/api/v1/reports/surplus/export?format=xlsx",
-            "wms_surplus_2026-03-14.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Surplus",
-        ),
-        (
-            "/api/v1/reports/surplus/export?format=pdf",
-            "wms_surplus_2026-03-14.pdf",
-            "application/pdf",
-            None,
-        ),
-        (
-            "/api/v1/reports/transactions/export?format=xlsx"
-            "&article_id={article_yellow_id}&date_from=2026-03-01&date_to=2026-03-31",
-            "wms_transactions_2026-03-14.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Transactions",
-        ),
+        ("/api/v1/reports/surplus/export?format=pdf", "wms_surplus_2026-03-14.pdf"),
         (
             "/api/v1/reports/transactions/export?format=pdf"
             "&article_id={article_yellow_id}&date_from=2026-03-01&date_to=2026-03-31",
             "wms_transactions_2026-03-14.pdf",
-            "application/pdf",
-            None,
         ),
     ],
 )
-def test_export_endpoints_return_downloads_with_expected_content_type(
+def test_pdf_export_endpoints_return_downloads_with_expected_content_type(
     client,
     reports_data,
     path,
     expected_filename,
-    expected_mimetype,
-    expected_sheet,
 ):
     response = client.get(
         path.format(article_yellow_id=reports_data["article_yellow_id"]),
@@ -885,33 +988,116 @@ def test_export_endpoints_return_downloads_with_expected_content_type(
     )
 
     assert response.status_code == 200
-    assert response.mimetype == expected_mimetype
+    assert response.mimetype == "application/pdf"
     assert "attachment;" in response.headers["Content-Disposition"]
     assert _extract_filename(response.headers["Content-Disposition"]) == expected_filename
+    assert response.data.startswith(b"%PDF")
 
-    if expected_sheet is None:
-        assert response.data.startswith(b"%PDF")
-        return
 
-    workbook = load_workbook(BytesIO(response.data), read_only=True)
-    sheet = workbook.active
-    rows = list(sheet.iter_rows(values_only=True))
-    assert sheet.title == expected_sheet
-    assert rows[0][0] == "Article No." or rows[0][0] == "Occurred at"
+def test_stock_overview_pdf_export_uses_landscape_title_subtitles_and_generic_rows(
+    app,
+    reports_data,
+    monkeypatch,
+):
+    captured: dict[str, object] = {}
 
-    if expected_sheet == "Stock Overview":
-        status_by_article = {row[0]: row[12] for row in rows[1:] if row[0]}
-        assert status_by_article == {
-            "REP13-001": "YELLOW",
-            "REP13-002": "RED",
-            "REP13-003": "NORMAL",
-        }
-    elif expected_sheet == "Surplus":
-        article_nos = {row[0] for row in rows[1:] if row[0]}
-        assert {"REP13-001", "REP13-003"}.issubset(article_nos)
-    else:
-        article_nos = {row[1] for row in rows[1:] if row[1]}
-        assert article_nos == {"REP13-001"}
+    def fake_build_pdf(**kwargs):
+        captured.update(kwargs)
+        return b"%PDF-stock"
+
+    monkeypatch.setattr(report_service, "_build_pdf", fake_build_pdf)
+
+    with app.app_context():
+        content, filename, mimetype = report_service.export_stock_overview(
+            export_format="pdf",
+            date_from=REPORT_DATE_FROM,
+            date_to=REPORT_DATE_TO,
+            category=REPORT_GENERAL_CATEGORY,
+        )
+
+    assert content == b"%PDF-stock"
+    assert filename == "wms_stock_overview_2026-03-14.pdf"
+    assert mimetype == "application/pdf"
+    assert captured["title"] == "Stock Overview"
+    assert captured["landscape_mode"] is True
+    assert captured["subtitle_lines"] == [
+        "Date range: 2026-03-01 to 2026-03-31",
+        "Exported at: 2026-03-14T12:00:00+00:00",
+    ]
+    assert "STOQIO" not in captured["title"]
+    assert all("STOQIO" not in line for line in captured["subtitle_lines"])
+    rows_by_article = {row[0]: row for row in captured["rows"]}
+    assert rows_by_article["REP13-001"][11] == "YELLOW"
+    assert rows_by_article["REP13-002"][9] == "∞"
+
+
+def test_surplus_pdf_export_uses_portrait_title_timestamp_and_expected_rows(
+    app,
+    reports_data,
+    monkeypatch,
+):
+    captured: dict[str, object] = {}
+
+    def fake_build_pdf(**kwargs):
+        captured.update(kwargs)
+        return b"%PDF-surplus"
+
+    monkeypatch.setattr(report_service, "_build_pdf", fake_build_pdf)
+
+    with app.app_context():
+        content, filename, mimetype = report_service.export_surplus_report(
+            export_format="pdf",
+        )
+
+    assert content == b"%PDF-surplus"
+    assert filename == "wms_surplus_2026-03-14.pdf"
+    assert mimetype == "application/pdf"
+    assert captured["title"] == "Surplus List"
+    assert captured["landscape_mode"] is False
+    assert captured["subtitle_lines"] == ["Exported at: 2026-03-14T12:00:00+00:00"]
+    assert all("STOQIO" not in line for line in captured["subtitle_lines"])
+    rows_by_article = {row[0]: row for row in captured["rows"]}
+    assert rows_by_article["REP13-001"][4] == "3.0 rep13_kg"
+
+
+def test_transaction_pdf_export_uses_landscape_title_date_range_timestamp_and_expected_rows(
+    app,
+    reports_data,
+    monkeypatch,
+):
+    captured: dict[str, object] = {}
+
+    def fake_build_pdf(**kwargs):
+        captured.update(kwargs)
+        return b"%PDF-transactions"
+
+    monkeypatch.setattr(report_service, "_build_pdf", fake_build_pdf)
+
+    with app.app_context():
+        content, filename, mimetype = report_service.export_transaction_log(
+            export_format="pdf",
+            article_id=reports_data["article_yellow_id"],
+            date_from=REPORT_DATE_FROM,
+            date_to=REPORT_DATE_TO,
+        )
+
+    assert content == b"%PDF-transactions"
+    assert filename == "wms_transactions_2026-03-14.pdf"
+    assert mimetype == "application/pdf"
+    assert captured["title"] == "Transaction Log"
+    assert captured["landscape_mode"] is True
+    assert captured["subtitle_lines"] == [
+        "Date range: 2026-03-01 to 2026-03-31",
+        "Exported at: 2026-03-14T12:00:00+00:00",
+    ]
+    assert all("STOQIO" not in line for line in captured["subtitle_lines"])
+    assert [row[3] for row in captured["rows"]] == [
+        "OUTBOUND",
+        "SURPLUS_CONSUMED",
+        "STOCK_CONSUMED",
+        "STOCK_RECEIPT",
+    ]
+    assert captured["rows"][0][4] == "-1.0 rep13_kg"
 
 
 @pytest.mark.parametrize(

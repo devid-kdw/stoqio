@@ -448,3 +448,36 @@
 - Decision: Settings quota payloads use canonical response `scope` values `GLOBAL_ARTICLE_OVERRIDE` and `JOB_TITLE_CATEGORY_DEFAULT`. Create/update derives the scope from the submitted id fields and validates any optional `scope` field against that derived shape. User edit (`PUT /api/v1/settings/users/{id}`) uses the optional `password` field name for admin-driven password resets while keeping `username` immutable.
 - Impact: Frontend and testing agents should consume the canonical quota scope machine values from settings responses and should submit password resets under `password` on user edits instead of inventing a second field name.
 - Docs update required: yes
+
+---
+
+## DEC-BE-010
+
+- Date: 2026-03-14
+- Phase: phase-15-barcodes-export
+- Source: Backend agent Phase 15 contract resolution against `13_UI_WAREHOUSE.md`, `19_IMPLEMENTATION_PLAN.md`, and the current Receiving model/repo state
+- Decision: `GET /api/v1/batches/{id}/barcode` emits exactly one PDF label per batch in v1. The route stays batch-scoped and does not derive label count from `Receiving.barcodes_printed`, because that field is stored per receiving row, one batch can span multiple receipts, the current receiving flow never sets non-zero counts, and silently aggregating per-receipt values would create an undocumented contract.
+- Impact: Frontend and testing agents should treat the batch barcode action as a single-label batch download in Phase 15. Any future per-receipt or multi-label print flow needs a separate receiving-level contract instead of overloading the batch endpoint.
+- Docs update required: yes
+
+---
+
+## DEC-BE-011
+
+- Date: 2026-03-14
+- Phase: phase-15-barcodes-export
+- Source: Backend agent Phase 15 contract resolution for nullable `Article.barcode` / `Batch.barcode`
+- Decision: Missing article and batch barcode values are lazily generated on first barcode-PDF request and then persisted idempotently. Generated values are deterministic numeric 13-digit codes derived from entity ids so they remain reusable across both `Code128` and `EAN-13`. Existing 12-digit numeric values are normalized to full 13-digit EAN values only when `EAN-13` printing is requested; existing non-EAN-compatible values are not silently rewritten and instead return a validation error for `EAN-13`.
+- Impact: Printed barcodes remain stable after first generation, barcode lookups can use the persisted generated value, and ADMIN users get a clear error when a pre-existing imported barcode cannot be represented as `EAN-13`.
+- Docs update required: yes
+
+---
+
+## DEC-REP-002
+
+- Date: 2026-03-14
+- Phase: phase-15-barcodes-export
+- Source: Backend agent Phase 15 review of `export_format` versus the current Reports/export docs
+- Decision: Reports Excel exports remain on the accepted generic column contract in Phase 15 even when Settings persist `export_format = sap`. The current docs state that SAP-compatible exports should exist, but they do not define per-report SAP column names, ordering, or formatting rules precisely enough to branch safely without inventing a new contract.
+- Impact: Frontend and testing agents should keep consuming the existing generic report export behavior in v1. The stored `export_format` setting remains persisted in Settings but is not yet used to reshape Reports exports until a dedicated SAP export spec is documented.
+- Docs update required: yes
