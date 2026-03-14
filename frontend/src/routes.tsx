@@ -22,17 +22,10 @@ const IdentifierPage = lazy(() => import('./pages/identifier/IdentifierPage'))
 const EmployeesPage = lazy(() => import('./pages/employees/EmployeesPage'))
 const EmployeeDetailPage = lazy(() => import('./pages/employees/EmployeeDetailPage'))
 const InventoryCountPage = lazy(() => import('./pages/inventory/InventoryCountPage'))
+const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
 
 // Suspense fallback shared across lazy routes
 const LazyFallback = <FullPageState title="Učitavanje…" loading />
-
-// Placeholders for not-yet-implemented pages
-const Placeholder = ({ name }: { name: string }) => (
-  <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-    <h2>{name}</h2>
-    <p>Scaffold placeholder — not yet implemented.</p>
-  </div>
-)
 
 function HomeRedirect() {
   const user = useAuthStore((state) => state.user)
@@ -89,7 +82,14 @@ export default function AppRoutes() {
                   </Suspense>
                 }
               />
-              <Route path="/settings" element={<Placeholder name="Settings" />} />
+              <Route
+                path="/settings"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <SettingsPage />
+                  </Suspense>
+                }
+              />
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']} />}>

@@ -2,17 +2,15 @@ import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { Button, Stack, Text } from '@mantine/core'
 import { authApi } from '../../api/auth'
-
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrator',
-  MANAGER: 'Voditelj',
-  WAREHOUSE_STAFF: 'Skladišno osoblje',
-  VIEWER: 'Pregled',
-  OPERATOR: 'Operater',
-}
+import {
+  DEFAULT_LOCATION_NAME,
+  useSettingsStore,
+} from '../../store/settingsStore'
 
 export default function Sidebar() {
   const { user, refreshToken, logout } = useAuthStore()
+  const locationName = useSettingsStore((state) => state.locationName)
+  const roleDisplayNames = useSettingsStore((state) => state.roleDisplayNames)
 
   const handleLogout = async () => {
     try {
@@ -29,6 +27,7 @@ export default function Sidebar() {
   if (!user) return null
 
   const role = user.role
+  const currentRoleLabel = roleDisplayNames[role as keyof typeof roleDisplayNames] ?? role
 
   const canSeeDrafts = ['ADMIN', 'OPERATOR'].includes(role)
   const canSeeApprovals = ['ADMIN'].includes(role)
@@ -69,10 +68,15 @@ export default function Sidebar() {
     >
       <div style={{ marginBottom: '2rem' }}>
         <Text fw={700} size="lg">
-          STOQIO
+          {locationName}
         </Text>
+        {locationName !== DEFAULT_LOCATION_NAME ? (
+          <Text size="xs" c="dimmed">
+            STOQIO
+          </Text>
+        ) : null}
         <Text size="xs" c="dimmed">
-          Korisnik: {user.username} ({ROLE_LABELS[user.role] ?? user.role})
+          Korisnik: {user.username} ({currentRoleLabel})
         </Text>
       </div>
 

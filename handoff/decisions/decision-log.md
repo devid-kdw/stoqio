@@ -437,3 +437,14 @@
 - Decision: Phase 13 locks a dedicated Statistics API contract under `/api/v1/reports/statistics/*` even though `17_UI_REPORTS.md` does not list those endpoints yet. `GET /statistics/top-consumption` returns `{period, date_from, date_to, items[]}` for the top 10 outbound articles in the selected `week|month|year` window. `GET /statistics/movement` returns `{range, granularity, items[], note}` for inbound/outbound trend buckets across `3m|6m|12m`. `GET /statistics/reorder-summary` returns `{items:[{reorder_status,count}], total}` and keeps `reorder_status` uppercase as `RED | YELLOW | NORMAL`. `GET /statistics/personal-issuances` returns `{year, items[], total}` for current-year employee/article issuance rows with quota/remaining data.
 - Impact: Frontend and testing agents must consume these dedicated statistics endpoints directly instead of inferring statistics client-side from other Reports calls. MANAGER has read access to all of them, while all export endpoints remain ADMIN-only.
 - Docs update required: yes
+
+---
+
+## DEC-SET-001
+
+- Date: 2026-03-14
+- Phase: phase-14-settings
+- Source: Backend agent implementation decision for undocumented request/response details
+- Decision: Settings quota payloads use canonical response `scope` values `GLOBAL_ARTICLE_OVERRIDE` and `JOB_TITLE_CATEGORY_DEFAULT`. Create/update derives the scope from the submitted id fields and validates any optional `scope` field against that derived shape. User edit (`PUT /api/v1/settings/users/{id}`) uses the optional `password` field name for admin-driven password resets while keeping `username` immutable.
+- Impact: Frontend and testing agents should consume the canonical quota scope machine values from settings responses and should submit password resets under `password` on user edits instead of inventing a second field name.
+- Docs update required: yes
