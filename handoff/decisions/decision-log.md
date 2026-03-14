@@ -319,6 +319,39 @@
 
 ---
 
+## DEC-EMP-001
+
+- Date: 2026-03-14
+- Phase: phase-11-employees
+- Source: Backend agent implementation; orchestration note rule 11 ("keep transactional and log the decision explicitly")
+- Decision: `PersonalIssuance` creation decrements the matching `Stock` row in the same DB transaction. For batch-tracked articles the `(location_id, article_id, batch_id)` stock row is decremented. For non-batch articles the `(location_id, article_id, NULL)` row is decremented if it exists; if no row is found the PersonalIssuance and Transaction are still committed without touching stock (protective-equipment articles may be issued before stock arrives via formal receiving). A `Transaction` row with `tx_type = PERSONAL_ISSUE` and `quantity = -issued_qty` is always created when a Location exists (uses `Location.id = 1` per DEC-BE-003 as the canonical v1 location).
+- Impact: Stock quantities are reduced on personal issuance, keeping inventory accurate. The batch article lookup endpoint (`GET /employees/lookups/articles`) filters by `stock.quantity > 0`, so zero-stock batches are not shown. Frontend and testing agents can rely on stock-accurate batch availability.
+- Docs update required: no
+
+---
+
+## DEC-EMP-002
+
+- Date: 2026-03-14
+- Phase: phase-11-employees
+- Source: Backend agent implementation of quota overview; orchestration note rule 6 (category-level quota handling)
+- Decision: Category-level AnnualQuota rows produce **one row per category** in the quota overview (not one row per article in the category). The `received` value for a category-level quota row is the sum of all PersonalIssuance quantities across every article in that category during the quota period. Article-level quota overrides coexist with category-level quotas as independent rows — they are NOT subtracted from the category total. This matches the business intent: "X units of PPE per year" is tracked independently from "Y pairs of gloves per year."
+- Impact: Frontend should render category-level quota rows with `article_id: null` and display the `category_label_hr` as the row label. The quota overview `quotas[]` array may contain both article-level and category-level rows simultaneously for the same employee.
+- Docs update required: no
+
+---
+
+## DEC-EMP-003
+
+- Date: 2026-03-14
+- Phase: phase-11-employees
+- Source: Orchestrator post-implementation review and direct remediation of the accepted insufficient-stock defect
+- Decision: Personal issuance now enforces sufficient on-hand stock before both the dry-run check and the final create call. If the available quantity on the selected stock row is lower than the requested quantity, the backend returns `400 INSUFFICIENT_STOCK` and does not create either `PersonalIssuance` or `Transaction`. For batch-tracked articles the rule applies to the selected batch row; for non-batch articles it applies to the `(location_id, article_id, NULL)` stock row. This supersedes the permissive no-stock/partial-stock branch from `DEC-EMP-001`.
+- Impact: Frontend can surface insufficient-stock failures as standard inline/business errors during issuance check/create, testing must cover both batch and non-batch insufficient-stock paths, and future agents should treat successful personal issuance without enough stock as a regression.
+- Docs update required: yes
+
+---
+
 ## DEC-ID-003
 
 - Date: 2026-03-13
@@ -327,3 +360,69 @@
 - Decision: Identifier missing-article deduplication is now DB-backed as well as application-backed. `missing_article_report` enforces one OPEN row per `normalized_term` via the partial unique index `uq_missing_article_report_open_normalized_term`, and the submit path retries as a merge after an insert conflict so concurrent identical submissions still collapse into one OPEN report with an incremented `report_count`. The Identifier search payload now also exposes `decimal_display` from the base UOM so the frontend formats exact quantities from authoritative UOM metadata rather than code-name heuristics.
 - Impact: Future backend agents should treat duplicate OPEN missing-article rows for the same normalized term as a data anomaly, not expected behavior. Future frontend agents should consume `decimal_display` from the Identifier payload and must not reintroduce heuristic quantity formatting.
 - Docs update required: yes
+
+---
+
+## DEC-INV-001
+
+- Date: 2026-03-14
+- Phase: phase-12-inventory-count
+- Source: Backend agent implementation decision
+- Decision: One DraftGroup per count completion for all shortage drafts. Uses the existing IZL-#### sequence. operational_date = UTC date of completion. All shortage drafts from a single count share one DraftGroup so they appear together in the Approvals module.
+- Impact: Backend only. Approvals module requires no changes — it already handles INVENTORY_SHORTAGE draft_type.
+- Docs update required: no
+
+---
+
+## DEC-INV-002
+
+- Date: 2026-03-14
+- Phase: phase-12-inventory-count
+- Source: Backend agent implementation decision
+- Decision: Batch-tracked article with no existing stock rows at snapshot time gets one line with batch_id=NULL and system_quantity=0. Ensures all active articles appear in every count.
+- Impact: Backend snapshot logic only.
+- Docs update required: no
+
+---
+
+## DEC-INV-003
+
+- Date: 2026-03-14
+- Phase: phase-12-inventory-count
+- Source: Backend agent implementation decision (spec gap)
+- Decision: GET /api/v1/inventory/active returns HTTP 200 with {"active": null} when no count is IN_PROGRESS, rather than 404. Frontend checks response.active !== null to determine screen layout.
+- Impact: Frontend agent must handle the null sentinel pattern (not a 404 branch).
+- Docs update required: no
+
+---
+
+## DEC-INV-004
+
+- Date: 2026-03-14
+- Phase: phase-12-inventory-count
+- Source: Orchestrator remediation after Phase 12 review
+- Decision: `InventoryCountLine.system_quantity` snapshots the full on-hand system total at count start: `stock + surplus`, keyed by `(location_id, article_id, batch_id)`. Batch-tracked articles therefore include surplus-only batches in the count snapshot, and non-batch articles compare counted quantities against the combined stock/surplus pool rather than stock alone.
+- Impact: Backend inventory snapshots now align with the inventory discrepancy rules in the main docs. Testing must preserve coverage for pre-existing surplus at count start so later changes do not regress to stock-only snapshots.
+- Docs update required: no
+
+---
+
+## DEC-INV-005
+
+- Date: 2026-03-14
+- Phase: phase-12-inventory-count
+- Source: Orchestrator remediation after Phase 12 review
+- Decision: The shortage `DraftGroup.operational_date` created during inventory-count completion follows the location's operational timezone, not the raw UTC calendar date of completion. This supersedes the UTC-date part of `DEC-INV-001`.
+- Impact: Inventory-generated shortage drafts now land in the same approval-day grouping semantics as the Draft Entry module. Testing must cover a near-midnight UTC completion case to protect this timezone rule.
+- Docs update required: no
+
+---
+
+## DEC-INV-006
+
+- Date: 2026-03-14
+- Phase: phase-12-inventory-count
+- Source: Orchestrator remediation after Phase 12 review
+- Decision: Inventory line payloads now expose `decimal_display` so the frontend can format integer and decimal UOM quantities according to the global UI rules without re-querying the UOM catalog.
+- Impact: Frontend Inventory Count rendering no longer relies on heuristics for quantity formatting and can keep line displays aligned with other modules.
+- Docs update required: no

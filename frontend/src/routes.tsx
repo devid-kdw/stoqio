@@ -18,6 +18,9 @@ const OrderDetailPage = lazy(() => import('./pages/orders/OrderDetailPage'))
 const WarehousePage = lazy(() => import('./pages/warehouse/WarehousePage'))
 const ArticleDetailPage = lazy(() => import('./pages/warehouse/ArticleDetailPage'))
 const IdentifierPage = lazy(() => import('./pages/identifier/IdentifierPage'))
+const EmployeesPage = lazy(() => import('./pages/employees/EmployeesPage'))
+const EmployeeDetailPage = lazy(() => import('./pages/employees/EmployeeDetailPage'))
+const InventoryCountPage = lazy(() => import('./pages/inventory/InventoryCountPage'))
 
 // Suspense fallback shared across lazy routes
 const LazyFallback = <FullPageState title="Učitavanje…" loading />
@@ -77,7 +80,14 @@ export default function AppRoutes() {
                   </Suspense>
                 }
               />
-              <Route path="/inventory" element={<Placeholder name="Inventory Count" />} />
+              <Route
+                path="/inventory"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <InventoryCountPage />
+                  </Suspense>
+                }
+              />
               <Route path="/settings" element={<Placeholder name="Settings" />} />
             </Route>
 
@@ -129,8 +139,22 @@ export default function AppRoutes() {
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE_STAFF']} />}>
-              <Route path="/employees" element={<Placeholder name="Employees" />} />
-              <Route path="/employees/:id" element={<Placeholder name="Employee Detail" />} />
+              <Route
+                path="/employees"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <EmployeesPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/employees/:id"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <EmployeeDetailPage />
+                  </Suspense>
+                }
+              />
             </Route>
           </Route>
         </Route>

@@ -270,6 +270,7 @@ Quota priority (highest to lowest):
 | Employee ID already exists | Inline error: `"Employee ID already exists."` |
 | Article not in personal-issue category | Article not shown in issuance form search results. |
 | No batches available for batch-tracked article | Inline error: `"No batches available for this article."` Block submission. |
+| Requested quantity exceeds available stock | Inline error: `"Insufficient stock for this article."` Block submission. For batch-tracked articles this applies to the selected batch quantity. |
 | Quota exceeded, enforcement = WARN | Warning shown, admin can still proceed. |
 | Quota exceeded, enforcement = BLOCK | Submission blocked, inline error shown. |
 | No quotas configured for job title | Issuance proceeds without quota check. Message shown in quota section. |
