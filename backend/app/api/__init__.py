@@ -19,6 +19,7 @@ def register_blueprints(app: Flask) -> None:
     from .orders.routes import orders_bp
     from .employees.routes import employees_bp
     from .inventory_count.routes import inventory_bp
+    from .reports.routes import reports_bp
 
     app.register_blueprint(health_bp, url_prefix="/api/v1")
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
@@ -30,3 +31,4 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(orders_bp, url_prefix="/api/v1")
     app.register_blueprint(employees_bp, url_prefix="/api/v1")
     app.register_blueprint(inventory_bp, url_prefix="/api/v1")
+    app.register_blueprint(reports_bp, url_prefix="/api/v1")

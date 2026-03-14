@@ -17,6 +17,7 @@ const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'))
 const OrderDetailPage = lazy(() => import('./pages/orders/OrderDetailPage'))
 const WarehousePage = lazy(() => import('./pages/warehouse/WarehousePage'))
 const ArticleDetailPage = lazy(() => import('./pages/warehouse/ArticleDetailPage'))
+const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
 const IdentifierPage = lazy(() => import('./pages/identifier/IdentifierPage'))
 const EmployeesPage = lazy(() => import('./pages/employees/EmployeesPage'))
 const EmployeeDetailPage = lazy(() => import('./pages/employees/EmployeeDetailPage'))
@@ -124,7 +125,14 @@ export default function AppRoutes() {
                   </Suspense>
                 }
               />
-              <Route path="/reports" element={<Placeholder name="Reports" />} />
+              <Route
+                path="/reports"
+                element={
+                  <Suspense fallback={LazyFallback}>
+                    <ReportsPage />
+                  </Suspense>
+                }
+              />
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'WAREHOUSE_STAFF', 'VIEWER']} />}>
