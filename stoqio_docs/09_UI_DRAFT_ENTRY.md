@@ -106,6 +106,8 @@ It contains:
 
 Daily drafts are persisted and remain available for later review in the Approvals module history.
 
+Only the current `PENDING` `DAILY_OUTBOUND` draft group for the operational day is editable on this screen. If an earlier same-day draft has already been `APPROVED` or `REJECTED`, the next successful line submission creates a new daily outbound group instead of reusing the closed one.
+
 ### 7.1 Draft-level note
 
 - Label: **"Napomena za današnji draft"**

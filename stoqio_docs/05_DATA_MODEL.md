@@ -225,7 +225,7 @@ Staging tablica — izlaz čeka admin odobrenje.
 | Polje | Tip | Opis |
 |-------|-----|------|
 | `id` | int PK | |
-| `draft_group_id` | FK → DraftGroup | Grupa draftova (dnevni izlaz) |
+| `draft_group_id` | FK → DraftGroup | Approval grupa draftova (daily outbound ili inventory shortage batch) |
 | `location_id` | FK → Location | |
 | `article_id` | FK → Article | |
 | `batch_id` | FK → Batch / **NULL** | NULL ako artikl nema `has_batch` |
@@ -256,9 +256,14 @@ Dnevni izlaz — grupa draftova koji se zajedno odobravaju.
 | `group_number` | string UNIQUE | Auto-generirani broj izlaza (npr. `IZL-0001`) |
 | `description` | text nullable | Napomena / opis za cijeli dnevni draft |
 | `status` | enum | `PENDING` / `APPROVED` / `REJECTED` |
+| `group_type` | enum | `DAILY_OUTBOUND` / `INVENTORY_SHORTAGE` |
 | `operational_date` | date | Operativni dan (Europe/Berlin tz) |
 | `created_by` | FK → User | |
 | `created_at` | timestamp UTC | |
+
+> `DAILY_OUTBOUND` je operatorov trenutačni dnevni izlaz. `INVENTORY_SHORTAGE` je grupa shortage draftova nastala iz jednog završetka inventure.
+>
+> V1 hardening after 2026-03-17: baza enforcea **najviše jednu `PENDING` `DAILY_OUTBOUND` grupu po `operational_date`**. Zatvorene (`APPROVED` / `REJECTED`) istodnevne grupe smiju koegzistirati s novom otvorenom dnevnom grupom, a inventory shortage grupe ostaju odvojene preko `group_type`.
 
 ---
 
@@ -456,6 +461,23 @@ Definira koliko čega zaposlenik može primiti godišnje.
 | `employee_id` | FK → Employee / **NULL** | Opcionalno — ako je korisnik i zaposlenik |
 | `is_active` | bool | |
 | `created_at` | timestamp UTC | |
+
+---
+
+### 22a. RevokedToken (JWT revocation registry)
+
+Persisted server-side evidencija odjavljenih JWT refresh tokena.
+
+| Polje | Tip | Opis |
+|-------|-----|------|
+| `id` | int PK | |
+| `jti` | string UNIQUE | JWT ID opozvanog tokena |
+| `token_type` | string | Trenutno se koristi za `refresh` logout opozive |
+| `user_id` | FK → User / **NULL** | Korisnik kojem je token pripadao |
+| `revoked_at` | timestamp UTC | Kada je token opozvan |
+| `expires_at` | timestamp UTC nullable | Originalni expiry tokena, za kasniji cleanup |
+
+> V1 hardening after 2026-03-17: logout revocation više nije process-local. Restart procesa ne smije ponovno učiniti odjavljeni refresh token važećim.
 
 ---
 

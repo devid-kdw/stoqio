@@ -481,3 +481,36 @@
 - Decision: Reports Excel exports remain on the accepted generic column contract in Phase 15 even when Settings persist `export_format = sap`. The current docs state that SAP-compatible exports should exist, but they do not define per-report SAP column names, ordering, or formatting rules precisely enough to branch safely without inventing a new contract.
 - Impact: Frontend and testing agents should keep consuming the existing generic report export behavior in v1. The stored `export_format` setting remains persisted in Settings but is not yet used to reshape Reports exports until a dedicated SAP export spec is documented.
 - Docs update required: yes
+
+---
+
+## DEC-BE-012
+
+- Date: 2026-03-17
+- Phase: phase-16-v1-stabilization
+- Source: User bug review accepted after backend verification of the process-local logout risk
+- Decision: Logout token revocation is now DB-backed via `revoked_token`. `POST /api/v1/auth/logout` persists the refresh-token `jti`, token type, owning user, and expiry timestamp, and the JWT blocklist callback checks that table instead of a module-level in-memory set.
+- Impact: Refresh-token logout survives Flask crashes, deploy restarts, and systemd restarts on Raspberry Pi. Future agents must treat any return to process-local-only logout revocation as a regression unless an explicit alternative shared store is introduced.
+- Docs update required: yes
+
+---
+
+## DEC-BE-013
+
+- Date: 2026-03-17
+- Phase: phase-16-v1-stabilization
+- Source: User bug review accepted after backend verification of same-day DraftGroup reuse and duplicate-group race conditions
+- Decision: `DraftGroup` now distinguishes `group_type = DAILY_OUTBOUND | INVENTORY_SHORTAGE`. Draft Entry routes operate only on the current `PENDING` `DAILY_OUTBOUND` group for the operational day, and the database enforces at most one such open daily-outbound group per `operational_date` via partial unique index `uq_draft_group_pending_daily_outbound_date`. Inventory shortage groups stay separate under `group_type = INVENTORY_SHORTAGE` and are not subject to that singleton rule.
+- Impact: New operator drafts no longer attach to already `APPROVED`/`REJECTED` same-day groups, concurrent daily-draft creation is DB-backed instead of application-guess-backed, and inventory shortage approval groups can still coexist on the same operational day. Future agents should not collapse group-type semantics back into a date-only DraftGroup lookup.
+- Docs update required: yes
+
+---
+
+## DEC-BE-014
+
+- Date: 2026-03-17
+- Phase: phase-16-v1-stabilization
+- Source: Fresh local PostgreSQL reset of `wms_dev` requested by the user before manual testing
+- Decision: Migration `7c2d2c6d0f4a` must explicitly create/drop PostgreSQL enum type `draft_group_type` before/after altering `draft_group.group_type`. SQLite tolerated the migration path, but PostgreSQL fresh installs failed with `type "draft_group_type" does not exist` until the migration was amended.
+- Impact: Fresh PostgreSQL installs, resets, and Pi deployments can now reach `alembic upgrade head` successfully on a clean database. Future agents modifying enum-adding migrations must not rely on SQLite-only validation for PostgreSQL DDL behavior.
+- Docs update required: no

@@ -1,8 +1,8 @@
 # STOQIO V1 Recap
 
-**Datum recap-a:** 2026-03-14  
-**Status:** V1 zatvoren u repozitoriju  
-**Opseg:** pregled koda, glavne dokumentacije i handoff traga kroz svih 15 faza
+**Datum recap-a:** 2026-03-17  
+**Status:** V1 baseline zatvoren u repozitoriju + post-V1 stabilizacijski popravci evidentirani  
+**Opseg:** pregled koda, glavne dokumentacije, handoff traga kroz svih 15 faza i naknadni bugfix hardening
 
 ## 1. Kontekst projekta
 
@@ -129,13 +129,24 @@ Ovaj pristup se pokazao bitnim jer je više faza zatvoreno tek nakon dodatnih re
 
 ## 7. Trenutno stanje V1
 
-Stanje na **2026-03-14**:
+Stanje na **2026-03-17**:
 
-- backend test suite: `251 passed in 16.53s`
+- backend test suite: `255 passed in 16.63s`
 - frontend lint: prolazi
 - frontend production build: prolazi
+- fresh Alembic upgrade na praznoj SQLite bazi: prolazi
+- fresh `seed.py` na praznoj SQLite bazi: prolazi
 
 Na razini repozitorija V1 je zatvoren kao funkcionalno kompletna baza za ručno i operativno testiranje.
+
+### 7.1 Post-V1 stabilizacijski popravci zabilježeni 2026-03-17
+
+Nakon bug reviewa zatvorena su dva stvarna backend rizika:
+
+- logout revocation više nije process-local; refresh token JTI se sada persistira u `revoked_token` tablicu pa restart Flask procesa ili systemd restart ne “oživljava” odjavljene sesije
+- dnevni operator draft sada koristi eksplicitni `DraftGroup.group_type = DAILY_OUTBOUND`, a baza enforcea najviše jednu `PENDING` daily outbound grupu po `operational_date`
+- novi draftovi se više ne lijepe na već `APPROVED` ili `REJECTED` istodnevnu grupu; takva grupa ostaje u approval/history tragu, a operator dobiva novu `PENDING` daily outbound grupu
+- inventory shortage draftovi ostaju odvojeni kroz `DraftGroup.group_type = INVENTORY_SHORTAGE`, pa isti operativni dan i dalje može imati i operator daily draft i zaseban inventory shortage approval bucket
 
 ## 8. Svjesne granice i otvoreni V1 rubovi
 
@@ -197,4 +208,5 @@ Repo je danas u stanju koje ima smisla tretirati kao **V1-ready baseline za inte
 - `handoff/README.md`
 - `handoff/decisions/decision-log.md`
 - svi phase handoff folderi od `phase-01-project-setup` do `phase-15-barcodes-export`
+- `handoff/phase-16-v1-stabilization`
 - aktualni backend i frontend source kod

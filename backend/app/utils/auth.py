@@ -1,9 +1,10 @@
-"""JWT helpers, RBAC decorators, rate limiter, and token blocklist.
+"""JWT helpers, RBAC decorators, rate limiter, and token revocation.
 
 All reusable auth primitives live here so routes stay thin.
 """
 
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from functools import wraps
 from threading import Lock
 from time import time
@@ -12,20 +13,61 @@ from flask import jsonify
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 
 # ---------------------------------------------------------------------------
-# In-memory token blocklist
+# Persisted token revocation
 # ---------------------------------------------------------------------------
 
-_revoked_jtis: set[str] = set()
+def add_to_blocklist(
+    jti: str,
+    *,
+    token_type: str,
+    user_id: int | None = None,
+    expires_at: datetime | None = None,
+) -> None:
+    """Persist a revoked JWT ID so logout survives process restarts."""
+    from app.extensions import db  # noqa: PLC0415
+    from app.models.revoked_token import RevokedToken  # noqa: PLC0415
+
+    existing = db.session.query(RevokedToken.id).filter_by(jti=jti).first()
+    if existing is not None:
+        return
+
+    db.session.add(
+        RevokedToken(
+            jti=jti,
+            token_type=token_type,
+            user_id=user_id,
+            expires_at=expires_at,
+        )
+    )
 
 
-def add_to_blocklist(jti: str) -> None:
-    """Add a JWT ID to the in-memory revocation set."""
-    _revoked_jtis.add(jti)
+def token_expiry_from_jwt(jwt_payload: dict) -> datetime | None:
+    """Convert a JWT ``exp`` claim into a UTC datetime when available."""
+    exp = jwt_payload.get("exp")
+    if exp is None:
+        return None
+
+    try:
+        return datetime.fromtimestamp(exp, tz=timezone.utc)
+    except (OSError, OverflowError, TypeError, ValueError):
+        return None
 
 
 def is_token_revoked(_jwt_header: dict, jwt_payload: dict) -> bool:
     """Return True if the token's JTI has been revoked."""
-    return jwt_payload.get("jti", "") in _revoked_jtis
+    jti = jwt_payload.get("jti")
+    if not jti:
+        return False
+
+    from app.extensions import db  # noqa: PLC0415
+    from app.models.revoked_token import RevokedToken  # noqa: PLC0415
+
+    return (
+        db.session.query(RevokedToken.id)
+        .filter_by(jti=jti)
+        .first()
+        is not None
+    )
 
 
 # ---------------------------------------------------------------------------

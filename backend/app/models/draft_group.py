@@ -2,14 +2,27 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Enum as SAEnum, text
 
 from app.extensions import db
-from app.models.enums import DraftGroupStatus
+from app.models.enums import DraftGroupStatus, DraftGroupType
 
 
 class DraftGroup(db.Model):
     __tablename__ = "draft_group"
+    __table_args__ = (
+        db.Index(
+            "uq_draft_group_pending_daily_outbound_date",
+            "operational_date",
+            unique=True,
+            sqlite_where=text(
+                "status = 'PENDING' AND group_type = 'DAILY_OUTBOUND'"
+            ),
+            postgresql_where=text(
+                "status = 'PENDING' AND group_type = 'DAILY_OUTBOUND'"
+            ),
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     group_number = db.Column(db.String, unique=True, nullable=False)
@@ -18,6 +31,11 @@ class DraftGroup(db.Model):
         SAEnum(DraftGroupStatus, name="draft_group_status", create_constraint=True),
         nullable=False,
         default=DraftGroupStatus.PENDING,
+    )
+    group_type = db.Column(
+        SAEnum(DraftGroupType, name="draft_group_type", create_constraint=True),
+        nullable=False,
+        default=DraftGroupType.DAILY_OUTBOUND,
     )
     operational_date = db.Column(db.Date, nullable=False)
     created_by = db.Column(

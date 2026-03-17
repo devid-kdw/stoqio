@@ -3,7 +3,7 @@
 Provides:
   POST /api/v1/auth/login       — exchange credentials for JWT pair
   POST /api/v1/auth/refresh     — exchange refresh token for new access token
-  POST /api/v1/auth/logout      — revoke current token (server-side blocklist)
+  POST /api/v1/auth/logout      — revoke current token (persisted server-side registry)
   GET  /api/v1/auth/me          — current user info (any authenticated role)
   GET  /api/v1/auth/admin-only  — admin-only probe (401 / 403 test coverage)
 """
@@ -18,6 +18,7 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash
 
 from app.extensions import db, jwt
@@ -29,6 +30,7 @@ from app.utils.auth import (
     get_current_user,
     is_token_revoked,
     require_role,
+    token_expiry_from_jwt,
 )
 
 auth_bp = Blueprint("auth", __name__)
@@ -268,15 +270,25 @@ def refresh():
 @auth_bp.route("/logout", methods=["POST"])
 @jwt_required(refresh=True)
 def logout():
-    """Revoke the refresh token via the server-side blocklist.
+    """Revoke the refresh token via the persisted revocation registry.
 
     Requires the refresh token in the Authorization header.  The short-lived
     access token (15 min) is not explicitly revoked here — the client should
-    discard it locally.  Blocklisting the refresh token prevents any further
-    token refreshes for this session.
+    discard it locally. Revoking the refresh token prevents any further token
+    refreshes for this session.
     """
-    jti = get_jwt()["jti"]
-    add_to_blocklist(jti)
+    claims = get_jwt()
+    identity = get_jwt_identity()
+    try:
+        add_to_blocklist(
+            claims["jti"],
+            token_type=claims.get("type", "refresh"),
+            user_id=int(identity) if identity is not None else None,
+            expires_at=token_expiry_from_jwt(claims),
+        )
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
     return jsonify({"message": "Successfully logged out."}), 200
 
 

@@ -14,6 +14,7 @@ from app.models.stock import Stock
 from app.models.surplus import Surplus
 from app.models.employee import Employee
 from app.models.user import User
+from app.models.revoked_token import RevokedToken
 from app.models.draft_group import DraftGroup
 from app.models.draft import Draft
 from app.models.approval_action import ApprovalAction

@@ -35,6 +35,7 @@ EXPECTED_TABLES = {
     "order_line",
     "personal_issuance",
     "receiving",
+    "revoked_token",
     "role_display_name",
     "stock",
     "supplier",
@@ -109,6 +110,16 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
 
     draft_columns = {column["name"] for column in inspector.get_columns("draft")}
     assert "note" not in draft_columns
+
+    draft_group_columns = {
+        column["name"] for column in inspector.get_columns("draft_group")
+    }
+    assert "group_type" in draft_group_columns
+
+    revoked_token_columns = {
+        column["name"] for column in inspector.get_columns("revoked_token")
+    }
+    assert {"jti", "token_type", "user_id", "revoked_at", "expires_at"} <= revoked_token_columns
 
     check_constraints = inspector.get_check_constraints("stock")
     assert any(

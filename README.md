@@ -20,6 +20,8 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+venv/bin/alembic upgrade head
+venv/bin/python seed.py
 flask run
 ```
 

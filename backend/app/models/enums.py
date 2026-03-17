@@ -25,6 +25,11 @@ class DraftGroupStatus(str, enum.Enum):
     REJECTED = "REJECTED"
 
 
+class DraftGroupType(str, enum.Enum):
+    DAILY_OUTBOUND = "DAILY_OUTBOUND"
+    INVENTORY_SHORTAGE = "INVENTORY_SHORTAGE"
+
+
 class ApprovalActionType(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"

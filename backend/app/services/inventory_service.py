@@ -31,6 +31,7 @@ from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
 from app.models.enums import (
     DraftGroupStatus,
+    DraftGroupType,
     DraftSource,
     DraftStatus,
     DraftType,
@@ -478,6 +479,7 @@ def complete_count(count_id: int, current_user: User) -> dict:
         draft_group = DraftGroup(
             group_number=_next_group_number(),
             status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.INVENTORY_SHORTAGE,
             operational_date=_get_operational_date(location, at=now),
             created_by=current_user.id,
             description=f"Inventory count #{count_id} shortages",

@@ -33,6 +33,7 @@ wms/
 │   │   │   ├── annual_quota.py
 │   │   │   ├── supplier.py
 │   │   │   ├── user.py
+│   │   │   ├── revoked_token.py
 │   │   │   ├── location.py
 │   │   │   ├── category.py
 │   │   │   ├── uom_catalog.py
@@ -289,8 +290,10 @@ Ako refresh token istekne → automatski logout + redirect na `/login`.
 ```
 POST /api/v1/auth/login      ← username + password → access + refresh token
 POST /api/v1/auth/refresh    ← refresh token → novi access token
-POST /api/v1/auth/logout     ← invalidacija refresh tokena (server-side blacklist)
+POST /api/v1/auth/logout     ← invalidacija refresh tokena (DB-backed revocation registry)
 ```
+
+Logout zapisuje revoked refresh-token `jti` u persistentnu tablicu `revoked_token`, pa opoziv preživljava Flask/systemd restart procesa. Frontend i dalje lokalno odbacuje access token; short-lived access token se ne sprema u server-side blocklist.
 
 ---
 

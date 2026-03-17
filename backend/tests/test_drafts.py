@@ -19,6 +19,7 @@ from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
 from app.models.enums import (
     DraftGroupStatus,
+    DraftGroupType,
     DraftSource,
     DraftStatus,
     DraftType,
@@ -532,6 +533,123 @@ class TestCreateDraft:
             )
             assert today_group is not None
             assert today_group.group_number == "IZL-0002"
+
+    def test_closed_same_day_group_is_not_reused_for_new_daily_outbound(
+        self,
+        client,
+        draft_data,
+        app,
+    ):
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            closed_group = DraftGroup(
+                group_number="IZL-0900",
+                status=DraftGroupStatus.APPROVED,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+                description="Već zatvoreno",
+            )
+            _db.session.add(closed_group)
+            _db.session.commit()
+            closed_group_id = closed_group.id
+
+        token = _login(client, "draft_operator")
+        resp = client.post(
+            "/api/v1/drafts",
+            json={
+                "article_id": draft_data["article"].id,
+                "quantity": 2,
+                "uom": draft_data["uom"].code,
+                "source": "manual",
+                "client_event_id": str(uuid.uuid4()),
+            },
+            headers=_auth_header(token),
+        )
+
+        assert resp.status_code == 201
+
+        with app.app_context():
+            created = _db.session.get(Draft, resp.get_json()["id"])
+            new_group = _db.session.get(DraftGroup, created.draft_group_id)
+            assert new_group is not None
+            assert new_group.id != closed_group_id
+            assert new_group.status == DraftGroupStatus.PENDING
+            assert new_group.group_type == DraftGroupType.DAILY_OUTBOUND
+
+    def test_only_one_pending_daily_outbound_group_per_operational_date(
+        self,
+        draft_data,
+        app,
+    ):
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            first_group = DraftGroup(
+                group_number="IZL-1000",
+                status=DraftGroupStatus.PENDING,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            second_group = DraftGroup(
+                group_number="IZL-1001",
+                status=DraftGroupStatus.PENDING,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(first_group)
+            _db.session.commit()
+
+            _db.session.add(second_group)
+            with pytest.raises(IntegrityError):
+                _db.session.commit()
+            _db.session.rollback()
+
+    def test_pending_inventory_shortage_group_can_coexist_same_day(
+        self,
+        draft_data,
+        app,
+    ):
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            outbound_group = DraftGroup(
+                group_number="IZL-1100",
+                status=DraftGroupStatus.PENDING,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            shortage_group = DraftGroup(
+                group_number="IZL-1101",
+                status=DraftGroupStatus.PENDING,
+                group_type=DraftGroupType.INVENTORY_SHORTAGE,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add_all([outbound_group, shortage_group])
+            _db.session.commit()
+
+            same_day_groups = (
+                DraftGroup.query
+                .filter_by(operational_date=date.today(), status=DraftGroupStatus.PENDING)
+                .order_by(DraftGroup.id.asc())
+                .all()
+            )
+            assert len(same_day_groups) == 2
+            assert {group.group_type for group in same_day_groups} == {
+                DraftGroupType.DAILY_OUTBOUND,
+                DraftGroupType.INVENTORY_SHORTAGE,
+            }
 
 
 # ==========================================================================

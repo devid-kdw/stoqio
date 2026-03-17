@@ -15,6 +15,7 @@ from app.models.category import Category
 from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
 from app.models.enums import (
+    DraftGroupType,
     DraftType,
     InventoryCountLineResolution,
     InventoryCountStatus,
@@ -658,6 +659,7 @@ def test_complete_count(client, inv_data, app):
         group = _db.session.get(DraftGroup, draft.draft_group_id)
         assert group is not None
         assert group.group_number.startswith("IZL-")
+        assert group.group_type == DraftGroupType.INVENTORY_SHORTAGE
 
         # Resolutions on lines
         lines = count.lines.all()

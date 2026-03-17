@@ -280,6 +280,30 @@ class TestLogout:
         assert refresh_resp.status_code == 401
         assert refresh_resp.get_json()["error"] == "TOKEN_REVOKED"
 
+    def test_logout_persists_revoked_refresh_token(self, client, auth_users, app):
+        """Revocation must be stored in DB so it survives process restarts."""
+        from app.models.revoked_token import RevokedToken
+
+        with app.app_context():
+            before_count = RevokedToken.query.count()
+
+        login_resp = _login(client, "auth_operator", "operatorpass", remote_addr="127.0.2.5")
+        refresh_token = login_resp.get_json()["refresh_token"]
+
+        logout_resp = client.post(
+            "/api/v1/auth/logout",
+            headers=_auth_header(refresh_token),
+        )
+        assert logout_resp.status_code == 200
+
+        with app.app_context():
+            assert RevokedToken.query.count() == before_count + 1
+            stored = RevokedToken.query.order_by(RevokedToken.id.desc()).first()
+            assert stored is not None
+            assert stored.token_type == "refresh"
+            assert stored.user_id == auth_users["operator"].id
+            assert stored.expires_at is not None
+
     def test_logout_with_access_token_is_rejected(self, client, auth_users):
         """Logout endpoint requires a refresh token; access token must be rejected."""
         login_resp = _login(client, "auth_operator", "operatorpass", remote_addr="127.0.2.3")

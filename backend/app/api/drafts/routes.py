@@ -21,6 +21,7 @@ from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
 from app.models.enums import (
     DraftGroupStatus,
+    DraftGroupType,
     DraftSource,
     DraftStatus,
     DraftType,
@@ -90,17 +91,26 @@ def _next_draft_group_number() -> str:
 
 
 def _get_or_create_draft_group(user_id: int, op_date):
-    """Find today's DraftGroup or create a new one.
+    """Find today's pending daily-outbound DraftGroup or create a new one.
 
     Returns the DraftGroup instance.
     """
-    group = DraftGroup.query.filter_by(operational_date=op_date).first()
+    group = (
+        DraftGroup.query.filter_by(
+            operational_date=op_date,
+            status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.DAILY_OUTBOUND,
+        )
+        .order_by(DraftGroup.created_at.asc(), DraftGroup.id.asc())
+        .first()
+    )
     if group is not None:
         return group
 
     group = DraftGroup(
         group_number=_next_draft_group_number(),
         status=DraftGroupStatus.PENDING,
+        group_type=DraftGroupType.DAILY_OUTBOUND,
         operational_date=op_date,
         created_by=user_id,
     )
@@ -178,7 +188,15 @@ def _serialize_draft(draft: Draft) -> dict:
 def get_drafts():
     """Return today's draft lines, newest first."""
     op_date = _get_operational_today()
-    group = DraftGroup.query.filter_by(operational_date=op_date).first()
+    group = (
+        DraftGroup.query.filter_by(
+            operational_date=op_date,
+            status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.DAILY_OUTBOUND,
+        )
+        .order_by(DraftGroup.created_at.asc(), DraftGroup.id.asc())
+        .first()
+    )
 
     if group is None:
         return jsonify({"items": [], "draft_group": None}), 200
@@ -350,7 +368,15 @@ def create_draft():
 def update_draft_group():
     """Update today's shared draft note."""
     op_date = _get_operational_today()
-    group = DraftGroup.query.filter_by(operational_date=op_date).first()
+    group = (
+        DraftGroup.query.filter_by(
+            operational_date=op_date,
+            status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.DAILY_OUTBOUND,
+        )
+        .order_by(DraftGroup.created_at.asc(), DraftGroup.id.asc())
+        .first()
+    )
     if group is None:
         return _error(
             "NOT_FOUND",
