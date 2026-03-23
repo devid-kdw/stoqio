@@ -95,6 +95,12 @@ def get_uom_lookups():
     return jsonify(article_service.lookup_uoms()), 200
 
 
+@articles_bp.route("/suppliers", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_supplier_lookups():
+    return jsonify(article_service.lookup_suppliers()), 200
+
+
 @articles_bp.route("/identifier", methods=["GET"])
 @require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF", "VIEWER")
 def search_identifier():
@@ -227,6 +233,30 @@ def deactivate_article(article_id: int):
         return jsonify(article_service.deactivate_article(article_id)), 200
     except ArticleServiceError as exc:
         db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>/aliases", methods=["POST"])
+@require_role("ADMIN")
+def create_article_alias(article_id: int):
+    try:
+        result = article_service.create_article_alias(
+            article_id,
+            request.get_json(silent=True) or {},
+        )
+        return jsonify(result), 201
+    except ArticleServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>/aliases/<int:alias_id>", methods=["DELETE"])
+@require_role("ADMIN")
+def delete_article_alias(article_id: int, alias_id: int):
+    try:
+        article_service.delete_article_alias(article_id, alias_id)
+        return "", 204
+    except ArticleServiceError as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 

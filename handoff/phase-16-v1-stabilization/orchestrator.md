@@ -123,3 +123,104 @@ Residual Risks
 Next Action
 - Keep this implementation as the active frontend auth bootstrap baseline.
 - When the locked architecture docs are next revised, replace the obsolete token-storage note with the `DEC-FE-006` policy.
+
+## [2026-03-23 18:31] Orchestrator Validation - Warehouse Supplier Linkage
+
+Status
+- accepted pending manual browser verification
+
+Scope
+- Reviewed the backend and frontend implementation for article supplier linkage in the Warehouse create/edit flow.
+- Verified the targeted backend tests plus frontend lint/build signal.
+- Prepared manual browser verification steps instead of delegating to the testing agent.
+
+Docs Read
+- `stoqio_docs/05_DATA_MODEL.md`
+- `stoqio_docs/13_UI_WAREHOUSE.md`
+- `backend/app/api/articles/routes.py`
+- `backend/app/services/article_service.py`
+- `backend/tests/test_articles.py`
+- `frontend/src/api/articles.ts`
+- `frontend/src/pages/warehouse/WarehousePage.tsx`
+- `frontend/src/pages/warehouse/ArticleDetailPage.tsx`
+- `frontend/src/pages/warehouse/WarehouseArticleForm.tsx`
+- `frontend/src/pages/warehouse/warehouseUtils.ts`
+- `handoff/decisions/decision-log.md`
+- `handoff/phase-16-v1-stabilization/backend.md`
+- `handoff/phase-16-v1-stabilization/frontend.md`
+
+Files Reviewed
+- `backend/app/api/articles/routes.py`
+- `backend/app/services/article_service.py`
+- `backend/tests/test_articles.py`
+- `frontend/src/api/articles.ts`
+- `frontend/src/pages/warehouse/WarehousePage.tsx`
+- `frontend/src/pages/warehouse/ArticleDetailPage.tsx`
+- `frontend/src/pages/warehouse/WarehouseArticleForm.tsx`
+- `frontend/src/pages/warehouse/warehouseUtils.ts`
+- `handoff/decisions/decision-log.md`
+- `handoff/phase-16-v1-stabilization/backend.md`
+- `handoff/phase-16-v1-stabilization/frontend.md`
+
+Commands Run
+```bash
+git status --short
+git diff --stat
+git diff -- backend/app/api/articles/routes.py backend/app/services/article_service.py backend/tests/test_articles.py frontend/src/api/articles.ts frontend/src/pages/warehouse/WarehouseArticleForm.tsx frontend/src/pages/warehouse/WarehousePage.tsx frontend/src/pages/warehouse/ArticleDetailPage.tsx frontend/src/pages/warehouse/warehouseUtils.ts handoff/decisions/decision-log.md handoff/phase-16-v1-stabilization/backend.md handoff/phase-16-v1-stabilization/frontend.md
+cd backend && venv/bin/pytest tests/test_articles.py -q
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+Validation Notes
+- No functional review findings were identified in the current backend/frontend implementation.
+- Accepted backend behavior:
+- `POST /api/v1/articles` accepts `suppliers[]` and creates `ArticleSupplier` rows
+- `PUT /api/v1/articles/{id}` preserves links when `suppliers` is omitted and fully synchronizes links when `suppliers` is provided
+- `GET /api/v1/articles/{id}` still returns the enriched `suppliers` list
+- `GET /api/v1/suppliers` returns active suppliers only
+- Accepted frontend behavior:
+- shared Warehouse create/edit form now manages `suppliers[]`
+- `manufacturer_art_number` is no longer editable from the shared Warehouse form
+- detail Suppliers table is reduced to supplier name, supplier article code, and preferred indicator
+- Accepted documentation trace:
+- `DEC-WH-008` records the Warehouse form/detail drift from the older Warehouse doc
+
+Verification
+- `cd backend && venv/bin/pytest tests/test_articles.py -q` -> `32 passed`
+- `cd frontend && npm run lint` -> passed
+- `cd frontend && npm run build` -> passed
+
+Residual Risks
+- `stoqio_docs/13_UI_WAREHOUSE.md` still reflects the older Warehouse baseline and is stale versus `DEC-WH-008`.
+- No open functional risk remains from implementation review after successful user-side browser validation of the backend-served build.
+
+Next Action
+- Treat the Warehouse supplier-linkage implementation as the accepted baseline for this phase.
+- Update `stoqio_docs/13_UI_WAREHOUSE.md` in a later docs pass so the written spec matches `DEC-WH-008`.
+
+## Frontend Build Refresh
+Date
+- 2026-03-23
+
+Context
+- User observed unchanged Warehouse UI while testing through the backend-served app.
+
+Action
+- Re-ran `./scripts/build.sh` from repo root.
+- Confirmed the production frontend bundle was rebuilt and copied into `backend/static`.
+
+Result
+- Latest Warehouse supplier-linkage frontend changes are now present in the backend-served build.
+- If stale UI still appears in browser, the next likely cause is client-side asset caching rather than a missing production build copy.
+
+## Manual Acceptance
+Date
+- 2026-03-23
+
+Tester
+- User
+
+Outcome
+- User confirmed the backend-served application now reflects the latest changes and the phase works correctly in browser testing.
+- Warehouse supplier-linkage changes are accepted as working in the live UI.

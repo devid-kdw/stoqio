@@ -147,3 +147,70 @@ Open Issues / Risks
 
 Next Recommended Step
 - Retest the refresh flow against the backend-served app on `:5000` with a hard reload. If it still fails, capture the failing `/api/v1/auth/refresh` or `/api/v1/auth/me` response from the browser network tab so the next debugging step targets the real failing contract instead of frontend timing.
+
+## [2026-03-23 18:26] Codex
+
+Status
+- completed
+
+Scope
+- Removed the editable `manufacturer_art_number` control from the shared Warehouse create/edit form while keeping `manufacturer` and detail typing intact.
+- Added shared supplier-link form state, UI, and payload mapping so both the Warehouse create modal and article detail inline edit manage `suppliers` directly through the Warehouse form.
+- Simplified the article detail Suppliers table to supplier name, supplier article code, and preferred indicator.
+- Logged the Warehouse spec drift in `handoff/decisions/decision-log.md` as `DEC-WH-008`.
+
+Docs Read
+- `stoqio_docs/13_UI_WAREHOUSE.md`
+- `frontend/src/api/articles.ts`
+- `frontend/src/pages/warehouse/WarehousePage.tsx`
+- `frontend/src/pages/warehouse/ArticleDetailPage.tsx`
+- `frontend/src/pages/warehouse/WarehouseArticleForm.tsx`
+- `frontend/src/pages/warehouse/warehouseUtils.ts`
+- `handoff/decisions/decision-log.md`
+- `backend/app/api/articles/routes.py`
+- `backend/tests/test_articles.py`
+
+Files Changed
+- `frontend/src/api/articles.ts`
+- `frontend/src/pages/warehouse/WarehouseArticleForm.tsx`
+- `frontend/src/pages/warehouse/WarehousePage.tsx`
+- `frontend/src/pages/warehouse/ArticleDetailPage.tsx`
+- `frontend/src/pages/warehouse/warehouseUtils.ts`
+- `handoff/decisions/decision-log.md`
+- `handoff/phase-16-v1-stabilization/frontend.md`
+
+Commands Run
+```bash
+sed -n '1,240p' stoqio_docs/13_UI_WAREHOUSE.md
+sed -n '1,260p' frontend/src/api/articles.ts
+sed -n '1,260p' frontend/src/pages/warehouse/WarehousePage.tsx
+sed -n '1,320p' frontend/src/pages/warehouse/ArticleDetailPage.tsx
+sed -n '1,320p' frontend/src/pages/warehouse/WarehouseArticleForm.tsx
+sed -n '1,260p' frontend/src/pages/warehouse/warehouseUtils.ts
+sed -n '1,240p' handoff/decisions/decision-log.md
+rg -n "api/v1/suppliers|lookupSuppliers|SupplierLookup|supplier" backend frontend stoqio_docs -g'*.py' -g'*.ts' -g'*.tsx' -g'*.md'
+sed -n '80,160p' backend/app/api/articles/routes.py
+sed -n '640,740p' backend/tests/test_articles.py
+sed -n '940,1055p' backend/tests/test_articles.py
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+Tests
+- Passed:
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- Failed:
+- None
+- Not run:
+- Browser/manual Warehouse create-edit smoke checks against a live backend were not run in this agent session.
+
+Open Issues / Risks
+- `stoqio_docs/13_UI_WAREHOUSE.md` still documents `manufacturer_art_number` as editable in Warehouse create/edit and still lists `last_price` in the detail Suppliers table. `DEC-WH-008` is the canonical drift note until the Warehouse docs are updated.
+- Supplier options are loaded lazily only when an ADMIN opens create/edit. If supplier master data changes while the form is already open, the user needs the section retry action or a reopen to refresh the dropdown contents.
+
+Spec Drift Logged
+- `DEC-WH-008` — `manufacturer_art_number` is no longer editable in the shared Warehouse form, supplier links are now managed directly in the shared Warehouse form via `GET /api/v1/suppliers`, and the detail Suppliers table is simplified.
+
+Next Recommended Step
+- Update `stoqio_docs/13_UI_WAREHOUSE.md` and any related Warehouse docs to reflect `DEC-WH-008` so later agents do not rebuild the removed form field or the old supplier-detail table columns.

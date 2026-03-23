@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  ActionIcon,
   Badge,
   Button,
   Group,
@@ -12,12 +13,16 @@ import {
   Stack,
   Table,
   Text,
+  TextInput,
   Title,
 } from '@mantine/core'
+import { IconX } from '@tabler/icons-react'
 
 import {
   articlesApi,
+  type ArticleAliasItem,
   type ArticleCategoryLookupItem,
+  type SupplierLookupItem,
   type ArticleTransactionItem,
   type ArticleUomLookupItem,
   type WarehouseArticleDetail,
@@ -38,7 +43,6 @@ import {
   createArticleFormState,
   formatDate,
   formatDateTime,
-  formatDecimal,
   formatOptionalQuantity,
   formatQuantity,
   getReorderStatusColor,
@@ -77,6 +81,9 @@ export default function ArticleDetailPage() {
   const [article, setArticle] = useState<WarehouseArticleDetail | null>(null)
   const [categories, setCategories] = useState<ArticleCategoryLookupItem[]>([])
   const [uoms, setUoms] = useState<ArticleUomLookupItem[]>([])
+  const [supplierOptions, setSupplierOptions] = useState<SupplierLookupItem[]>([])
+  const [supplierOptionsLoading, setSupplierOptionsLoading] = useState(false)
+  const [supplierOptionsError, setSupplierOptionsError] = useState<string | null>(null)
   const [transactions, setTransactions] = useState<ArticleTransactionItem[]>([])
   const [transactionsTotal, setTransactionsTotal] = useState(0)
   const [transactionPage, setTransactionPage] = useState(1)
@@ -94,7 +101,13 @@ export default function ArticleDetailPage() {
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false)
   const [batchBarcodeSubmittingId, setBatchBarcodeSubmittingId] = useState<number | null>(null)
 
+  const [aliasInput, setAliasInput] = useState('')
+  const [aliasSubmitting, setAliasSubmitting] = useState(false)
+  const [aliasError, setAliasError] = useState<string | null>(null)
+  const [aliasDeletingId, setAliasDeletingId] = useState<number | null>(null)
+
   const initialLoadDoneRef = useRef(false)
+  const supplierOptionsLoadedRef = useRef(false)
   const uomMap = useMemo(() => buildUomMap(uoms), [uoms])
 
   const applyArticleState = useCallback((nextArticle: WarehouseArticleDetail) => {
@@ -214,6 +227,38 @@ export default function ArticleDetailPage() {
     void loadInitialData(transactionPage)
   }, [loadInitialData, transactionPage])
 
+  const loadSupplierOptions = useCallback(async () => {
+    if (!isAdmin) {
+      return
+    }
+
+    setSupplierOptionsLoading(true)
+    setSupplierOptionsError(null)
+
+    try {
+      const response = await runWithRetry(() => articlesApi.lookupSuppliers())
+      setSupplierOptions(response)
+      supplierOptionsLoadedRef.current = true
+    } catch (error) {
+      const message = isNetworkOrServerError(error)
+        ? 'Popis dobavljača nije dostupan.'
+        : translateArticleApiMessage(getApiErrorBody(error), 'Popis dobavljača nije dostupan.')
+
+      setSupplierOptionsError(message)
+      showErrorToast(message)
+    } finally {
+      setSupplierOptionsLoading(false)
+    }
+  }, [isAdmin])
+
+  const ensureSupplierOptionsLoaded = useCallback(async () => {
+    if (!isAdmin || supplierOptionsLoadedRef.current || supplierOptionsLoading) {
+      return
+    }
+
+    await loadSupplierOptions()
+  }, [isAdmin, loadSupplierOptions, supplierOptionsLoading])
+
   const handleEditFieldChange = useCallback(
     <K extends keyof WarehouseArticleFormState>(field: K, value: WarehouseArticleFormState[K]) => {
       setEditForm((current) => ({
@@ -233,7 +278,8 @@ export default function ArticleDetailPage() {
     setEditForm(createArticleFormState(article))
     setEditErrors({})
     setEditMode(true)
-  }, [article])
+    void ensureSupplierOptionsLoaded()
+  }, [article, ensureSupplierOptionsLoaded])
 
   const handleCancelEdit = useCallback(() => {
     if (!article) {
@@ -390,6 +436,71 @@ export default function ArticleDetailPage() {
     [article]
   )
 
+  const handleAddAlias = useCallback(async () => {
+    if (!article || !aliasInput.trim()) {
+      return
+    }
+
+    setAliasSubmitting(true)
+    setAliasError(null)
+
+    try {
+      const created = await runWithRetry(() =>
+        articlesApi.createAlias(article.id, aliasInput.trim())
+      )
+      setArticle((prev): WarehouseArticleDetail | null =>
+        prev ? { ...prev, aliases: [...prev.aliases, created] } : prev
+      )
+      setAliasInput('')
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        setFatalError(true)
+        return
+      }
+      const apiError = getApiErrorBody(error)
+      if (apiError?.error === 'ALIAS_ALREADY_EXISTS') {
+        setAliasError('Ovaj alternativni naziv već postoji.')
+      } else {
+        showErrorToast(translateArticleApiMessage(apiError, 'Dodavanje alternativnog naziva nije uspjelo.'))
+      }
+    } finally {
+      setAliasSubmitting(false)
+    }
+  }, [article, aliasInput])
+
+  const handleDeleteAlias = useCallback(
+    async (aliasId: number) => {
+      if (!article) {
+        return
+      }
+
+      setAliasDeletingId(aliasId)
+
+      try {
+        await runWithRetry(() => articlesApi.deleteAlias(article.id, aliasId))
+        setArticle((prev): WarehouseArticleDetail | null =>
+          prev
+            ? { ...prev, aliases: prev.aliases.filter((a: ArticleAliasItem) => a.id !== aliasId) }
+            : prev
+        )
+      } catch (error) {
+        if (isNetworkOrServerError(error)) {
+          setFatalError(true)
+          return
+        }
+        showErrorToast(
+          translateArticleApiMessage(
+            getApiErrorBody(error),
+            'Brisanje alternativnog naziva nije uspjelo.'
+          )
+        )
+      } finally {
+        setAliasDeletingId(null)
+      }
+    },
+    [article]
+  )
+
   const transactionTotalPages = Math.max(1, Math.ceil(transactionsTotal / TRANSACTIONS_PER_PAGE))
 
   if (fatalError) {
@@ -500,7 +611,11 @@ export default function ArticleDetailPage() {
                   errors={editErrors}
                   categories={categories}
                   uoms={uoms}
+                  supplierOptions={supplierOptions}
+                  supplierOptionsLoading={supplierOptionsLoading}
+                  supplierOptionsError={supplierOptionsError}
                   disabled={editSubmitting}
+                  onRetrySuppliers={() => void loadSupplierOptions()}
                   onChange={handleEditFieldChange}
                 />
 
@@ -648,24 +763,23 @@ export default function ArticleDetailPage() {
                   <Table.Tr>
                     <Table.Th>Naziv dobavljača</Table.Th>
                     <Table.Th>Šifra artikla kod dobavljača</Table.Th>
-                    <Table.Th>Zadnja cijena</Table.Th>
                     <Table.Th>Preferirani</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {article.suppliers.map((supplier) => (
                     <Table.Tr key={supplier.id}>
-                      <Table.Td>
-                        <Stack gap={2}>
-                          <Text fw={500}>{supplier.supplier_name ?? '—'}</Text>
-                          <Text size="xs" c="dimmed">
-                            {supplier.supplier_internal_code ?? '—'}
-                          </Text>
-                        </Stack>
-                      </Table.Td>
+                      <Table.Td>{supplier.supplier_name ?? '—'}</Table.Td>
                       <Table.Td>{supplier.supplier_article_code ?? '—'}</Table.Td>
-                      <Table.Td>{supplier.last_price === null ? '—' : formatDecimal(supplier.last_price)}</Table.Td>
-                      <Table.Td>{supplier.is_preferred ? 'Da' : 'Ne'}</Table.Td>
+                      <Table.Td>
+                        {supplier.is_preferred ? (
+                          <Badge color="green" variant="light">
+                            Preferirani
+                          </Badge>
+                        ) : (
+                          '—'
+                        )}
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -682,25 +796,64 @@ export default function ArticleDetailPage() {
           {article.aliases.length === 0 ? (
             <Text c="dimmed">Nema alternativnih naziva.</Text>
           ) : (
-            <ScrollArea>
-              <Table withTableBorder verticalSpacing="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Naziv</Table.Th>
-                    <Table.Th>Normalizirani oblik</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {article.aliases.map((alias) => (
-                    <Table.Tr key={alias.id}>
-                      <Table.Td>{alias.alias}</Table.Td>
-                      <Table.Td>{alias.normalized}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </ScrollArea>
+            <Group gap="xs" wrap="wrap">
+              {article.aliases.map((alias) => (
+                <Badge
+                  key={alias.id}
+                  variant="light"
+                  size="lg"
+                  rightSection={
+                    isAdmin ? (
+                      <ActionIcon
+                        size="xs"
+                        variant="transparent"
+                        color="gray"
+                        aria-label={`Ukloni ${alias.alias}`}
+                        loading={aliasDeletingId === alias.id}
+                        onClick={() => void handleDeleteAlias(alias.id)}
+                      >
+                        <IconX size={10} />
+                      </ActionIcon>
+                    ) : null
+                  }
+                >
+                  {alias.alias}
+                </Badge>
+              ))}
+            </Group>
           )}
+
+          {isAdmin ? (
+            <Stack gap={4}>
+              <Group align="flex-start" gap="sm">
+                <TextInput
+                  placeholder="Novi alternativni naziv"
+                  value={aliasInput}
+                  onChange={(e) => {
+                    setAliasInput(e.currentTarget.value)
+                    setAliasError(null)
+                  }}
+                  error={aliasError}
+                  disabled={aliasSubmitting}
+                  style={{ flex: 1 }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void handleAddAlias()
+                    }
+                  }}
+                />
+                <Button
+                  onClick={() => void handleAddAlias()}
+                  loading={aliasSubmitting}
+                  disabled={!aliasInput.trim()}
+                  mt={aliasError ? 0 : undefined}
+                >
+                  Dodaj
+                </Button>
+              </Group>
+            </Stack>
+          ) : null}
         </Stack>
       </Paper>
 

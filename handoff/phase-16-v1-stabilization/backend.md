@@ -80,3 +80,44 @@ Open Issues / Risks
 Next Recommended Step
 - Use `RevokedToken` as the canonical logout-revocation mechanism for any future auth work.
 - Preserve `DraftGroup.group_type` and the partial unique index semantics when extending Draft Entry, Inventory Count, or Approvals.
+
+## [2026-03-23 18:13] Codex
+
+Status
+- completed
+
+Scope
+- Added article create/update supplier-link handling on top of the existing `ArticleSupplier` table.
+- Preserved the full Warehouse article detail payload, including enriched supplier rows and preferred-first ordering.
+- Added a Warehouse supplier lookup endpoint at `GET /api/v1/suppliers` without changing the Settings supplier endpoints.
+
+Docs Read
+- `stoqio_docs/05_DATA_MODEL.md`
+- `stoqio_docs/13_UI_WAREHOUSE.md`
+- `handoff/decisions/decision-log.md`
+
+Files Changed
+- `backend/app/api/articles/routes.py`
+- `backend/app/services/article_service.py`
+- `backend/tests/test_articles.py`
+
+Commands Run
+```bash
+cd backend && venv/bin/pytest backend/tests/test_articles.py -q
+cd backend && venv/bin/pytest tests/test_articles.py -q
+```
+
+Tests
+- Passed:
+- `cd backend && venv/bin/pytest tests/test_articles.py -q` -> `32 passed`
+- Failed:
+- `cd backend && venv/bin/pytest backend/tests/test_articles.py -q` -> path invalid after `cd backend` (`backend/tests/test_articles.py` not found)
+- Not run:
+- broader backend suite
+
+Assumptions
+- `GET /api/v1/suppliers` should follow the Warehouse lookup access pattern and be available to `ADMIN` and `MANAGER`.
+- Missing per-link `is_preferred` values are normalized to `false`; `supplier_article_code` remains optional/nullable.
+
+Spec Drift / Resolutions
+- The required pytest command used a repo-root-relative test path after `cd backend`; I ran it as written, confirmed the path issue, then reran the corrected command against the same test file.

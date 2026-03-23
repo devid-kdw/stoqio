@@ -176,6 +176,26 @@ def warehouse_data(app):
             _db.session.add(supplier_secondary)
             _db.session.flush()
 
+        supplier_tertiary = Supplier.query.filter_by(internal_code="WH-SUP-003").first()
+        if supplier_tertiary is None:
+            supplier_tertiary = Supplier(
+                internal_code="WH-SUP-003",
+                name="Warehouse Supplier 3",
+                is_active=True,
+            )
+            _db.session.add(supplier_tertiary)
+            _db.session.flush()
+
+        supplier_inactive = Supplier.query.filter_by(internal_code="WH-SUP-004").first()
+        if supplier_inactive is None:
+            supplier_inactive = Supplier(
+                internal_code="WH-SUP-004",
+                name="Warehouse Supplier Inactive",
+                is_active=False,
+            )
+            _db.session.add(supplier_inactive)
+            _db.session.flush()
+
         active_article = Article.query.filter_by(article_no="WH-ACT-001").first()
         if active_article is None:
             active_article = Article(
@@ -531,6 +551,10 @@ def warehouse_data(app):
             "staff": staff,
             "viewer": viewer,
             "operator": operator,
+            "supplier_primary": supplier_primary,
+            "supplier_secondary": supplier_secondary,
+            "supplier_tertiary": supplier_tertiary,
+            "supplier_inactive": supplier_inactive,
             "active_article": active_article,
             "batch_article": batch_article,
             "inactive_article": inactive_article,
@@ -653,6 +677,120 @@ class TestWarehouseArticles:
         )
         assert response.status_code == 409
         assert response.get_json()["error"] == "ARTICLE_ALREADY_EXISTS"
+
+    def test_create_article_with_suppliers_creates_article_supplier_rows(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        response = client.post(
+            "/api/v1/articles",
+            json={
+                "article_no": "WH-SUP-LINK-006",
+                "description": "Warehouse article with supplier links",
+                "category_id": warehouse_data["active_category"].id,
+                "base_uom": "whkg",
+                "has_batch": False,
+                "suppliers": [
+                    {
+                        "supplier_id": warehouse_data["supplier_secondary"].id,
+                        "supplier_article_code": "SUP-LINK-2",
+                        "is_preferred": False,
+                    },
+                    {
+                        "supplier_id": warehouse_data["supplier_primary"].id,
+                        "supplier_article_code": "SUP-LINK-1",
+                        "is_preferred": True,
+                    },
+                ],
+            },
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 201
+        payload = response.get_json()
+        assert [row["supplier_id"] for row in payload["suppliers"]] == [
+            warehouse_data["supplier_primary"].id,
+            warehouse_data["supplier_secondary"].id,
+        ]
+        assert payload["suppliers"][0]["supplier_name"] == "Warehouse Supplier 1"
+        assert payload["suppliers"][0]["supplier_article_code"] == "SUP-LINK-1"
+        assert payload["suppliers"][0]["is_preferred"] is True
+
+        with app.app_context():
+            article = Article.query.filter_by(article_no="WH-SUP-LINK-006").first()
+            assert article is not None
+            links = (
+                ArticleSupplier.query
+                .filter_by(article_id=article.id)
+                .order_by(ArticleSupplier.supplier_id.asc())
+                .all()
+            )
+            assert [(link.supplier_id, link.supplier_article_code, link.is_preferred) for link in links] == [
+                (
+                    warehouse_data["supplier_primary"].id,
+                    "SUP-LINK-1",
+                    True,
+                ),
+                (
+                    warehouse_data["supplier_secondary"].id,
+                    "SUP-LINK-2",
+                    False,
+                ),
+            ]
+
+    def test_create_article_rejects_duplicate_supplier_ids(self, client, warehouse_data):
+        token = _login(client, "warehouse_admin")
+        response = client.post(
+            "/api/v1/articles",
+            json={
+                "article_no": "WH-SUP-DUP-007",
+                "description": "Warehouse duplicate supplier ids",
+                "category_id": warehouse_data["active_category"].id,
+                "base_uom": "whkg",
+                "has_batch": False,
+                "suppliers": [
+                    {
+                        "supplier_id": warehouse_data["supplier_primary"].id,
+                        "supplier_article_code": "SUP-DUP-1",
+                        "is_preferred": True,
+                    },
+                    {
+                        "supplier_id": warehouse_data["supplier_primary"].id,
+                        "supplier_article_code": "SUP-DUP-2",
+                        "is_preferred": False,
+                    },
+                ],
+            },
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload["error"] == "VALIDATION_ERROR"
+        assert "duplicate supplier_id" in payload["message"]
+
+    def test_create_article_rejects_inactive_supplier_ids(self, client, warehouse_data):
+        token = _login(client, "warehouse_admin")
+        response = client.post(
+            "/api/v1/articles",
+            json={
+                "article_no": "WH-SUP-INACTIVE-008",
+                "description": "Warehouse inactive supplier id",
+                "category_id": warehouse_data["active_category"].id,
+                "base_uom": "whkg",
+                "has_batch": False,
+                "suppliers": [
+                    {
+                        "supplier_id": warehouse_data["supplier_inactive"].id,
+                        "supplier_article_code": "SUP-INACTIVE-1",
+                        "is_preferred": False,
+                    }
+                ],
+            },
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        payload = response.get_json()
+        assert payload["error"] == "VALIDATION_ERROR"
+        assert "active suppliers only" in payload["message"]
 
     def test_invalid_article_no_chars_return_400(self, client, warehouse_data):
         token = _login(client, "warehouse_admin")
@@ -829,6 +967,94 @@ class TestWarehouseArticles:
             stored = _db.session.get(Article, warehouse_data["active_article"].id)
             assert stored.article_no == "WH-ACT-001-UPD"
 
+    def test_update_article_without_suppliers_preserves_existing_links(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            before_links = (
+                ArticleSupplier.query
+                .filter_by(article_id=warehouse_data["batch_article"].id)
+                .order_by(ArticleSupplier.supplier_id.asc())
+                .all()
+            )
+            before_snapshot = [
+                (link.supplier_id, link.supplier_article_code, link.is_preferred)
+                for link in before_links
+            ]
+
+        response = client.put(
+            f"/api/v1/articles/{warehouse_data['batch_article'].id}",
+            json={},
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+
+        with app.app_context():
+            after_links = (
+                ArticleSupplier.query
+                .filter_by(article_id=warehouse_data["batch_article"].id)
+                .order_by(ArticleSupplier.supplier_id.asc())
+                .all()
+            )
+            after_snapshot = [
+                (link.supplier_id, link.supplier_article_code, link.is_preferred)
+                for link in after_links
+            ]
+            assert after_snapshot == before_snapshot
+
+    def test_update_article_suppliers_syncs_by_supplier_id(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        response = client.put(
+            f"/api/v1/articles/{warehouse_data['batch_article'].id}",
+            json={
+                "suppliers": [
+                    {
+                        "supplier_id": warehouse_data["supplier_secondary"].id,
+                        "supplier_article_code": "SUP-BATCH-2-UPD",
+                        "is_preferred": False,
+                    },
+                    {
+                        "supplier_id": warehouse_data["supplier_tertiary"].id,
+                        "supplier_article_code": "SUP-BATCH-3",
+                        "is_preferred": True,
+                    },
+                ]
+            },
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert [row["supplier_id"] for row in payload["suppliers"]] == [
+            warehouse_data["supplier_tertiary"].id,
+            warehouse_data["supplier_secondary"].id,
+        ]
+        assert payload["suppliers"][0]["supplier_name"] == "Warehouse Supplier 3"
+        assert payload["suppliers"][0]["supplier_article_code"] == "SUP-BATCH-3"
+        assert payload["suppliers"][0]["is_preferred"] is True
+
+        with app.app_context():
+            links = (
+                ArticleSupplier.query
+                .filter_by(article_id=warehouse_data["batch_article"].id)
+                .order_by(ArticleSupplier.supplier_id.asc())
+                .all()
+            )
+            assert [(link.supplier_id, link.supplier_article_code, link.is_preferred) for link in links] == [
+                (
+                    warehouse_data["supplier_secondary"].id,
+                    "SUP-BATCH-2-UPD",
+                    False,
+                ),
+                (
+                    warehouse_data["supplier_tertiary"].id,
+                    "SUP-BATCH-3",
+                    True,
+                ),
+            ]
+
     def test_deactivate_sets_is_active_false(self, client, app, warehouse_data):
         token = _login(client, "warehouse_admin")
         response = client.patch(
@@ -883,6 +1109,18 @@ class TestWarehouseArticles:
         assert uoms_response.status_code == 200
         uom_codes = {row["code"] for row in uoms_response.get_json()}
         assert {"whkg", "whkom"}.issubset(uom_codes)
+
+    def test_supplier_lookup_returns_active_suppliers_only(self, client, warehouse_data):
+        token = _login(client, "warehouse_manager")
+        response = client.get(
+            "/api/v1/suppliers",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        internal_codes = {row["internal_code"] for row in payload}
+        assert {"WH-SUP-001", "WH-SUP-002", "WH-SUP-003"}.issubset(internal_codes)
+        assert "WH-SUP-004" not in internal_codes
 
     def test_barcode_routes_are_admin_only(self, client, app, warehouse_data):
         manager_token = _login(client, "warehouse_manager")

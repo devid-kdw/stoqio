@@ -22,12 +22,14 @@ from app.models.draft import Draft
 from app.models.enums import DraftStatus, MissingArticleReportStatus
 from app.models.missing_article_report import MissingArticleReport
 from app.models.stock import Stock
+from app.models.supplier import Supplier
 from app.models.surplus import Surplus
 from app.models.transaction import Transaction
 from app.models.uom_catalog import UomCatalog
 
 _QTY_QUANT = Decimal("0.001")
 _ARTICLE_NO_RE = re.compile(r"^[A-Z0-9-]+$")
+_SUPPLIERS_MISSING = object()
 
 
 class ArticleServiceError(Exception):
@@ -65,6 +67,15 @@ class PreparedArticlePayload:
     reorder_coverage_days: int | None
     density: Decimal
     is_active: bool
+
+
+@dataclass(slots=True)
+class PreparedArticleSupplierPayload:
+    """Validated supplier-link payload prepared for persistence."""
+
+    supplier: Supplier
+    supplier_article_code: str | None
+    is_preferred: bool
 
 
 @dataclass(slots=True)
@@ -722,6 +733,161 @@ def _serialize_detail(article: Article) -> dict[str, Any]:
     return response
 
 
+def _prepare_article_suppliers_payload(
+    value: Any,
+    *,
+    treat_missing_as_empty: bool,
+) -> list[PreparedArticleSupplierPayload] | None:
+    if value is _SUPPLIERS_MISSING:
+        return [] if treat_missing_as_empty else None
+    if not isinstance(value, list):
+        raise ArticleServiceError(
+            "VALIDATION_ERROR",
+            "suppliers must be an array.",
+            400,
+        )
+    if not value:
+        return []
+
+    normalized_rows: list[dict[str, Any]] = []
+    supplier_ids: list[int] = []
+    seen_supplier_ids: set[int] = set()
+    duplicate_supplier_ids: set[int] = set()
+
+    for index, entry in enumerate(value):
+        if not isinstance(entry, dict):
+            raise ArticleServiceError(
+                "VALIDATION_ERROR",
+                f"suppliers[{index}] must be an object.",
+                400,
+                {"index": index},
+            )
+        _validate_allowed_fields(
+            entry,
+            allowed_fields={"supplier_id", "supplier_article_code", "is_preferred"},
+        )
+        supplier_id = _parse_int(
+            entry.get("supplier_id"),
+            field_name=f"suppliers[{index}].supplier_id",
+            details={"index": index},
+        )
+        if supplier_id in seen_supplier_ids:
+            duplicate_supplier_ids.add(supplier_id)
+        else:
+            seen_supplier_ids.add(supplier_id)
+
+        normalized_rows.append(
+            {
+                "supplier_id": supplier_id,
+                "supplier_article_code": _normalize_optional_text(
+                    entry.get("supplier_article_code")
+                ),
+                "is_preferred": _parse_bool(
+                    entry.get("is_preferred"),
+                    field_name=f"suppliers[{index}].is_preferred",
+                    default=False,
+                    details={"index": index},
+                ),
+            }
+        )
+        supplier_ids.append(supplier_id)
+
+    if duplicate_supplier_ids:
+        duplicate_ids = sorted(duplicate_supplier_ids)
+        raise ArticleServiceError(
+            "VALIDATION_ERROR",
+            "suppliers contains duplicate supplier_id values.",
+            400,
+            {"supplier_ids": duplicate_ids},
+        )
+
+    active_suppliers = (
+        Supplier.query
+        .filter(
+            Supplier.id.in_(supplier_ids),
+            Supplier.is_active.is_(True),
+        )
+        .all()
+    )
+    suppliers_by_id = {supplier.id: supplier for supplier in active_suppliers}
+    invalid_supplier_ids = [
+        supplier_id for supplier_id in supplier_ids if supplier_id not in suppliers_by_id
+    ]
+    if invalid_supplier_ids:
+        raise ArticleServiceError(
+            "VALIDATION_ERROR",
+            "suppliers must reference active suppliers only.",
+            400,
+            {"supplier_ids": invalid_supplier_ids},
+        )
+
+    return [
+        PreparedArticleSupplierPayload(
+            supplier=suppliers_by_id[row["supplier_id"]],
+            supplier_article_code=row["supplier_article_code"],
+            is_preferred=row["is_preferred"],
+        )
+        for row in normalized_rows
+    ]
+
+
+def _create_article_supplier_links(
+    article_id: int,
+    suppliers: list[PreparedArticleSupplierPayload],
+) -> None:
+    for prepared in suppliers:
+        db.session.add(
+            ArticleSupplier(
+                article_id=article_id,
+                supplier_id=prepared.supplier.id,
+                supplier_article_code=prepared.supplier_article_code,
+                is_preferred=prepared.is_preferred,
+            )
+        )
+
+
+def _sync_article_supplier_links(
+    article_id: int,
+    suppliers: list[PreparedArticleSupplierPayload],
+) -> None:
+    existing_links = (
+        ArticleSupplier.query
+        .filter(ArticleSupplier.article_id == article_id)
+        .order_by(ArticleSupplier.id.asc())
+        .all()
+    )
+
+    existing_by_supplier_id: dict[int, ArticleSupplier] = {}
+    duplicate_links: list[ArticleSupplier] = []
+    for link in existing_links:
+        if link.supplier_id in existing_by_supplier_id:
+            duplicate_links.append(link)
+            continue
+        existing_by_supplier_id[link.supplier_id] = link
+
+    submitted_supplier_ids: set[int] = set()
+    for prepared in suppliers:
+        submitted_supplier_ids.add(prepared.supplier.id)
+        link = existing_by_supplier_id.get(prepared.supplier.id)
+        if link is None:
+            db.session.add(
+                ArticleSupplier(
+                    article_id=article_id,
+                    supplier_id=prepared.supplier.id,
+                    supplier_article_code=prepared.supplier_article_code,
+                    is_preferred=prepared.is_preferred,
+                )
+            )
+            continue
+
+        link.supplier_article_code = prepared.supplier_article_code
+        link.is_preferred = prepared.is_preferred
+
+    for link in existing_links:
+        if link in duplicate_links or link.supplier_id not in submitted_supplier_ids:
+            db.session.delete(link)
+
+
 def _prepare_article_payload(
     payload: dict[str, Any] | None,
     *,
@@ -745,6 +911,7 @@ def _prepare_article_payload(
             "reorder_coverage_days",
             "density",
             "is_active",
+            "suppliers",
         },
     )
 
@@ -934,6 +1101,24 @@ def find_article_for_lookup(query: str | None) -> dict[str, Any]:
     return _serialize_lookup_article(article)
 
 
+def lookup_suppliers() -> list[dict[str, Any]]:
+    """Return the Warehouse supplier lookup response."""
+    rows = (
+        Supplier.query
+        .filter(Supplier.is_active.is_(True))
+        .order_by(Supplier.name.asc(), Supplier.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id": supplier.id,
+            "name": supplier.name,
+            "internal_code": supplier.internal_code,
+        }
+        for supplier in rows
+    ]
+
+
 def list_articles(
     page: int,
     per_page: int,
@@ -1079,9 +1264,73 @@ def get_article_detail(article_id: int) -> dict[str, Any]:
     return _serialize_detail(_get_article(article_id))
 
 
+def create_article_alias(article_id: int, payload: dict[str, Any] | None) -> dict[str, Any]:
+    """Create an alias for an article. Returns the created alias object."""
+    body = payload or {}
+    raw_alias = body.get("alias")
+    if not isinstance(raw_alias, str) or not raw_alias.strip():
+        raise ArticleServiceError(
+            "VALIDATION_ERROR",
+            "alias is required.",
+            400,
+        )
+    display_alias = raw_alias.strip()
+    normalized = display_alias.lower()
+
+    article = _get_article(article_id)
+
+    existing = (
+        ArticleAlias.query
+        .filter_by(article_id=article.id, normalized=normalized)
+        .first()
+    )
+    if existing is not None:
+        raise ArticleServiceError(
+            "ALIAS_ALREADY_EXISTS",
+            "Alias already exists.",
+            409,
+        )
+
+    alias_row = ArticleAlias(
+        article_id=article.id,
+        alias=display_alias,
+        normalized=normalized,
+    )
+    db.session.add(alias_row)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        raise ArticleServiceError(
+            "ALIAS_ALREADY_EXISTS",
+            "Alias already exists.",
+            409,
+        ) from None
+    return _serialize_alias(alias_row)
+
+
+def delete_article_alias(article_id: int, alias_id: int) -> None:
+    """Delete an alias that belongs to the specified article."""
+    _get_article(article_id)
+    alias_row = ArticleAlias.query.filter_by(id=alias_id, article_id=article_id).first()
+    if alias_row is None:
+        raise ArticleServiceError(
+            "ALIAS_NOT_FOUND",
+            "Alias not found.",
+            404,
+        )
+    db.session.delete(alias_row)
+    db.session.commit()
+
+
 def create_article(payload: dict[str, Any] | None) -> dict[str, Any]:
     """Create a new article and return the canonical detail payload."""
-    prepared = _prepare_article_payload(payload)
+    body = payload or {}
+    prepared = _prepare_article_payload(body)
+    prepared_suppliers = _prepare_article_suppliers_payload(
+        body.get("suppliers", _SUPPLIERS_MISSING),
+        treat_missing_as_empty=True,
+    )
     article = Article(
         article_no=prepared.article_no,
         description=prepared.description,
@@ -1100,6 +1349,8 @@ def create_article(payload: dict[str, Any] | None) -> dict[str, Any]:
     )
     db.session.add(article)
     try:
+        db.session.flush()
+        _create_article_supplier_links(article.id, prepared_suppliers or [])
         db.session.commit()
     except IntegrityError as exc:
         raise ArticleServiceError(
@@ -1114,7 +1365,12 @@ def create_article(payload: dict[str, Any] | None) -> dict[str, Any]:
 def update_article(article_id: int, payload: dict[str, Any] | None) -> dict[str, Any]:
     """Update an existing article and return the canonical detail payload."""
     article = _get_article(article_id)
-    prepared = _prepare_article_payload(payload, existing_article=article)
+    body = payload or {}
+    prepared = _prepare_article_payload(body, existing_article=article)
+    prepared_suppliers = _prepare_article_suppliers_payload(
+        body.get("suppliers", _SUPPLIERS_MISSING),
+        treat_missing_as_empty=False,
+    )
 
     article.article_no = prepared.article_no
     article.description = prepared.description
@@ -1131,6 +1387,8 @@ def update_article(article_id: int, payload: dict[str, Any] | None) -> dict[str,
     article.density = prepared.density
     article.is_active = prepared.is_active
     article.updated_at = datetime.now(timezone.utc)
+    if prepared_suppliers is not None:
+        _sync_article_supplier_links(article.id, prepared_suppliers)
 
     try:
         db.session.commit()

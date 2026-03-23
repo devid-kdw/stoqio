@@ -20,6 +20,7 @@ import {
 import {
   articlesApi,
   type ArticleCategoryLookupItem,
+  type SupplierLookupItem,
   type ArticleUomLookupItem,
   type WarehouseArticleListItem,
 } from '../../api/articles'
@@ -80,6 +81,9 @@ export default function WarehousePage() {
   const [articles, setArticles] = useState<WarehouseArticleListItem[]>([])
   const [categories, setCategories] = useState<ArticleCategoryLookupItem[]>([])
   const [uoms, setUoms] = useState<ArticleUomLookupItem[]>([])
+  const [supplierOptions, setSupplierOptions] = useState<SupplierLookupItem[]>([])
+  const [supplierOptionsLoading, setSupplierOptionsLoading] = useState(false)
+  const [supplierOptionsError, setSupplierOptionsError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [searchInput, setSearchInput] = useState('')
@@ -98,6 +102,7 @@ export default function WarehousePage() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialLoadDoneRef = useRef(false)
+  const supplierOptionsLoadedRef = useRef(false)
   const uomMap = useMemo(() => buildUomMap(uoms), [uoms])
 
   const loadInitialData = useCallback(async () => {
@@ -205,10 +210,43 @@ export default function WarehousePage() {
     setCreateErrors({})
   }, [])
 
+  const loadSupplierOptions = useCallback(async () => {
+    if (!isAdmin) {
+      return
+    }
+
+    setSupplierOptionsLoading(true)
+    setSupplierOptionsError(null)
+
+    try {
+      const response = await runWithRetry(() => articlesApi.lookupSuppliers())
+      setSupplierOptions(response)
+      supplierOptionsLoadedRef.current = true
+    } catch (error) {
+      const message = isNetworkOrServerError(error)
+        ? 'Popis dobavljača nije dostupan.'
+        : translateArticleApiMessage(getApiErrorBody(error), 'Popis dobavljača nije dostupan.')
+
+      setSupplierOptionsError(message)
+      showErrorToast(message)
+    } finally {
+      setSupplierOptionsLoading(false)
+    }
+  }, [isAdmin])
+
+  const ensureSupplierOptionsLoaded = useCallback(async () => {
+    if (!isAdmin || supplierOptionsLoadedRef.current || supplierOptionsLoading) {
+      return
+    }
+
+    await loadSupplierOptions()
+  }, [isAdmin, loadSupplierOptions, supplierOptionsLoading])
+
   const handleOpenCreate = useCallback(() => {
     resetCreateForm()
     setCreateOpen(true)
-  }, [resetCreateForm])
+    void ensureSupplierOptionsLoaded()
+  }, [ensureSupplierOptionsLoaded, resetCreateForm])
 
   const handleCloseCreate = useCallback(() => {
     setCreateOpen(false)
@@ -320,7 +358,11 @@ export default function WarehousePage() {
               errors={createErrors}
               categories={categories}
               uoms={uoms}
+              supplierOptions={supplierOptions}
+              supplierOptionsLoading={supplierOptionsLoading}
+              supplierOptionsError={supplierOptionsError}
               disabled={createSubmitting}
+              onRetrySuppliers={() => void loadSupplierOptions()}
               onChange={handleCreateFieldChange}
             />
 

@@ -162,6 +162,18 @@ export interface ArticleUomLookupItem {
   decimal_display: boolean
 }
 
+export interface SupplierLookupItem {
+  id: number
+  name: string
+  internal_code: string
+}
+
+export interface ArticleSupplierMutationPayload {
+  supplier_id: number
+  supplier_article_code?: string | null
+  is_preferred: boolean
+}
+
 export interface ArticleMutationPayload {
   article_no: string
   description: string
@@ -177,6 +189,7 @@ export interface ArticleMutationPayload {
   reorder_coverage_days?: number | null
   density?: number
   is_active: boolean
+  suppliers: ArticleSupplierMutationPayload[]
 }
 
 export const articlesApi = {
@@ -290,5 +303,19 @@ export const articlesApi = {
   lookupUoms: async (): Promise<ArticleUomLookupItem[]> => {
     const response = await client.get<ArticleUomLookupItem[]>('/articles/lookups/uoms')
     return response.data
+  },
+
+  lookupSuppliers: async (): Promise<SupplierLookupItem[]> => {
+    const response = await client.get<SupplierLookupItem[]>('/suppliers')
+    return response.data
+  },
+
+  createAlias: async (articleId: number, alias: string): Promise<ArticleAliasItem> => {
+    const response = await client.post<ArticleAliasItem>(`/articles/${articleId}/aliases`, { alias })
+    return response.data
+  },
+
+  deleteAlias: async (articleId: number, aliasId: number): Promise<void> => {
+    await client.delete(`/articles/${articleId}/aliases/${aliasId}`)
   },
 }

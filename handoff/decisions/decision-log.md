@@ -525,3 +525,25 @@
 - Decision: Frontend auth storage is now split: the refresh token is persisted in browser `localStorage` under the exact key `stoqio_refresh_token`, while the access token remains Zustand memory-only. On app bootstrap, the frontend must check that key, silently call `POST /api/v1/auth/refresh`, then `GET /api/v1/auth/me`, and only render protected routes after hydrating Zustand with `{ user, accessToken, refreshToken, isAuthenticated }`. Any bootstrap failure clears the persisted refresh token, resets auth state, and redirects to `/login`.
 - Impact: Later frontend/auth work must no longer assume both tokens are memory-only as stated in the older architecture doc. Logout, 401 refresh recovery, and reload/bootstrap flows now depend on the persisted refresh-token policy, while access tokens must still never be written to `localStorage`.
 - Docs update required: yes
+
+---
+
+## DEC-WH-008
+
+- Date: 2026-03-23
+- Phase: phase-16-v1-stabilization
+- Source: User-directed frontend Warehouse stabilization change against the accepted Phase 9 Warehouse baseline
+- Decision: In the shared Warehouse create/edit form, `manufacturer_art_number` remains part of backend schema/detail responses but is no longer editable or sent from the Warehouse form payload builder. Article supplier links are now managed directly in the shared Warehouse form through `suppliers: [{ supplier_id, supplier_article_code, is_preferred }]`, using the concise active-only `GET /api/v1/suppliers` lookup on ADMIN create/edit paths only. The read-only Suppliers table on article detail is reduced to supplier name, supplier article code, and a preferred indicator.
+- Impact: Frontend agents must not reintroduce a visible `manufacturer_art_number` control in `WarehouseArticleForm`, must send supplier links from the shared Warehouse create/edit state instead of routing users through Settings, and must keep MANAGER paths free of the new supplier lookup fetch. `stoqio_docs/13_UI_WAREHOUSE.md` and related Warehouse docs are now stale until they are updated to reflect the revised form fields and simplified supplier detail presentation.
+- Docs update required: yes
+
+---
+
+## DEC-ID-004
+
+- Date: 2026-03-23
+- Phase: phase-03-wave-01-article-aliases
+- Source: User-directed orchestrator brief for the alias-management follow-up
+- Decision: Article aliases are managed inline from the Warehouse article detail screen through `POST /api/v1/articles/{id}/aliases` and `DELETE /api/v1/articles/{id}/aliases/{alias_id}`. Alias uniqueness is scoped per article on the lowercase-trimmed normalized value, so case-only or whitespace-only variants of an existing alias for the same article conflict. `GET /api/v1/articles/{id}` must expose alias IDs plus display strings for the read-mode alias section and may keep the existing enriched `normalized` field. Identifier search continues to resolve articles through `ArticleAlias.normalized`.
+- Impact: Backend agents must not enforce alias uniqueness globally across all articles, frontend agents must keep alias mutation controls ADMIN-only while preserving MANAGER read-only visibility of the alias list, and testing must cover normalized duplicate rejection plus identifier discoverability after alias creation.
+- Docs update required: yes

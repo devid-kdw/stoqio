@@ -8,6 +8,35 @@ import type { ApiErrorBody } from '../../utils/http'
 
 const FALLBACK_INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
 const ARTICLE_NO_RE = /^[A-Z0-9-]+$/
+let supplierRowKeyCounter = 0
+
+function createSupplierRowKey(): string {
+  supplierRowKeyCounter += 1
+  return `warehouse-supplier-row-${supplierRowKeyCounter}`
+}
+
+export interface WarehouseArticleSupplierFormItem {
+  key: string
+  supplierId: string | null
+  supplierArticleCode: string
+  isPreferred: boolean
+}
+
+export interface WarehouseArticleSupplierFormRowErrors {
+  supplierId?: string
+  supplierArticleCode?: string
+}
+
+export function createArticleSupplierFormItem(
+  supplier?: Partial<Omit<WarehouseArticleSupplierFormItem, 'key'>>
+): WarehouseArticleSupplierFormItem {
+  return {
+    key: createSupplierRowKey(),
+    supplierId: supplier?.supplierId ?? null,
+    supplierArticleCode: supplier?.supplierArticleCode ?? '',
+    isPreferred: supplier?.isPreferred ?? false,
+  }
+}
 
 export interface WarehouseArticleFormState {
   articleNo: string
@@ -18,12 +47,12 @@ export interface WarehouseArticleFormState {
   packUom: string | null
   barcode: string
   manufacturer: string
-  manufacturerArtNumber: string
   hasBatch: boolean
   reorderThreshold: number | string
   reorderCoverageDays: number | string
   density: number | string
   isActive: boolean
+  suppliers: WarehouseArticleSupplierFormItem[]
 }
 
 export interface WarehouseArticleFormErrors {
@@ -35,10 +64,11 @@ export interface WarehouseArticleFormErrors {
   packUom?: string
   barcode?: string
   manufacturer?: string
-  manufacturerArtNumber?: string
   reorderThreshold?: string
   reorderCoverageDays?: string
   density?: string
+  suppliers?: string
+  supplierRows?: WarehouseArticleSupplierFormRowErrors[]
 }
 
 export function createArticleFormState(
@@ -53,12 +83,19 @@ export function createArticleFormState(
     packUom: article?.pack_uom ?? null,
     barcode: article?.barcode ?? '',
     manufacturer: article?.manufacturer ?? '',
-    manufacturerArtNumber: article?.manufacturer_art_number ?? '',
     hasBatch: article?.has_batch ?? false,
     reorderThreshold: article?.reorder_threshold ?? '',
     reorderCoverageDays: article?.reorder_coverage_days ?? '',
     density: 1,
     isActive: article?.is_active ?? true,
+    suppliers:
+      article?.suppliers.map((supplier) =>
+        createArticleSupplierFormItem({
+          supplierId: String(supplier.supplier_id),
+          supplierArticleCode: supplier.supplier_article_code ?? '',
+          isPreferred: supplier.is_preferred,
+        })
+      ) ?? [],
   }
 }
 
@@ -248,8 +285,11 @@ const ARTICLE_API_FIELD_LABELS: Record<string, string> = {
   reorder_threshold: 'Prag naručivanja',
   reorder_coverage_days: 'Pokrivenost u danima',
   density: 'Gustoća',
+  barcode: 'Barkod',
+  manufacturer: 'Proizvođač',
   has_batch: 'Artikl sa šaržom',
   is_active: 'Aktivnost artikla',
+  suppliers: 'Dobavljači',
   page: 'Stranica',
   per_page: 'Broj stavki po stranici',
   include_inactive: 'Prikaži deaktivirane',
@@ -291,6 +331,23 @@ export function translateArticleApiMessage(
 
   if (message === 'Batch not found.') {
     return 'Šarža nije pronađena.'
+  }
+
+  if (message === 'suppliers must be an array.') {
+    return 'Dobavljači moraju biti popis.'
+  }
+
+  if (message === 'suppliers contains duplicate supplier_id values.') {
+    return 'Isti dobavljač ne može biti dodan više puta.'
+  }
+
+  if (message === 'suppliers must reference active suppliers only.') {
+    return 'Dobavljači moraju biti aktivni.'
+  }
+
+  const supplierIdRequiredMatch = message.match(/^suppliers\[(\d+)\]\.supplier_id is required\.$/)
+  if (supplierIdRequiredMatch) {
+    return 'Dobavljač je obavezan.'
   }
 
   if (message === "Query parameter 'q' is required.") {
@@ -472,6 +529,36 @@ export function validateArticleForm(
     errors.density = 'Gustoća mora biti veća od 0.'
   }
 
+  if (form.suppliers.length > 0) {
+    const supplierRows = form.suppliers.map<WarehouseArticleSupplierFormRowErrors>(() => ({}))
+    const seenSupplierIds = new Set<string>()
+    const duplicateSupplierIds = new Set<string>()
+
+    form.suppliers.forEach((supplier, index) => {
+      if (!supplier.supplierId) {
+        supplierRows[index].supplierId = 'Dobavljač je obavezan.'
+        return
+      }
+
+      if (seenSupplierIds.has(supplier.supplierId)) {
+        duplicateSupplierIds.add(supplier.supplierId)
+        return
+      }
+
+      seenSupplierIds.add(supplier.supplierId)
+    })
+
+    form.suppliers.forEach((supplier, index) => {
+      if (supplier.supplierId && duplicateSupplierIds.has(supplier.supplierId)) {
+        supplierRows[index].supplierId = 'Isti dobavljač ne može biti dodan više puta.'
+      }
+    })
+
+    if (supplierRows.some((row) => Object.keys(row).length > 0)) {
+      errors.supplierRows = supplierRows
+    }
+  }
+
   return errors
 }
 
@@ -485,12 +572,16 @@ export function buildArticlePayload(form: WarehouseArticleFormState): ArticleMut
     pack_uom: form.packUom ?? null,
     barcode: normalizeOptionalText(form.barcode),
     manufacturer: normalizeOptionalText(form.manufacturer),
-    manufacturer_art_number: normalizeOptionalText(form.manufacturerArtNumber),
     has_batch: form.hasBatch,
     reorder_threshold: parseOptionalNumber(form.reorderThreshold),
     reorder_coverage_days: parseOptionalInteger(form.reorderCoverageDays),
     density: 1,
     is_active: form.isActive,
+    suppliers: form.suppliers.map((supplier) => ({
+      supplier_id: Number(supplier.supplierId),
+      supplier_article_code: normalizeOptionalText(supplier.supplierArticleCode),
+      is_preferred: supplier.isPreferred,
+    })),
   }
 }
 
@@ -500,6 +591,16 @@ export function mapArticleApiErrorToFormErrors(
   const message = apiError?.message ?? ''
   const normalizedMessage = message.toLowerCase()
   const translatedMessage = translateArticleApiMessage(apiError, '')
+
+  const supplierIdMatch = message.match(/^suppliers\[(\d+)\]\.supplier_id/)
+  if (supplierIdMatch) {
+    const index = Number.parseInt(supplierIdMatch[1], 10)
+    const supplierRows = Array.from({ length: index + 1 }, () => ({}))
+    supplierRows[index] = {
+      supplierId: 'Dobavljač je obavezan.',
+    }
+    return { supplierRows }
+  }
 
   if (
     apiError?.error === 'ARTICLE_ALREADY_EXISTS' ||
@@ -543,6 +644,10 @@ export function mapArticleApiErrorToFormErrors(
 
   if (normalizedMessage.startsWith('density')) {
     return { density: translatedMessage || message }
+  }
+
+  if (normalizedMessage.startsWith('suppliers')) {
+    return { suppliers: translatedMessage || message }
   }
 
   return {}

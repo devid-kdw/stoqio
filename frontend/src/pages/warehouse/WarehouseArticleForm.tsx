@@ -1,9 +1,14 @@
 import {
+  Button,
+  Checkbox,
+  Group,
+  Loader,
   NumberInput,
   Select,
   SimpleGrid,
   Stack,
   Switch,
+  Text,
   TextInput,
   Textarea,
 } from '@mantine/core'
@@ -11,12 +16,15 @@ import {
 import type {
   ArticleCategoryLookupItem,
   ArticleUomLookupItem,
+  SupplierLookupItem,
 } from '../../api/articles'
 import {
   buildUomMap,
+  createArticleSupplierFormItem,
   getQuantityScale,
   getQuantityStep,
   type WarehouseArticleFormErrors,
+  type WarehouseArticleSupplierFormItem,
   type WarehouseArticleFormState,
 } from './warehouseUtils'
 
@@ -25,7 +33,11 @@ interface WarehouseArticleFormProps {
   errors: WarehouseArticleFormErrors
   categories: ArticleCategoryLookupItem[]
   uoms: ArticleUomLookupItem[]
+  supplierOptions: SupplierLookupItem[]
+  supplierOptionsLoading?: boolean
+  supplierOptionsError?: string | null
   disabled?: boolean
+  onRetrySuppliers?: () => void
   onChange: <K extends keyof WarehouseArticleFormState>(
     field: K,
     value: WarehouseArticleFormState[K]
@@ -37,10 +49,45 @@ export default function WarehouseArticleForm({
   errors,
   categories,
   uoms,
+  supplierOptions,
+  supplierOptionsLoading = false,
+  supplierOptionsError = null,
   disabled = false,
+  onRetrySuppliers,
   onChange,
 }: WarehouseArticleFormProps) {
   const uomMap = buildUomMap(uoms)
+  const supplierSelectData = supplierOptions.map((supplier) => ({
+    value: String(supplier.id),
+    label: `${supplier.name} (${supplier.internal_code})`,
+  }))
+
+  const addSupplier = () => {
+    onChange('suppliers', [...form.suppliers, createArticleSupplierFormItem()])
+  }
+
+  const updateSupplier = (
+    index: number,
+    field: keyof WarehouseArticleSupplierFormItem,
+    value: WarehouseArticleSupplierFormItem[typeof field]
+  ) => {
+    const nextSuppliers = form.suppliers.map((supplier, supplierIndex) =>
+      supplierIndex === index
+        ? {
+            ...supplier,
+            [field]: value,
+          }
+        : supplier
+    )
+    onChange('suppliers', nextSuppliers)
+  }
+
+  const removeSupplier = (key: string) => {
+    onChange(
+      'suppliers',
+      form.suppliers.filter((supplier) => supplier.key !== key)
+    )
+  }
 
   return (
     <Stack gap="md">
@@ -136,20 +183,11 @@ export default function WarehouseArticleForm({
         />
 
         <TextInput
-          label="Proizvođač"
+          label="Proizvođač (opcionalno)"
           placeholder="Opcionalno"
           value={form.manufacturer}
           onChange={(event) => onChange('manufacturer', event.currentTarget.value)}
           error={errors.manufacturer}
-          disabled={disabled}
-        />
-
-        <TextInput
-          label="Šifra proizvođača"
-          placeholder="Opcionalno"
-          value={form.manufacturerArtNumber}
-          onChange={(event) => onChange('manufacturerArtNumber', event.currentTarget.value)}
-          error={errors.manufacturerArtNumber}
           disabled={disabled}
         />
 
@@ -181,6 +219,110 @@ export default function WarehouseArticleForm({
           disabled={disabled}
         />
       </SimpleGrid>
+
+      <Stack gap="sm">
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Text fw={600}>Dobavljači</Text>
+            <Text size="sm" c="dimmed">
+              Poveži dobavljače i njihove šifre artikla po potrebi.
+            </Text>
+          </div>
+
+          <Button
+            type="button"
+            variant="light"
+            onClick={addSupplier}
+            disabled={disabled || supplierOptionsLoading || Boolean(supplierOptionsError)}
+          >
+            + Dodaj dobavljača
+          </Button>
+        </Group>
+
+        {errors.suppliers ? (
+          <Text size="sm" c="red">
+            {errors.suppliers}
+          </Text>
+        ) : null}
+
+        {supplierOptionsLoading ? (
+          <Group gap="xs">
+            <Loader size="xs" />
+            <Text size="sm" c="dimmed">
+              Učitavanje dobavljača…
+            </Text>
+          </Group>
+        ) : null}
+
+        {supplierOptionsError ? (
+          <Group justify="space-between" align="center">
+            <Text size="sm" c="red">
+              {supplierOptionsError}
+            </Text>
+            {onRetrySuppliers ? (
+              <Button type="button" size="xs" variant="default" onClick={onRetrySuppliers}>
+                Pokušaj ponovno
+              </Button>
+            ) : null}
+          </Group>
+        ) : null}
+
+        {form.suppliers.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            Nije dodan nijedan dobavljač.
+          </Text>
+        ) : (
+          <Stack gap="md">
+            {form.suppliers.map((supplier, index) => (
+              <SimpleGrid key={supplier.key} cols={{ base: 1, md: 4 }} spacing="md">
+                <Select
+                  label="Dobavljač"
+                  placeholder="Odaberi dobavljača"
+                  searchable
+                  nothingFoundMessage="Nema rezultata."
+                  data={supplierSelectData}
+                  value={supplier.supplierId}
+                  onChange={(value) => updateSupplier(index, 'supplierId', value)}
+                  error={errors.supplierRows?.[index]?.supplierId}
+                  disabled={disabled || supplierOptionsLoading || Boolean(supplierOptionsError)}
+                />
+
+                <TextInput
+                  label="Šifra artikla kod dobavljača"
+                  placeholder="Opcionalno"
+                  value={supplier.supplierArticleCode}
+                  onChange={(event) =>
+                    updateSupplier(index, 'supplierArticleCode', event.currentTarget.value)
+                  }
+                  error={errors.supplierRows?.[index]?.supplierArticleCode}
+                  disabled={disabled}
+                />
+
+                <Checkbox
+                  mt={30}
+                  label="Preferirani dobavljač"
+                  checked={supplier.isPreferred}
+                  onChange={(event) =>
+                    updateSupplier(index, 'isPreferred', event.currentTarget.checked)
+                  }
+                  disabled={disabled}
+                />
+
+                <Button
+                  type="button"
+                  variant="default"
+                  color="red"
+                  mt={24}
+                  onClick={() => removeSupplier(supplier.key)}
+                  disabled={disabled}
+                >
+                  Ukloni
+                </Button>
+              </SimpleGrid>
+            ))}
+          </Stack>
+        )}
+      </Stack>
     </Stack>
   )
 }
