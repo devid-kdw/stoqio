@@ -9,6 +9,28 @@ from app.models.article_alias import ArticleAlias
 from tests.test_articles import _auth_header, _login, warehouse_data
 
 
+@pytest.fixture(autouse=True)
+def _restore_aliases(app, warehouse_data):
+    """Keep alias tests isolated from the shared Warehouse module fixture."""
+    with app.app_context():
+        baseline_ids = {row[0] for row in db.session.query(ArticleAlias.id).all()}
+
+    yield
+
+    with app.app_context():
+        current_ids = {row[0] for row in db.session.query(ArticleAlias.id).all()}
+        extra_ids = current_ids - baseline_ids
+        if extra_ids:
+            (
+                db.session.query(ArticleAlias)
+                .filter(ArticleAlias.id.in_(extra_ids))
+                .delete(synchronize_session=False)
+            )
+            db.session.commit()
+        else:
+            db.session.rollback()
+
+
 class TestArticleAliases:
     def test_add_alias_returns_201_and_saves_normalized(self, client, app, warehouse_data):
         article_id = warehouse_data["active_article"].id
@@ -58,7 +80,13 @@ class TestArticleAliases:
         article_id = warehouse_data["batch_article"].id
         token = _login(client, "warehouse_admin")
 
-        # Depending on previous test's "Duplicate Test"
+        setup_resp = client.post(
+            f"/api/v1/articles/{article_id}/aliases",
+            json={"alias": "Duplicate Test"},
+            headers=_auth_header(token),
+        )
+        assert setup_resp.status_code == 201
+
         resp = client.post(
             f"/api/v1/articles/{article_id}/aliases",
             json={"alias": " dUplicAte TEst "},

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Enum as SAEnum
 
 from app.extensions import db
-from app.models.enums import InventoryCountStatus, InventoryCountLineResolution
+from app.models.enums import InventoryCountStatus, InventoryCountLineResolution, InventoryCountType
 
 
 class InventoryCount(db.Model):
@@ -20,6 +20,15 @@ class InventoryCount(db.Model):
         ),
         nullable=False,
         default=InventoryCountStatus.IN_PROGRESS,
+    )
+    type = db.Column(
+        SAEnum(
+            InventoryCountType,
+            name="inventory_count_type",
+            create_constraint=True,
+        ),
+        nullable=False,
+        default=InventoryCountType.REGULAR,
     )
     note = db.Column(db.Text, nullable=True)
     started_by = db.Column(

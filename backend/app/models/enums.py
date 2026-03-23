@@ -61,6 +61,11 @@ class InventoryCountStatus(str, enum.Enum):
     COMPLETED = "COMPLETED"
 
 
+class InventoryCountType(str, enum.Enum):
+    REGULAR = "REGULAR"
+    OPENING = "OPENING"
+
+
 class InventoryCountLineResolution(str, enum.Enum):
     SURPLUS_ADDED = "SURPLUS_ADDED"
     SHORTAGE_DRAFT_CREATED = "SHORTAGE_DRAFT_CREATED"

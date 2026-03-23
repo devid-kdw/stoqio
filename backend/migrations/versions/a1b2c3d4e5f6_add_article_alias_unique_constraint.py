@@ -16,16 +16,32 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_unique_constraint(
-        "uq_article_alias_article_normalized",
-        "article_alias",
-        ["article_id", "normalized"],
-    )
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        with op.batch_alter_table("article_alias") as batch_op:
+            batch_op.create_unique_constraint(
+                "uq_article_alias_article_normalized",
+                ["article_id", "normalized"],
+            )
+    else:
+        op.create_unique_constraint(
+            "uq_article_alias_article_normalized",
+            "article_alias",
+            ["article_id", "normalized"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "uq_article_alias_article_normalized",
-        "article_alias",
-        type_="unique",
-    )
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        with op.batch_alter_table("article_alias") as batch_op:
+            batch_op.drop_constraint(
+                "uq_article_alias_article_normalized",
+                type_="unique",
+            )
+    else:
+        op.drop_constraint(
+            "uq_article_alias_article_normalized",
+            "article_alias",
+            type_="unique",
+        )

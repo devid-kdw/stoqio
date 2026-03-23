@@ -37,6 +37,7 @@ from app.models.enums import (
     DraftType,
     InventoryCountLineResolution,
     InventoryCountStatus,
+    InventoryCountType,
     TxType,
 )
 from app.models.inventory_count import InventoryCount, InventoryCountLine
@@ -152,8 +153,21 @@ def _serialize_line(line: InventoryCountLine) -> dict:
 # Start count
 # ---------------------------------------------------------------------------
 
-def start_count(current_user: User) -> dict:
+def start_count(current_user: User, count_type: InventoryCountType = InventoryCountType.REGULAR) -> dict:
     """Snapshot all active articles and open a new IN_PROGRESS count."""
+    if count_type == InventoryCountType.OPENING:
+        opening_exists = (
+            db.session.query(InventoryCount)
+            .filter_by(type=InventoryCountType.OPENING)
+            .first()
+        )
+        if opening_exists:
+            raise InventoryServiceError(
+                "OPENING_COUNT_EXISTS",
+                "Opening stock count already exists.",
+                400,
+            )
+
     existing = (
         db.session.query(InventoryCount)
         .filter_by(status=InventoryCountStatus.IN_PROGRESS)
@@ -172,6 +186,7 @@ def start_count(current_user: User) -> dict:
 
     count = InventoryCount(
         status=InventoryCountStatus.IN_PROGRESS,
+        type=count_type,
         started_by=current_user.id,
         started_at=now,
     )
@@ -260,6 +275,7 @@ def start_count(current_user: User) -> dict:
     return {
         "id": count.id,
         "status": count.status.value,
+        "type": count.type.value,
         "started_by": current_user.username,
         "started_at": count.started_at.isoformat(),
         "total_lines": line_count,
@@ -279,6 +295,12 @@ def list_counts(page: int, per_page: int) -> dict:
     total = query.count()
     counts = query.offset((page - 1) * per_page).limit(per_page).all()
 
+    opening_count_exists = (
+        db.session.query(InventoryCount)
+        .filter_by(type=InventoryCountType.OPENING)
+        .first()
+    ) is not None
+
     items = []
     for count in counts:
         total_lines = count.lines.count()
@@ -293,6 +315,7 @@ def list_counts(page: int, per_page: int) -> dict:
             {
                 "id": count.id,
                 "status": count.status.value,
+                "type": count.type.value,
                 "started_by": starter.username if starter else None,
                 "started_at": (
                     count.started_at.isoformat() if count.started_at else None
@@ -305,7 +328,13 @@ def list_counts(page: int, per_page: int) -> dict:
             }
         )
 
-    return {"items": items, "total": total, "page": page, "per_page": per_page}
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "opening_count_exists": opening_count_exists,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +362,7 @@ def get_active_count() -> dict | None:
     return {
         "id": count.id,
         "status": count.status.value,
+        "type": count.type.value,
         "started_by": starter.username if starter else None,
         "started_at": count.started_at.isoformat() if count.started_at else None,
         "completed_at": None,
@@ -368,6 +398,7 @@ def get_count_detail(count_id: int) -> dict:
     return {
         "id": count.id,
         "status": count.status.value,
+        "type": count.type.value,
         "started_by": starter.username if starter else None,
         "started_at": count.started_at.isoformat() if count.started_at else None,
         "completed_at": (

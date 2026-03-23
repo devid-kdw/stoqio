@@ -29,6 +29,7 @@ import {
   type CountDetail,
   type HistoryItem,
   type InventoryCountLine,
+  type InventoryCountType,
 } from '../../api/inventory'
 import FullPageState from '../../components/shared/FullPageState'
 import { getApiErrorBody, isNetworkOrServerError, runWithRetry } from '../../utils/http'
@@ -113,6 +114,7 @@ interface HistoryViewProps {
   total: number
   page: number
   loading: boolean
+  openingCountExists: boolean
   onPageChange: (page: number) => void
   onRowClick: (id: number) => void
   onCountStarted: (count: ActiveCount) => void
@@ -124,6 +126,7 @@ function HistoryView({
   total,
   page,
   loading,
+  openingCountExists,
   onPageChange,
   onRowClick,
   onCountStarted,
@@ -131,30 +134,50 @@ function HistoryView({
 }: HistoryViewProps) {
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
+  const [typeModalOpen, setTypeModalOpen] = useState(false)
+  const [typeModalError, setTypeModalError] = useState<string | null>(null)
 
-  async function handleStart() {
+  async function doStart(type: InventoryCountType) {
     setStarting(true)
     setStartError(null)
+    setTypeModalError(null)
     try {
-      await runWithRetry(() => inventoryApi.start())
+      await runWithRetry(() => inventoryApi.start(type))
       const active = await runWithRetry(() => inventoryApi.getActive())
       if (active) {
+        setTypeModalOpen(false)
         showSuccessToast('Inventura pokrenuta.')
         onCountStarted(active)
       }
     } catch (err) {
       if (isNetworkOrServerError(err)) {
+        setTypeModalOpen(false)
         onFatalError()
         return
       }
       if (axios.isAxiosError(err) && err.response?.status === 400) {
         const body = getApiErrorBody(err)
-        setStartError(body?.message || 'Greška pri pokretanju inventure.')
+        const msg = body?.message || 'Greška pri pokretanju inventure.'
+        if (type === 'OPENING') {
+          setTypeModalError(msg)
+        } else {
+          setTypeModalOpen(false)
+          setStartError(msg)
+        }
       } else {
         showErrorToast('Greška pri pokretanju inventure. Pokušajte ponovo.')
       }
     } finally {
       setStarting(false)
+    }
+  }
+
+  function handleStart() {
+    if (!openingCountExists) {
+      setTypeModalError(null)
+      setTypeModalOpen(true)
+    } else {
+      doStart('REGULAR')
     }
   }
 
@@ -213,7 +236,12 @@ function HistoryView({
                       <Table.Td>{item.total_lines}</Table.Td>
                       <Table.Td>{item.discrepancies}</Table.Td>
                       <Table.Td>
-                        <Badge color="teal">ZAVRŠENA</Badge>
+                        <Group gap="xs">
+                          <Badge color="teal">ZAVRŠENA</Badge>
+                          {item.type === 'OPENING' && (
+                            <Badge color="violet">Opening Stock</Badge>
+                          )}
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
                   ))
@@ -229,6 +257,31 @@ function HistoryView({
           <Pagination total={totalPages} value={page} onChange={onPageChange} />
         </Group>
       )}
+
+      <Modal
+        opened={typeModalOpen}
+        onClose={() => !starting && setTypeModalOpen(false)}
+        title="Odaberi vrstu inventure"
+      >
+        <Stack>
+          {typeModalError && (
+            <Alert color="red" onClose={() => setTypeModalError(null)} withCloseButton>
+              {typeModalError}
+            </Alert>
+          )}
+          <Button
+            variant="outline"
+            color="violet"
+            loading={starting}
+            onClick={() => doStart('OPENING')}
+          >
+            Opening Stock Count
+          </Button>
+          <Button loading={starting} onClick={() => doStart('REGULAR')}>
+            Regular Count
+          </Button>
+        </Stack>
+      </Modal>
     </Stack>
   )
 }
@@ -389,7 +442,12 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
     <Stack gap="lg" p="md">
       <Group justify="space-between" align="flex-start">
         <Stack gap={2}>
-          <Title order={2}>Inventura u tijeku</Title>
+          <Group gap="sm" align="center">
+            <Title order={2}>Inventura u tijeku</Title>
+            {count.type === 'OPENING' && (
+              <Badge color="violet" size="lg">Opening Stock</Badge>
+            )}
+          </Group>
           <Text c="dimmed" size="sm">
             Pokrenuo: {count.started_by || '—'} &nbsp;|&nbsp; {formatDateTime(count.started_at)}
           </Text>
@@ -596,6 +654,9 @@ function CompletedDetailView({ count, onBack }: CompletedDetailViewProps) {
           Natrag
         </Button>
         <Title order={2}>Završena inventura #{count.id}</Title>
+        {count.type === 'OPENING' && (
+          <Badge color="violet" size="lg">Opening Stock</Badge>
+        )}
       </Group>
 
       {/* Metadata header */}
@@ -757,6 +818,7 @@ export default function InventoryCountPage() {
   const [historyTotal, setHistoryTotal] = useState(0)
   const [historyPage, setHistoryPage] = useState(1)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [openingCountExists, setOpeningCountExists] = useState(true)
   const [detailCount, setDetailCount] = useState<CountDetail | null>(null)
 
   const loadHistory = useCallback(async (page: number) => {
@@ -766,6 +828,7 @@ export default function InventoryCountPage() {
       setHistoryItems(data.items)
       setHistoryTotal(data.total)
       setHistoryPage(page)
+      setOpeningCountExists(data.opening_count_exists)
       setView('history')
     } catch {
       setView('load-error')
@@ -858,6 +921,7 @@ export default function InventoryCountPage() {
       total={historyTotal}
       page={historyPage}
       loading={historyLoading}
+      openingCountExists={openingCountExists}
       onPageChange={loadHistory}
       onRowClick={handleHistoryRowClick}
       onFatalError={() => setView('load-error')}

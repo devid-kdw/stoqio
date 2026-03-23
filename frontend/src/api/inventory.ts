@@ -1,5 +1,7 @@
 import client from './client'
 
+export type InventoryCountType = 'REGULAR' | 'OPENING'
+
 export interface InventoryCountSummary {
   total_lines: number
   no_change: number
@@ -26,6 +28,7 @@ export interface InventoryCountLine {
 export interface ActiveCount {
   id: number
   status: 'IN_PROGRESS'
+  type: InventoryCountType
   started_by: string | null
   started_at: string | null
   completed_at: null
@@ -37,6 +40,7 @@ export interface ActiveCount {
 export interface HistoryItem {
   id: number
   status: 'COMPLETED'
+  type: InventoryCountType
   started_by: string | null
   started_at: string | null
   completed_at: string | null
@@ -49,11 +53,13 @@ export interface HistoryResponse {
   total: number
   page: number
   per_page: number
+  opening_count_exists: boolean
 }
 
 export interface CountDetail {
   id: number
   status: string
+  type: InventoryCountType
   started_by: string | null
   started_at: string | null
   completed_at: string | null
@@ -80,8 +86,8 @@ export const inventoryApi = {
   },
 
   /** POST /api/v1/inventory — start a new count */
-  start: async (): Promise<void> => {
-    await client.post('/inventory')
+  start: async (type?: InventoryCountType): Promise<void> => {
+    await client.post('/inventory', type ? { type } : undefined)
   },
 
   /** GET /api/v1/inventory/{id} — read-only detail for any count */

@@ -547,3 +547,25 @@
 - Decision: Article aliases are managed inline from the Warehouse article detail screen through `POST /api/v1/articles/{id}/aliases` and `DELETE /api/v1/articles/{id}/aliases/{alias_id}`. Alias uniqueness is scoped per article on the lowercase-trimmed normalized value, so case-only or whitespace-only variants of an existing alias for the same article conflict. `GET /api/v1/articles/{id}` must expose alias IDs plus display strings for the read-mode alias section and may keep the existing enriched `normalized` field. Identifier search continues to resolve articles through `ArticleAlias.normalized`.
 - Impact: Backend agents must not enforce alias uniqueness globally across all articles, frontend agents must keep alias mutation controls ADMIN-only while preserving MANAGER read-only visibility of the alias list, and testing must cover normalized duplicate rejection plus identifier discoverability after alias creation.
 - Docs update required: yes
+
+---
+
+## DEC-INV-007
+
+- Date: 2026-03-23
+- Phase: phase-04-wave-01-opening-inventory-count
+- Source: User-directed orchestrator brief for the opening-stock inventory follow-up
+- Decision: `InventoryCount` now distinguishes `type = REGULAR | OPENING`. Only one `OPENING` count row may exist in the entire system regardless of status, while the existing "only one count may be IN_PROGRESS at a time" rule remains unchanged. `OPENING` counts use the exact same snapshot and completion semantics as `REGULAR` counts: surpluses go to `Surplus`, shortages create `INVENTORY_SHORTAGE` drafts, and no special reconciliation path is introduced. To support the Inventory history start-flow without requiring a full paginated history scan, `GET /api/v1/inventory` must additionally expose `opening_count_exists`, and any response that describes a count should include `type`.
+- Impact: Backend agents must preserve both the active-count singleton rule and the new opening-count singleton rule without forking completion logic. Frontend agents must use `opening_count_exists` to decide whether to offer the "Opening Stock Count" start option and must visibly label `OPENING` counts in history/detail views. Testing must cover second-opening rejection, `type` serialization, and unchanged discrepancy outcomes for completed opening counts.
+- Docs update required: yes
+
+---
+
+## DEC-BE-015
+
+- Date: 2026-03-23
+- Phase: phase-04-wave-01-opening-inventory-count
+- Source: Backend agent discovery during Wave 1 Phase 4 implementation
+- Decision: Migration `a1b2c3d4e5f6_add_article_alias_unique_constraint.py` was missing SQLite batch mode for `op.create_unique_constraint`, causing `test_phase2_models.py` to fail with `NotImplementedError` on every fresh SQLite upgrade-to-head. Fixed in-place during Phase 4 to use `op.batch_alter_table` for SQLite and the standard `op.create_unique_constraint` for other dialects. The migration revision ID is unchanged.
+- Impact: Fresh SQLite Alembic upgrades now complete cleanly to head. Any database that already ran the previous broken version of this migration will not be re-run (Alembic version table guards it), so only new installs benefit; existing SQLite dev databases may still lack the unique constraint and should be rebuilt from scratch.
+- Docs update required: no

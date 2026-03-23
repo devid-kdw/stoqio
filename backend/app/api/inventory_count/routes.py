@@ -8,6 +8,7 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
+from app.models.enums import InventoryCountType
 from app.services import inventory_service
 from app.services.inventory_service import InventoryServiceError
 from app.utils.auth import get_current_user, require_role
@@ -85,7 +86,17 @@ def start_count():
     """POST /api/v1/inventory — start a new inventory count."""
     try:
         current_user = get_current_user()
-        result = inventory_service.start_count(current_user)
+        body = request.get_json(silent=True) or {}
+        raw_type = body.get("type", "REGULAR")
+        try:
+            count_type = InventoryCountType(raw_type)
+        except ValueError:
+            return _error(
+                "VALIDATION_ERROR",
+                f"'type' must be one of: {[t.value for t in InventoryCountType]}.",
+                400,
+            )
+        result = inventory_service.start_count(current_user, count_type=count_type)
         return jsonify(result), 201
     except InventoryServiceError as exc:
         db.session.rollback()

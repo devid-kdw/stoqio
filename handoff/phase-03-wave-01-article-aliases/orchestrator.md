@@ -300,3 +300,30 @@ Result
 
 Next Action
 - Wave 1 Phase 3 can now proceed to browser re-test on the backend-served app using the refreshed static bundle.
+
+## [2026-03-23 20:28] Orchestrator Repo-Health Follow-Up - Alias Test Isolation
+
+Status
+- completed
+
+Scope
+- Fixed the backend test isolation issue discovered later during Wave 1 Phase 4 validation, where alias-suite mutations leaked into Warehouse article-detail assertions.
+
+Files Changed
+- `backend/tests/test_aliases.py`
+- `handoff/phase-03-wave-01-article-aliases/orchestrator.md`
+
+What Changed
+- Added per-test alias cleanup in `backend/tests/test_aliases.py` so aliases created by alias tests do not persist into later backend modules.
+- Made the casing-duplicate alias test self-contained instead of depending on another alias test having already created `"Duplicate Test"`.
+
+Verification
+- `backend/venv/bin/pytest backend/tests/test_aliases.py backend/tests/test_articles.py -q` -> `40 passed`
+- `backend/venv/bin/pytest backend/tests -q` -> `277 passed, 1 warning`
+
+Result
+- The previously observed alias-fixture contamination is resolved.
+- The backend suite is now clean again, aside from the known SQLite Alembic warning unrelated to Phase 3 behavior.
+
+Next Action
+- No additional Phase 3 follow-up remains open from this test-isolation issue.

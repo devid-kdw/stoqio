@@ -354,6 +354,7 @@ def test_history_empty(client, inv_data):
     data = resp.get_json()
     assert data["total"] == 0
     assert data["items"] == []
+    assert data["opening_count_exists"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +378,7 @@ def test_start_count(client, inv_data, app):
     assert resp.status_code == 201
     data = resp.get_json()
     assert data["status"] == "IN_PROGRESS"
+    assert data["type"] == "REGULAR"
     assert data["started_by"] == "inv_admin"
     # At least our 3 test articles are included (DB may contain articles from other modules)
     assert data["total_lines"] >= 3
@@ -409,6 +411,7 @@ def test_active_count_returned(client, inv_data, app):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["status"] == "IN_PROGRESS"
+    assert data["type"] == "REGULAR"
     # At least our 3 test articles present
     assert len(data["lines"]) >= 3
     # Progress: nothing counted yet (our articles)
@@ -681,6 +684,7 @@ def test_history_shows_completed(client, inv_data):
     assert data["total"] >= 1
     completed = data["items"][0]
     assert completed["status"] == "COMPLETED"
+    assert completed["type"] == "REGULAR"
     assert completed["started_by"] == "inv_admin"
     assert completed["total_lines"] >= 3
     # INV-ART-001 surplus and INV-ART-002 shortage are discrepancies
@@ -714,6 +718,7 @@ def test_count_detail(client, inv_data, app):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["status"] == "COMPLETED"
+    assert data["type"] == "REGULAR"
     assert data["summary"]["total_lines"] >= 3
     assert data["summary"]["surplus_added"] >= 1
     assert data["summary"]["shortage_drafts_created"] >= 1
@@ -844,3 +849,126 @@ def test_count_detail_not_found(client, inv_data):
     resp = client.get("/api/v1/inventory/99999", headers=headers)
     assert resp.status_code == 404
     assert resp.get_json()["error"] == "COUNT_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Test: OPENING count lifecycle
+# ---------------------------------------------------------------------------
+
+def test_start_opening_count(client, inv_data):
+    headers = _admin_headers(client)
+    resp = client.post(
+        "/api/v1/inventory",
+        json={"type": "OPENING"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data["type"] == "OPENING"
+    assert data["status"] == "IN_PROGRESS"
+
+
+def test_active_count_opening_type(client, inv_data):
+    headers = _admin_headers(client)
+    resp = client.get("/api/v1/inventory/active", headers=headers)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["type"] == "OPENING"
+
+
+def test_second_opening_while_first_opening_is_in_progress_is_blocked(client, inv_data):
+    headers = _admin_headers(client)
+    resp = client.post(
+        "/api/v1/inventory",
+        json={"type": "OPENING"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["error"] == "OPENING_COUNT_EXISTS"
+    assert data["message"] == "Opening stock count already exists."
+
+
+def test_complete_opening_count_generates_discrepancies(client, inv_data):
+    headers = _admin_headers(client)
+    active = client.get("/api/v1/inventory/active", headers=headers).get_json()
+    count_id = active["id"]
+
+    for line in active["lines"]:
+        qty = line["system_quantity"]
+        if line["article_no"] == "INV-ART-002":
+            qty = line["system_quantity"] - 1  # Shortage
+        elif line["article_no"] == "INV-ART-001":
+            qty = line["system_quantity"] + 1  # Surplus
+        
+        payload_qty = int(qty) if qty == int(qty) else qty
+        client.patch(
+            f"/api/v1/inventory/{count_id}/lines/{line['line_id']}",
+            json={"counted_quantity": payload_qty},
+            headers=headers,
+        )
+
+    resp = client.post(f"/api/v1/inventory/{count_id}/complete", headers=headers)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "COMPLETED"
+    assert data["summary"]["surplus_added"] >= 1
+    assert data["summary"]["shortage_drafts_created"] >= 1
+
+
+def test_start_second_opening_count_blocked(client, inv_data):
+    headers = _admin_headers(client)
+    resp = client.post(
+        "/api/v1/inventory",
+        json={"type": "OPENING"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["error"] == "OPENING_COUNT_EXISTS"
+    assert data["message"] == "Opening stock count already exists."
+
+
+def test_start_regular_count_allowed_when_opening_exists(client, inv_data):
+    headers = _admin_headers(client)
+    resp = client.post(
+        "/api/v1/inventory",
+        json={"type": "REGULAR"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    
+    count_id = resp.get_json()["id"]
+    active = client.get("/api/v1/inventory/active", headers=headers).get_json()
+    for line in active["lines"]:
+        qty = line["system_quantity"]
+        qty = int(qty) if qty == int(qty) else qty
+        client.patch(
+            f"/api/v1/inventory/{count_id}/lines/{line['line_id']}",
+            json={"counted_quantity": qty},
+            headers=headers,
+        )
+    client.post(f"/api/v1/inventory/{count_id}/complete", headers=headers)
+
+
+def test_history_shows_opening_count_exists_flag_and_details(client, inv_data):
+    headers = _admin_headers(client)
+    resp = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["opening_count_exists"] is True
+
+    opening_counts = [c for c in data["items"] if c["type"] == "OPENING"]
+    assert len(opening_counts) == 1
+    assert opening_counts[0]["status"] == "COMPLETED"
+    
+def test_count_detail_shows_opening_type(client, inv_data):
+    headers = _admin_headers(client)
+    history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+    opening_counts = [c for c in history["items"] if c["type"] == "OPENING"]
+    count_id = opening_counts[0]["id"]
+
+    resp = client.get(f"/api/v1/inventory/{count_id}", headers=headers)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["type"] == "OPENING"
