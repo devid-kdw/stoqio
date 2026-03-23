@@ -18,6 +18,13 @@ export interface RefreshResponse {
   access_token: string
 }
 
+export interface MeResponse {
+  id: number
+  username: string
+  role: string
+  is_active: boolean
+}
+
 export const authApi = {
   login: async (username: string, password: string): Promise<LoginResponse> => {
     const response = await authClient.post('/login', { username, password })
@@ -30,6 +37,20 @@ export const authApi = {
         Authorization: `Bearer ${refreshToken}`,
       },
     })
+    return response.data
+  },
+
+  me: async (accessToken?: string): Promise<MeResponse> => {
+    const response = await authClient.get(
+      '/me',
+      accessToken
+        ? {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        : undefined,
+    )
     return response.data
   },
 

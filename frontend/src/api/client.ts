@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { authApi } from './auth'
-import { useAuthStore } from '../store/authStore'
+import { getStoredRefreshToken, useAuthStore } from '../store/authStore'
 
 const client = axios.create({
   baseURL: '/api/v1',
@@ -66,13 +66,17 @@ client.interceptors.response.use(
         originalRequest._retry = true
         isRefreshing = true
 
-        const refreshToken = useAuthStore.getState().refreshToken
+        const refreshToken = useAuthStore.getState().refreshToken ?? getStoredRefreshToken()
 
         if (!refreshToken) {
           useAuthStore.getState().logout()
           isRefreshing = false
           forceLoginRedirect()
           return Promise.reject(error)
+        }
+
+        if (useAuthStore.getState().refreshToken !== refreshToken) {
+          useAuthStore.getState().hydrateRefreshToken(refreshToken)
         }
 
         try {

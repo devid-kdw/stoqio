@@ -514,3 +514,14 @@
 - Decision: Migration `7c2d2c6d0f4a` must explicitly create/drop PostgreSQL enum type `draft_group_type` before/after altering `draft_group.group_type`. SQLite tolerated the migration path, but PostgreSQL fresh installs failed with `type "draft_group_type" does not exist` until the migration was amended.
 - Impact: Fresh PostgreSQL installs, resets, and Pi deployments can now reach `alembic upgrade head` successfully on a clean database. Future agents modifying enum-adding migrations must not rely on SQLite-only validation for PostgreSQL DDL behavior.
 - Docs update required: no
+
+---
+
+## DEC-FE-006
+
+- Date: 2026-03-23
+- Phase: phase-16-v1-stabilization
+- Source: User-directed frontend auth refresh-on-reload fix against the existing Phase 3/16 auth baseline
+- Decision: Frontend auth storage is now split: the refresh token is persisted in browser `localStorage` under the exact key `stoqio_refresh_token`, while the access token remains Zustand memory-only. On app bootstrap, the frontend must check that key, silently call `POST /api/v1/auth/refresh`, then `GET /api/v1/auth/me`, and only render protected routes after hydrating Zustand with `{ user, accessToken, refreshToken, isAuthenticated }`. Any bootstrap failure clears the persisted refresh token, resets auth state, and redirects to `/login`.
+- Impact: Later frontend/auth work must no longer assume both tokens are memory-only as stated in the older architecture doc. Logout, 401 refresh recovery, and reload/bootstrap flows now depend on the persisted refresh-token policy, while access tokens must still never be written to `localStorage`.
+- Docs update required: yes

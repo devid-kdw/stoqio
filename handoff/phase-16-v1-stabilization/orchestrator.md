@@ -58,3 +58,68 @@ Residual Risks
 
 Next Action
 - Treat these fixes as the new baseline for post-V1 work. Future bugfix or feature phases should build on `revoked_token` and `DraftGroup.group_type`, not reintroduce date-only DraftGroup lookup or process-local logout revocation.
+
+## [2026-03-23 18:02] Orchestrator Validation - Frontend Auth Reload Persistence
+
+Status
+- accepted
+
+Scope
+- Reviewed the frontend-only auth persistence implementation added under the Phase 16 stabilization handoff trail.
+- Validated that refresh-token persistence, silent bootstrap, and reload behavior match the delegated scope without requiring backend changes.
+
+Docs Read
+- `stoqio_docs/07_ARCHITECTURE.md`
+- `frontend/src/main.tsx`
+- `frontend/src/store/authStore.ts`
+- `frontend/src/api/auth.ts`
+- `frontend/src/api/client.ts`
+- `frontend/src/components/layout/ProtectedRoute.tsx`
+- `frontend/src/pages/auth/LoginPage.tsx`
+- `handoff/phase-16-v1-stabilization/frontend.md`
+- `handoff/decisions/decision-log.md`
+
+Files Reviewed
+- `frontend/src/main.tsx`
+- `frontend/src/store/authStore.ts`
+- `frontend/src/api/auth.ts`
+- `frontend/src/api/client.ts`
+- `handoff/phase-16-v1-stabilization/frontend.md`
+- `handoff/decisions/decision-log.md`
+
+Commands Run
+```bash
+git status --short
+git diff --stat
+git diff -- frontend/src/api/auth.ts frontend/src/api/client.ts frontend/src/main.tsx frontend/src/store/authStore.ts handoff/decisions/decision-log.md handoff/phase-16-v1-stabilization/frontend.md
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+Validation Notes
+- No functional review findings were identified in the final frontend implementation.
+- Accepted storage split:
+- refresh token persists only under `stoqio_refresh_token`
+- access token remains memory-only in Zustand
+- Accepted bootstrap flow:
+- app bootstrap runs before route rendering in `frontend/src/main.tsx`
+- bootstrap calls `POST /api/v1/auth/refresh` and then `GET /api/v1/auth/me`
+- Zustand is hydrated with `user`, `accessToken`, `refreshToken`, and `isAuthenticated` before protected routes render
+- Accepted 401 recovery hardening:
+- axios refresh fallback can recover from a persisted refresh token after reload even before the store is fully hydrated
+- Accepted documentation trace:
+- `DEC-FE-006` records the new persisted-refresh-token policy and the fact that the older architecture doc is now stale
+
+Verification
+- `cd frontend && npm run lint` -> passed
+- `cd frontend && npm run build` -> passed
+- User manual browser verification accepted:
+- refresh on an authenticated page keeps the user logged in and on the same page
+
+Residual Risks
+- `stoqio_docs/07_ARCHITECTURE.md` still documents the older "both tokens are memory-only" policy. Until that doc is revised, `DEC-FE-006` is the accepted source of truth for auth persistence behavior.
+- This review did not reproduce the full manual matrix locally (expired-access reload, manual localStorage clearing, logout cleanup), so those checks remain manual-only evidence for now.
+
+Next Action
+- Keep this implementation as the active frontend auth bootstrap baseline.
+- When the locked architecture docs are next revised, replace the obsolete token-storage note with the `DEC-FE-006` policy.
