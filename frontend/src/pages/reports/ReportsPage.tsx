@@ -62,6 +62,7 @@ import { showErrorToast } from '../../utils/toasts'
 import {
   buildUomMap,
   formatCoverageMonths,
+  formatCurrency,
   formatDate,
   formatDateTime,
   formatDecimal,
@@ -1198,6 +1199,19 @@ export default function ReportsPage() {
                   </Alert>
                 ) : null}
 
+                {stockOverview ? (
+                  <Alert color="blue" title="Ukupna vrijednost skladišta">
+                    <Text size="sm" fw={600}>
+                      {formatCurrency(stockOverview.summary.warehouse_total_value)}
+                    </Text>
+                    {stockOverview.items.some((item: StockOverviewItem) => item.unit_value === null) ? (
+                      <Text size="xs" c="dimmed" mt={4}>
+                        Ukupna vrijednost ne uključuje artikle bez podatka o cijeni.
+                      </Text>
+                    ) : null}
+                  </Alert>
+                ) : null}
+
                 {stockError ? (
                   <Alert color="red" title="Pregled zaliha nije dostupan">
                     {stockError}
@@ -1227,12 +1241,14 @@ export default function ReportsPage() {
                           <Table.Th>Pokrivenost (mj.)</Table.Th>
                           <Table.Th>Prag naručivanja</Table.Th>
                           <Table.Th>Status</Table.Th>
+                          <Table.Th>Vrijednost / jed.</Table.Th>
+                          <Table.Th>Ukupna vrijednost</Table.Th>
                         </Table.Tr>
                       </Table.Thead>
                       <Table.Tbody>
                         {displayedStockItems.length === 0 ? (
                           <Table.Tr>
-                            <Table.Td colSpan={12}>
+                            <Table.Td colSpan={14}>
                               <Text c="dimmed" ta="center" py="md">
                                 {stockZoneFilter
                                   ? 'Nema artikala u odabranoj zoni za trenutne filtre.'
@@ -1263,6 +1279,8 @@ export default function ReportsPage() {
                               <Table.Td>
                                 <ReorderStatusBadge status={item.reorder_status} />
                               </Table.Td>
+                              <Table.Td>{formatCurrency(item.unit_value)}</Table.Td>
+                              <Table.Td>{formatCurrency(item.total_value)}</Table.Td>
                             </Table.Tr>
                           ))
                         )}

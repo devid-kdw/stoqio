@@ -119,6 +119,14 @@ export function formatDecimal(value: number | null, decimals = 2): string {
   return formatNumber(value, decimals)
 }
 
+export function formatCurrency(value: number | null): string {
+  if (value === null) {
+    return '—'
+  }
+
+  return `${formatNumber(value, 2)} €`
+}
+
 export function formatCoverageMonths(value: number | null): string {
   if (value === null) {
     return '∞'

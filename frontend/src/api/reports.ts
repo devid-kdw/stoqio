@@ -34,12 +34,19 @@ export interface StockOverviewItem {
   coverage_months: number | null
   reorder_threshold: number | null
   reorder_status: ReportReorderStatus
+  unit_value: number | null
+  total_value: number | null
+}
+
+export interface StockOverviewSummary {
+  warehouse_total_value: number
 }
 
 export interface StockOverviewResponse {
   period: StockOverviewPeriod
   items: StockOverviewItem[]
   total: number
+  summary: StockOverviewSummary
 }
 
 export interface SurplusReportItem {

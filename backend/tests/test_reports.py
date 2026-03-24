@@ -21,6 +21,7 @@ from app.models.employee import Employee
 from app.models.enums import QuotaEnforcement, TxType, UserRole
 from app.models.location import Location
 from app.models.personal_issuance import PersonalIssuance
+from app.models.receiving import Receiving
 from app.models.stock import Stock
 from app.models.supplier import Supplier
 from app.models.surplus import Surplus
@@ -723,6 +724,245 @@ def test_stock_overview_reorder_status_matches_locked_warehouse_semantics(client
     assert payload["total"] == 2
     assert [item["article_no"] for item in payload["items"]] == ["REP13-001", "REP13-002"]
     assert [item["reorder_status"] for item in payload["items"]] == ["YELLOW", "RED"]
+
+
+def test_stock_overview_response_includes_value_fields_and_summary(client, reports_data):
+    """Value fields and summary key exist in a standard response (no price data seeded here)."""
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert "summary" in payload
+    assert "warehouse_total_value" in payload["summary"]
+    for item in payload["items"]:
+        assert "unit_value" in item
+        assert "total_value" in item
+
+
+# ---------------------------------------------------------------------------
+# Stock overview value contract fixtures and tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def reports_value_data(app, reports_data):
+    """Seed Receiving rows and supplier last_price for value contract tests.
+
+    article_yellow (REP13-001):
+      - preferred supplier last_price = 15.00  (should lose to receiving price)
+      - older Receiving with unit_price = 12.50  (2026-01-01, should lose to newer)
+      - newer Receiving with unit_price = 20.00  (2026-03-01, SHOULD WIN)
+      - newest Receiving with unit_price = NULL   (2026-03-20, must NOT erase 20.00)
+      -> expected unit_value = 20.00, total_value = 8.0 * 20.00 = 160.00
+
+    article_normal (REP13-003):
+      - no Receiving rows with price
+      - preferred supplier last_price = 8.75  (should be used as fallback)
+      -> expected unit_value = 8.75, total_value = 25.0 * 8.75 = 218.75
+
+    article_red (REP13-002):
+      - no Receiving rows, no preferred supplier link
+      -> expected unit_value = null, total_value = null
+
+    warehouse_total_value = 160.00 + 218.75 = 378.75
+    """
+    with app.app_context():
+        article_yellow = Article.query.filter_by(article_no="REP13-001").first()
+        article_normal = Article.query.filter_by(article_no="REP13-003").first()
+        admin = User.query.filter_by(username="rep13_admin").first()
+        location = _db.session.get(Location, 1)
+        kg = UomCatalog.query.filter_by(code="rep13_kg").first()
+        supplier_primary = Supplier.query.filter_by(internal_code="REP13-SUP-001").first()
+
+        # Set preferred supplier last_price for article_yellow
+        link_yellow = ArticleSupplier.query.filter_by(
+            article_id=article_yellow.id,
+            supplier_id=supplier_primary.id,
+            is_preferred=True,
+        ).first()
+        link_yellow.last_price = Decimal("15.00")
+
+        # Add preferred supplier link for article_normal with last_price
+        link_normal = ArticleSupplier.query.filter_by(
+            article_id=article_normal.id,
+            supplier_id=supplier_primary.id,
+        ).first()
+        if link_normal is None:
+            _db.session.add(
+                ArticleSupplier(
+                    article_id=article_normal.id,
+                    supplier_id=supplier_primary.id,
+                    is_preferred=True,
+                    last_price=Decimal("8.75"),
+                )
+            )
+        else:
+            link_normal.is_preferred = True
+            link_normal.last_price = Decimal("8.75")
+
+        # Receiving: oldest non-null price for article_yellow (should lose to row 2)
+        if not Receiving.query.filter_by(
+            article_id=article_yellow.id,
+            delivery_note_number="REP13-VAL-DN-001",
+        ).first():
+            _db.session.add(
+                Receiving(
+                    article_id=article_yellow.id,
+                    location_id=location.id,
+                    quantity=Decimal("10.000"),
+                    uom=kg.code,
+                    unit_price=Decimal("12.50"),
+                    delivery_note_number="REP13-VAL-DN-001",
+                    received_by=admin.id,
+                    received_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+                )
+            )
+
+        # Receiving: newer non-null price for article_yellow (SHOULD WIN)
+        if not Receiving.query.filter_by(
+            article_id=article_yellow.id,
+            delivery_note_number="REP13-VAL-DN-002",
+        ).first():
+            _db.session.add(
+                Receiving(
+                    article_id=article_yellow.id,
+                    location_id=location.id,
+                    quantity=Decimal("20.000"),
+                    uom=kg.code,
+                    unit_price=Decimal("20.00"),
+                    delivery_note_number="REP13-VAL-DN-002",
+                    received_by=admin.id,
+                    received_at=datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc),
+                )
+            )
+
+        # Receiving: newest but null price for article_yellow (must NOT erase row 2)
+        if not Receiving.query.filter_by(
+            article_id=article_yellow.id,
+            delivery_note_number="REP13-VAL-DN-003",
+        ).first():
+            _db.session.add(
+                Receiving(
+                    article_id=article_yellow.id,
+                    location_id=location.id,
+                    quantity=Decimal("5.000"),
+                    uom=kg.code,
+                    unit_price=None,
+                    delivery_note_number="REP13-VAL-DN-003",
+                    received_by=admin.id,
+                    received_at=datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc),
+                )
+            )
+
+        _db.session.commit()
+
+
+def test_stock_overview_value_receiving_price_wins_over_supplier_last_price(
+    client, reports_data, reports_value_data
+):
+    """Most recent non-null receiving price beats preferred supplier last_price."""
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    yellow_item = _item_by_article(payload["items"], "REP13-001")
+    assert yellow_item["unit_value"] == 20.0
+
+
+def test_stock_overview_value_null_receiving_does_not_erase_older_known_price(
+    client, reports_data, reports_value_data
+):
+    """A newer Receiving row with unit_price=NULL must not overwrite an older non-null price."""
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    yellow_item = _item_by_article(payload["items"], "REP13-001")
+    # Must be 20.00 (non-null 2026-03-01 row), not null (2026-03-20 null row)
+    assert yellow_item["unit_value"] == 20.0
+
+
+def test_stock_overview_value_preferred_supplier_fallback_when_no_receiving_price(
+    client, reports_data, reports_value_data
+):
+    """When no receiving price exists, preferred supplier last_price is used."""
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    normal_item = _item_by_article(payload["items"], "REP13-003")
+    assert normal_item["unit_value"] == 8.75
+    assert normal_item["total_value"] == round(25.0 * 8.75, 2)
+
+
+def test_stock_overview_value_null_when_no_price_data(
+    client, reports_data, reports_value_data
+):
+    """Article with no receiving price and no preferred-supplier last_price returns nulls."""
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    red_item = _item_by_article(payload["items"], "REP13-002")
+    assert red_item["unit_value"] is None
+    assert red_item["total_value"] is None
+
+
+def test_stock_overview_value_total_value_uses_stock_not_surplus(
+    client, reports_data, reports_value_data
+):
+    """total_value = stock × unit_value; surplus is excluded from the calculation."""
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    yellow_item = _item_by_article(payload["items"], "REP13-001")
+    # stock=8.0 (not 11.0 which includes surplus 3.0)
+    assert yellow_item["stock"] == 8.0
+    assert yellow_item["total_value"] == round(8.0 * 20.0, 2)
+
+
+def test_stock_overview_summary_warehouse_total_excludes_null_price_articles(
+    client, reports_data, reports_value_data
+):
+    """warehouse_total_value sums non-null total_value items; null-price articles are excluded."""
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}",
+        headers=_admin_headers(client, reports_data),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    # yellow: 8.0 * 20.00 = 160.00
+    # normal: 25.0 * 8.75 = 218.75
+    # red: null (excluded)
+    expected_total = round(8.0 * 20.0 + 25.0 * 8.75, 2)
+    assert payload["summary"]["warehouse_total_value"] == expected_total
 
 
 # ---------------------------------------------------------------------------

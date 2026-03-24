@@ -26,6 +26,7 @@ from app.models.category import Category
 from app.models.employee import Employee
 from app.models.enums import TxType
 from app.models.personal_issuance import PersonalIssuance
+from app.models.receiving import Receiving
 from app.models.supplier import Supplier
 from app.models.surplus import Surplus
 from app.models.transaction import Transaction
@@ -35,6 +36,7 @@ _QTY_QUANT = Decimal("0.001")
 _MONTHS_QUANT = Decimal("0.01")
 _AVG_QUANT = Decimal("0.01")
 _COVERAGE_QUANT = Decimal("0.1")
+_VALUE_QUANT = Decimal("0.01")
 _PAGE_DEFAULT = 1
 _PER_PAGE_DEFAULT = 50
 _EXPORT_XLSX_MIMETYPE = (
@@ -318,6 +320,53 @@ def _stock_overview_movement_map(
     return result
 
 
+def _resolve_unit_value_map(article_ids: list[int]) -> dict[int, Decimal | None]:
+    """Resolve unit_value per article using locked priority:
+    1. Most recent Receiving row with non-null unit_price (received_at DESC, id DESC).
+    2. Preferred supplier's ArticleSupplier.last_price.
+    3. None.
+    """
+    if not article_ids:
+        return {}
+
+    result: dict[int, Decimal | None] = {aid: None for aid in article_ids}
+
+    rows = (
+        db.session.query(Receiving.article_id, Receiving.unit_price)
+        .filter(
+            Receiving.article_id.in_(article_ids),
+            Receiving.unit_price.isnot(None),
+        )
+        .order_by(
+            Receiving.article_id.asc(),
+            Receiving.received_at.desc(),
+            Receiving.id.desc(),
+        )
+        .all()
+    )
+    receiving_map: dict[int, Decimal] = {}
+    for article_id, unit_price in rows:
+        receiving_map.setdefault(article_id, _decimal_from_model(unit_price))
+    for article_id, price in receiving_map.items():
+        result[article_id] = price
+
+    no_price_ids = [aid for aid in article_ids if result[aid] is None]
+    if no_price_ids:
+        supplier_rows = (
+            db.session.query(ArticleSupplier.article_id, ArticleSupplier.last_price)
+            .filter(
+                ArticleSupplier.article_id.in_(no_price_ids),
+                ArticleSupplier.is_preferred.is_(True),
+                ArticleSupplier.last_price.isnot(None),
+            )
+            .all()
+        )
+        for article_id, last_price in supplier_rows:
+            result[article_id] = _decimal_from_model(last_price)
+
+    return result
+
+
 def _serialize_stock_overview_item(
     article: Article,
     *,
@@ -327,6 +376,7 @@ def _serialize_stock_overview_item(
     inbound_total: Decimal,
     outbound_total: Decimal,
     months_in_period: Decimal,
+    unit_value: Decimal | None,
 ) -> dict[str, Any]:
     total_available = stock_total + surplus_total
     avg_monthly = Decimal("0")
@@ -335,6 +385,9 @@ def _serialize_stock_overview_item(
         avg_monthly = outbound_total / months_in_period
         coverage = total_available / avg_monthly if avg_monthly > 0 else None
 
+    total_value: Decimal | None = (
+        stock_total * unit_value if unit_value is not None else None
+    )
     uom = article.base_uom_ref.code if article.base_uom_ref else None
     return {
         "article_id": article.id,
@@ -359,6 +412,8 @@ def _serialize_stock_overview_item(
             surplus_total,
             article.reorder_threshold,
         ),
+        "unit_value": _as_float(unit_value, _VALUE_QUANT),
+        "total_value": _as_float(total_value, _VALUE_QUANT),
     }
 
 
@@ -398,11 +453,14 @@ def get_stock_overview(
         started_at=_range_start(parsed_from),
         ended_at=_range_end_exclusive(parsed_to),
     )
+    unit_value_map = _resolve_unit_value_map(article_ids)
 
     items: list[dict[str, Any]] = []
+    warehouse_total_value = Decimal("0")
     for article in articles:
         stock_total, surplus_total = totals_map.get(article.id, (Decimal("0"), Decimal("0")))
         inbound_total, outbound_total = movement_map.get(article.id, (Decimal("0"), Decimal("0")))
+        unit_value = unit_value_map.get(article.id)
         item = _serialize_stock_overview_item(
             article,
             stock_total=stock_total,
@@ -411,10 +469,13 @@ def get_stock_overview(
             inbound_total=inbound_total,
             outbound_total=outbound_total,
             months_in_period=months_in_period,
+            unit_value=unit_value,
         )
         if reorder_only_enabled and item["reorder_status"] == "NORMAL":
             continue
         items.append(item)
+        if unit_value is not None:
+            warehouse_total_value += stock_total * unit_value
 
     return {
         "period": {
@@ -424,6 +485,9 @@ def get_stock_overview(
         },
         "items": items,
         "total": len(items),
+        "summary": {
+            "warehouse_total_value": _as_float(warehouse_total_value, _VALUE_QUANT),
+        },
     }
 
 
