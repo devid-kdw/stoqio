@@ -165,6 +165,7 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
     article_ids = {draft.article_id for draft in drafts}
     batch_ids = {draft.batch_id for draft in drafts if draft.batch_id is not None}
     user_ids = {draft.created_by for draft in drafts}
+    draft_ids = [draft.id for draft in drafts]
 
     articles = {
         article.id: article
@@ -177,6 +178,15 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
     users = {
         user.id: user
         for user in db.session.query(User).filter(User.id.in_(user_ids)).all()
+    }
+
+    # Load rejection notes keyed by draft_id (most-recent wins if multiple exist)
+    rejection_actions = db.session.query(ApprovalAction).filter(
+        ApprovalAction.draft_id.in_(draft_ids),
+        ApprovalAction.action == ApprovalActionType.REJECTED,
+    ).order_by(ApprovalAction.acted_at.asc()).all()
+    rejection_note_map: Dict[int, Optional[str]] = {
+        action.draft_id: action.note for action in rejection_actions
     }
 
     buckets = defaultdict(list)
@@ -214,6 +224,13 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
         else:
             row_status = "REJECTED"
 
+        # Row-level rejection reason: first available note from the bucket
+        row_rejection_reason: Optional[str] = None
+        for d in sorted_drafts:
+            if d.id in rejection_note_map:
+                row_rejection_reason = rejection_note_map[d.id]
+                break
+
         entries = []
         for draft in sorted_drafts:
             creator = users.get(draft.created_by)
@@ -226,6 +243,7 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
                     "quantity": float(draft.quantity),
                     "employee_id_ref": draft.employee_id_ref,
                     "status": status_value,
+                    "rejection_reason": rejection_note_map.get(draft.id),
                 }
             )
 
@@ -240,6 +258,7 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
                 "total_quantity": total_quantity,
                 "uom": sorted_drafts[0].uom,
                 "status": row_status,
+                "rejection_reason": row_rejection_reason,
                 "entry_count": len(sorted_drafts),
                 "entries": entries,
             }
@@ -462,9 +481,9 @@ def approve_all(user_id: int, group_id: int) -> dict:
         raise
 
 
-def reject_line(user_id: int, group_id: int, line_id: int, reason: str) -> dict:
+def reject_line(user_id: int, group_id: int, line_id: int, reason: Optional[str]) -> dict:
     """
-    Reject an aggregated line. Needs reason.
+    Reject an aggregated line. Reason is optional.
     """
     draft = db.session.get(Draft, line_id)
     if not draft or draft.draft_group_id != group_id:
@@ -494,11 +513,11 @@ def reject_line(user_id: int, group_id: int, line_id: int, reason: str) -> dict:
     return {"status": "REJECTED", "reason": reason}
 
 
-def reject_group(user_id: int, group_id: int, reason: str) -> dict:
+def reject_group(user_id: int, group_id: int, reason: Optional[str]) -> dict:
     group = db.session.get(DraftGroup, group_id)
     if not group:
         raise ValueError("Group not found.")
-    
+
     drafts = db.session.query(Draft).filter_by(
         draft_group_id=group_id,
         status=DraftStatus.DRAFT

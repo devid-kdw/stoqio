@@ -12,10 +12,11 @@ export interface DraftLine {
   quantity: number
   uom: string
   employee_id_ref: string | null
-  status: 'DRAFT' | 'APPROVED' | string
+  status: 'DRAFT' | 'APPROVED' | 'REJECTED' | string
   source: string
   created_by: string | null
   created_at: string | null
+  rejection_reason?: string | null
 }
 
 export interface DraftGroup {
@@ -29,6 +30,7 @@ export interface DraftGroup {
 export interface GetDraftsResponse {
   items: DraftLine[]
   draft_group: DraftGroup | null
+  same_day_lines?: DraftLine[]
 }
 
 export interface AddDraftPayload {

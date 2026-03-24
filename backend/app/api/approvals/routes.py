@@ -102,11 +102,11 @@ def approve_all(group_id: int):
 def reject_single_line(group_id: int, line_id: int):
     user = get_current_user()
     body = request.get_json(silent=True) or {}
-    reason = body.get("reason", "").strip()
+    raw_reason = body.get("reason", "")
+    reason = raw_reason.strip() if isinstance(raw_reason, str) else ""
+    reason = reason or None  # normalize blank to None
 
-    if not reason:
-        return _error("VALIDATION_ERROR", "Reason is required.", 400)
-    if len(reason) > 500:
+    if reason is not None and len(reason) > 500:
         return _error("VALIDATION_ERROR", "Reason must be max 500 characters.", 400)
 
     try:
@@ -124,11 +124,11 @@ def reject_single_line(group_id: int, line_id: int):
 def reject_group(group_id: int):
     user = get_current_user()
     body = request.get_json(silent=True) or {}
-    reason = body.get("reason", "").strip()
+    raw_reason = body.get("reason", "")
+    reason = raw_reason.strip() if isinstance(raw_reason, str) else ""
+    reason = reason or None  # normalize blank to None
 
-    if not reason:
-        return _error("VALIDATION_ERROR", "Reason is required.", 400)
-    if len(reason) > 500:
+    if reason is not None and len(reason) > 500:
         return _error("VALIDATION_ERROR", "Reason must be max 500 characters.", 400)
 
     try:

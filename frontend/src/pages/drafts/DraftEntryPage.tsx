@@ -25,6 +25,7 @@ import { articlesApi, type ArticleBatch, type ArticleLookupResult } from '../../
 import { draftsApi, type DraftGroup, type DraftLine } from '../../api/drafts'
 import FullPageState from '../../components/shared/FullPageState'
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
+import { useAuthStore } from '../../store/authStore'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,9 +99,13 @@ type RowAction =
 // ---------------------------------------------------------------------------
 
 export default function DraftEntryPage() {
+  // --- auth ---
+  const user = useAuthStore((s) => s.user)
+
   // --- page-level data loading state ---
   const [lines, setLines] = useState<DraftLine[]>([])
   const [draftGroup, setDraftGroup] = useState<DraftGroup | null>(null)
+  const [sameDayLines, setSameDayLines] = useState<DraftLine[] | undefined>(undefined)
   const [pageLoading, setPageLoading] = useState(true)
   const [pageError, setPageError] = useState(false)
 
@@ -127,6 +132,20 @@ export default function DraftEntryPage() {
   const articleInputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const prependSameDayLine = useCallback((line: DraftLine) => {
+    setSameDayLines((prev) => (prev ? [line, ...prev] : [line]))
+  }, [])
+
+  const updateSameDayLine = useCallback((line: DraftLine) => {
+    setSameDayLines((prev) =>
+      prev ? prev.map((existing) => (existing.id === line.id ? line : existing)) : prev
+    )
+  }, [])
+
+  const removeSameDayLine = useCallback((lineId: number) => {
+    setSameDayLines((prev) => (prev ? prev.filter((line) => line.id !== lineId) : prev))
+  }, [])
+
   // ---------------------------------------------------------------------------
   // Load today's lines on mount
   // ---------------------------------------------------------------------------
@@ -141,6 +160,7 @@ export default function DraftEntryPage() {
         setLines(data.items)
         setDraftGroup(data.draft_group)
         setDraftNote(data.draft_group?.draft_note ?? '')
+        setSameDayLines(data.same_day_lines)
       } catch (err) {
         if (!isRetry && isNetworkOrServerError(err)) {
           await attemptLoad(true)
@@ -348,6 +368,7 @@ export default function DraftEntryPage() {
           draft_note: draftNote.trim() || null,
         })
         setLines((prev) => [newLine, ...prev])
+        prependSameDayLine(newLine)
       } else {
         await loadLines()
       }
@@ -459,6 +480,7 @@ export default function DraftEntryPage() {
       }
 
       setLines((prev) => prev.map((l) => (l.id === lineId ? updated : l)))
+      updateSameDayLine(updated)
       setRowActions((prev) => ({ ...prev, [lineId]: { type: 'idle' } }))
       showSuccessToast('Unos ažuriran.')
     } catch (err) {
@@ -517,6 +539,7 @@ export default function DraftEntryPage() {
       }
 
       setLines((prev) => prev.filter((l) => l.id !== lineId))
+      removeSameDayLine(lineId)
       setRowActions((prev) => {
         const next = { ...prev }
         delete next[lineId]
@@ -909,6 +932,69 @@ export default function DraftEntryPage() {
           </Box>
         )}
       </Paper>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* My entries today                                                    */}
+      {/* ------------------------------------------------------------------ */}
+      {sameDayLines !== undefined && (() => {
+        const myLines = sameDayLines.filter(
+          (l) => user && l.created_by === user.username
+        )
+        return (
+          <Paper withBorder radius="md" p="xl" mt="xl">
+            <Title order={4} mb="md">
+              Moji unosi danas
+            </Title>
+            {myLines.length === 0 ? (
+              <Text c="dimmed" ta="center" py="xl">
+                Nema vaših unosa danas.
+              </Text>
+            ) : (
+              <Stack gap="xs">
+                {myLines.map((line) => (
+                  <Box key={line.id} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: '0.5rem' }}>
+                    <Group justify="space-between" align="flex-start">
+                      <Stack gap={2}>
+                        <Text size="sm" fw={500}>
+                          {line.article_no ?? '—'} — {line.description ?? '—'}
+                        </Text>
+                        <Text size="sm" c="dimmed">
+                          {formatQuantity(line.quantity, line.uom)} {line.uom}
+                        </Text>
+                      </Stack>
+                      <Badge
+                        color={
+                          line.status === 'DRAFT'
+                            ? 'yellow'
+                            : line.status === 'APPROVED'
+                            ? 'green'
+                            : line.status === 'REJECTED'
+                            ? 'red'
+                            : 'gray'
+                        }
+                        variant={line.status === 'DRAFT' ? 'light' : 'filled'}
+                      >
+                        {line.status === 'DRAFT'
+                          ? 'Na čekanju'
+                          : line.status === 'APPROVED'
+                          ? 'Odobreno'
+                          : line.status === 'REJECTED'
+                          ? 'Odbijeno'
+                          : line.status}
+                      </Badge>
+                    </Group>
+                    {line.status === 'REJECTED' && line.rejection_reason && (
+                      <Text size="xs" c="dimmed" fs="italic" mt={4}>
+                        Razlog: {line.rejection_reason}
+                      </Text>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </Paper>
+        )
+      })()}
     </Box>
   )
 }

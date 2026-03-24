@@ -19,7 +19,9 @@ from app.models.article import Article
 from app.models.batch import Batch
 from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
+from app.models.approval_action import ApprovalAction
 from app.models.enums import (
+    ApprovalActionType,
     DraftGroupStatus,
     DraftGroupType,
     DraftSource,
@@ -146,6 +148,17 @@ def _serialize_draft_group(group: DraftGroup) -> dict:
     }
 
 
+def _get_rejection_reason(draft_id: int) -> str | None:
+    """Return the rejection note for a draft line, or None."""
+    action = (
+        db.session.query(ApprovalAction)
+        .filter_by(draft_id=draft_id, action=ApprovalActionType.REJECTED)
+        .order_by(ApprovalAction.acted_at.desc())
+        .first()
+    )
+    return action.note if action else None
+
+
 def _serialize_draft(draft: Draft) -> dict:
     """Build the response dict for a single draft line.
 
@@ -155,6 +168,11 @@ def _serialize_draft(draft: Draft) -> dict:
     article = db.session.get(Article, draft.article_id)
     batch = db.session.get(Batch, draft.batch_id) if draft.batch_id else None
     creator = db.session.get(User, draft.created_by)
+
+    status_val = draft.status.value if hasattr(draft.status, "value") else draft.status
+    rejection_reason = (
+        _get_rejection_reason(draft.id) if status_val == DraftStatus.REJECTED.value else None
+    )
 
     return {
         "id": draft.id,
@@ -167,7 +185,8 @@ def _serialize_draft(draft: Draft) -> dict:
         "quantity": float(draft.quantity),
         "uom": draft.uom,
         "employee_id_ref": draft.employee_id_ref,
-        "status": draft.status.value if hasattr(draft.status, "value") else draft.status,
+        "status": status_val,
+        "rejection_reason": rejection_reason,
         "source": draft.source.value if hasattr(draft.source, "value") else draft.source,
         "created_by": creator.username if creator else None,
         "created_at": (
@@ -199,20 +218,44 @@ def get_drafts():
     )
 
     if group is None:
-        return jsonify({"items": [], "draft_group": None}), 200
+        items = []
+        draft_group_data = None
+    else:
+        drafts = (
+            Draft.query
+            .filter_by(draft_group_id=group.id)
+            .order_by(Draft.created_at.desc())
+            .all()
+        )
+        items = [_serialize_draft(d) for d in drafts]
+        draft_group_data = _serialize_draft_group(group)
 
-    drafts = (
-        Draft.query
-        .filter_by(draft_group_id=group.id)
-        .order_by(Draft.created_at.desc())
+    # Same-day lines: all DAILY_OUTBOUND groups for the operational day
+    # (pending + resolved), excluding INVENTORY_SHORTAGE groups, newest first.
+    same_day_groups = (
+        DraftGroup.query.filter_by(
+            operational_date=op_date,
+            group_type=DraftGroupType.DAILY_OUTBOUND,
+        )
         .all()
     )
+    same_day_group_ids = [g.id for g in same_day_groups]
+    if same_day_group_ids:
+        same_day_drafts = (
+            Draft.query
+            .filter(Draft.draft_group_id.in_(same_day_group_ids))
+            .order_by(Draft.created_at.desc())
+            .all()
+        )
+    else:
+        same_day_drafts = []
 
     return (
         jsonify(
             {
-                "items": [_serialize_draft(d) for d in drafts],
-                "draft_group": _serialize_draft_group(group),
+                "items": items,
+                "draft_group": draft_group_data,
+                "same_day_lines": [_serialize_draft(d) for d in same_day_drafts],
             }
         ),
         200,

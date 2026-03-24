@@ -7,6 +7,7 @@ export interface ApprovalsOperatorEntry {
   quantity: number
   employee_id_ref: string | null
   status: string
+  rejection_reason?: string | null
 }
 
 export interface ApprovalsAggregatedRow {
@@ -21,6 +22,7 @@ export interface ApprovalsAggregatedRow {
   status: 'PENDING' | 'APPROVED' | 'PARTIAL' | 'REJECTED' | string
   entry_count: number
   entries: ApprovalsOperatorEntry[]
+  rejection_reason?: string | null
 }
 
 export interface ApprovalsDraftGroup {
@@ -59,7 +61,7 @@ export interface ApproveAllResponse {
 
 export interface RejectResponse {
   status: string
-  reason: string
+  reason: string | null
 }
 
 export interface UpdateQuantityPayload {

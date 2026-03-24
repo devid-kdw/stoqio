@@ -274,10 +274,6 @@ export default function DraftGroupCard({
   }
 
   const submitReject = async () => {
-    if (!rejectReason.trim()) {
-      showErrorToast('Razlog je obavezan.')
-      return
-    }
     setIsRejecting(true)
     try {
       if (rejectTarget === 'line' && rejectLineId !== null) {
@@ -321,10 +317,9 @@ export default function DraftGroupCard({
         <Stack>
           <Textarea
             label="Razlog odbijanja"
-            placeholder="Unesite razlog (obavezno)"
+            placeholder="Unesite razlog (neobavezno)"
             value={rejectReason}
             onChange={(e) => setRejectReason(e.currentTarget.value)}
-            required
             maxLength={500}
             data-autofocus
           />
@@ -413,7 +408,16 @@ export default function DraftGroupCard({
                             </ActionIcon>
                           </Table.Td>
                           <Table.Td>{row.article_no}</Table.Td>
-                          <Table.Td>{row.description}</Table.Td>
+                          <Table.Td>
+                            <Stack gap={2}>
+                              <Text size="sm">{row.description}</Text>
+                              {row.status === 'REJECTED' && row.rejection_reason && (
+                                <Text size="xs" c="dimmed" fs="italic">
+                                  Razlog: {row.rejection_reason}
+                                </Text>
+                              )}
+                            </Stack>
+                          </Table.Td>
                           <Table.Td>{row.batch_code}</Table.Td>
                           <Table.Td>
                             {editingRow?.id === row.line_id ? (
@@ -516,7 +520,16 @@ export default function DraftGroupCard({
                                         <Table.Td>{e.operator}</Table.Td>
                                         <Table.Td>{e.employee_id_ref || '—'}</Table.Td>
                                         <Table.Td>{formatQuantity(e.quantity, row.uom)}</Table.Td>
-                                        <Table.Td>{e.status}</Table.Td>
+                                        <Table.Td>
+                                          <Stack gap={2}>
+                                            <Text size="sm">{e.status}</Text>
+                                            {e.status === 'REJECTED' && e.rejection_reason && (
+                                              <Text size="xs" c="dimmed" fs="italic">
+                                                Razlog: {e.rejection_reason}
+                                              </Text>
+                                            )}
+                                          </Stack>
+                                        </Table.Td>
                                       </Table.Tr>
                                     ))}
                                   </Table.Tbody>

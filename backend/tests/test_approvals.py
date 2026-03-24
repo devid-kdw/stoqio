@@ -563,7 +563,7 @@ class TestApprovalsAction:
             assert group.status == DraftGroupStatus.REJECTED
 
     def test_reject_without_reason(self, client, app, app_data):
-        """9. Reject without reason returns 400."""
+        """9. Reject without reason now returns 200 (reason is optional)."""
         _insert_balances(app, app_data["loc"].id, [
             {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"}
         ])
@@ -580,7 +580,16 @@ class TestApprovalsAction:
             json={},
             headers=_auth_header(token)
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "REJECTED"
+        assert resp.get_json()["reason"] is None
+
+        with app.app_context():
+            d = _db.session.get(Draft, draft_ids[0])
+            assert d.status == DraftStatus.REJECTED
+            action = ApprovalAction.query.filter_by(draft_id=draft_ids[0]).first()
+            assert action is not None
+            assert action.note is None
 
     def test_reject_entire_draft(self, client, app, app_data):
         """10. Reject entire draft."""
@@ -737,3 +746,115 @@ class TestApprovalsAction:
         me = [item for item in items if item.get("draft_group_id") == group_id]
         assert me
         assert me[0]["status"] == "PARTIAL"
+
+
+class TestRejectionReasonVisibility:
+    """Wave 1 Phase 5: optional rejection reason + metadata exposure."""
+
+    def test_reject_whole_draft_without_reason_returns_200(self, client, app, app_data):
+        """Reject entire draft with no reason body -> 200, reason null."""
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/reject",
+            json={},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "REJECTED"
+        assert body["reason"] is None
+
+    def test_reject_whole_draft_with_whitespace_reason_treated_as_none(self, client, app, app_data):
+        """Whitespace-only reason normalizes to null, not a 400."""
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 1.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/reject",
+            json={"reason": "   "},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["reason"] is None
+
+    def test_reject_line_with_reason_persists_and_surfaces_in_detail(self, client, app, app_data):
+        """Reject line with reason -> reason appears in GET detail rows and entries."""
+        group_id, draft_ids = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 3.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        reason_text = "Quantity appears incorrect — please re-enter."
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/reject",
+            json={"reason": reason_text},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        detail = _get_detail(client, token, group_id)
+        row = next(r for r in detail["rows"] if r["article_id"] == app_data["art_no_batch"].id)
+        assert row["rejection_reason"] == reason_text
+        assert row["status"] == "REJECTED"
+        entry = next(e for e in row["entries"] if e["id"] == draft_ids[0])
+        assert entry["rejection_reason"] == reason_text
+
+    def test_reject_line_without_reason_rejection_reason_is_null_in_detail(self, client, app, app_data):
+        """Reject line without reason -> rejection_reason is null in detail, not omitted."""
+        group_id, draft_ids = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 1.5, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/reject",
+            json={},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        detail = _get_detail(client, token, group_id)
+        row = next(r for r in detail["rows"] if r["article_id"] == app_data["art_no_batch"].id)
+        assert "rejection_reason" in row
+        assert row["rejection_reason"] is None
+        entry = next(e for e in row["entries"] if e["id"] == draft_ids[0])
+        assert "rejection_reason" in entry
+        assert entry["rejection_reason"] is None
+
+    def test_approved_row_has_null_rejection_reason(self, client, app, app_data):
+        """Approved rows expose rejection_reason: null (field present, value null)."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"}
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/approve",
+            headers=_auth_header(token),
+        )
+        detail = _get_detail(client, token, group_id)
+        row = next(r for r in detail["rows"] if r["article_id"] == app_data["art_no_batch"].id)
+        assert "rejection_reason" in row
+        assert row["rejection_reason"] is None
+
+    def test_reject_reason_max_length_validation_still_enforced(self, client, app, app_data):
+        """Non-empty reasons exceeding 500 chars still return 400."""
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 1.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/reject",
+            json={"reason": "x" * 501},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"

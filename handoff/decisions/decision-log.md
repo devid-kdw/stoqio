@@ -569,3 +569,14 @@
 - Decision: Migration `a1b2c3d4e5f6_add_article_alias_unique_constraint.py` was missing SQLite batch mode for `op.create_unique_constraint`, causing `test_phase2_models.py` to fail with `NotImplementedError` on every fresh SQLite upgrade-to-head. Fixed in-place during Phase 4 to use `op.batch_alter_table` for SQLite and the standard `op.create_unique_constraint` for other dialects. The migration revision ID is unchanged.
 - Impact: Fresh SQLite Alembic upgrades now complete cleanly to head. Any database that already ran the previous broken version of this migration will not be re-run (Alembic version table guards it), so only new installs benefit; existing SQLite dev databases may still lack the unique constraint and should be rebuilt from scratch.
 - Docs update required: no
+
+---
+
+## DEC-BE-016
+
+- Date: 2026-03-24
+- Phase: phase-05-wave-01-rejection-reason-visibility
+- Source: Backend agent implementation of Wave 1 Phase 5 per orchestrator brief
+- Decision: `GET /api/v1/drafts?date=today` response shape is extended with a `same_day_lines` array and per-line `rejection_reason` field. `same_day_lines` contains all `Draft` rows belonging to any `DAILY_OUTBOUND` `DraftGroup` for the operational day (both `PENDING` and resolved groups), ordered newest-first. `INVENTORY_SHORTAGE` groups are explicitly excluded. The existing `items` array and `draft_group` object remain backward-compatible and continue to represent only the current `PENDING` `DAILY_OUTBOUND` group (or empty/null when none exists). Each serialised draft line now includes `rejection_reason: string | null`; for non-rejected lines and rejected lines with no note, the value is `null`. Rejection reason is optional on both rejection endpoints: blank or whitespace-only input normalizes to `null` (stored as `ApprovalAction.note = NULL`), not a 400 error.
+- Impact: Frontend and testing agents must consume the new `same_day_lines` field for the "My entries today" operator view rather than infer same-day data from `items`. The `rejection_reason` field is now present on every draft-line serialisation; old consumers that do not reference it are unaffected. Both rejection endpoints now accept omitted or blank reasons; any frontend validation requiring a non-empty reason must be removed.
+- Docs update required: no

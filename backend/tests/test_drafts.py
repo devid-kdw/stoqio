@@ -17,7 +17,9 @@ from app.models.batch import Batch
 from app.models.category import Category
 from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
+from app.models.approval_action import ApprovalAction
 from app.models.enums import (
+    ApprovalActionType,
     DraftGroupStatus,
     DraftGroupType,
     DraftSource,
@@ -842,3 +844,254 @@ class TestDeleteDraft:
             headers=_auth_header(token),
         )
         assert resp.status_code == 404
+
+
+# ==========================================================================
+# Wave 1 Phase 5: same_day_lines + rejection_reason on draft lines
+# ==========================================================================
+
+
+class TestSameDayLinesAndRejectionReason:
+    """
+    GET /api/v1/drafts?date=today must include:
+    - same_day_lines: all DAILY_OUTBOUND draft lines for the operational day
+      (pending + resolved), newest first, INVENTORY_SHORTAGE excluded.
+    - rejection_reason on each serialised line (null unless the line is REJECTED
+      and has a note).
+    """
+
+    def test_get_drafts_response_includes_same_day_lines_key(self, client, draft_data):
+        token = _login(client, "draft_operator")
+        resp = client.get("/api/v1/drafts?date=today", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "same_day_lines" in data
+        assert isinstance(data["same_day_lines"], list)
+
+    def test_draft_line_serialization_includes_rejection_reason_null(self, client, draft_data):
+        """A freshly created DRAFT line has rejection_reason: null."""
+        token = _login(client, "draft_operator")
+        eid = str(uuid.uuid4())
+        create_resp = client.post(
+            "/api/v1/drafts",
+            json={
+                "article_id": draft_data["article"].id,
+                "quantity": 1.0,
+                "uom": draft_data["uom"].code,
+                "source": "manual",
+                "client_event_id": eid,
+            },
+            headers=_auth_header(token),
+        )
+        assert create_resp.status_code == 201
+        body = create_resp.get_json()
+        assert "rejection_reason" in body
+        assert body["rejection_reason"] is None
+
+    def test_same_day_lines_includes_resolved_group_lines(self, client, draft_data, app):
+        """Lines from a same-day APPROVED DAILY_OUTBOUND group appear in same_day_lines."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            closed_group = DraftGroup(
+                group_number="IZL-SDL-001",
+                status=DraftGroupStatus.APPROVED,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(closed_group)
+            _db.session.flush()
+
+            resolved_draft = Draft(
+                draft_group_id=closed_group.id,
+                location_id=1,
+                article_id=draft_data["article"].id,
+                batch_id=None,
+                quantity=5.0,
+                uom=draft_data["uom"].code,
+                status=DraftStatus.APPROVED,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(resolved_draft)
+            _db.session.commit()
+            resolved_draft_id = resolved_draft.id
+
+        resp = client.get("/api/v1/drafts?date=today", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+
+        # items should be empty (no pending group)
+        assert data["draft_group"] is None
+        # same_day_lines should contain the resolved draft
+        same_day_ids = [line["id"] for line in data["same_day_lines"]]
+        assert resolved_draft_id in same_day_ids
+
+    def test_same_day_lines_excludes_inventory_shortage_groups(self, client, draft_data, app):
+        """Lines from INVENTORY_SHORTAGE groups are NOT in same_day_lines."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            shortage_group = DraftGroup(
+                group_number="IZL-SRTG-001",
+                status=DraftGroupStatus.PENDING,
+                group_type=DraftGroupType.INVENTORY_SHORTAGE,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(shortage_group)
+            _db.session.flush()
+
+            shortage_draft = Draft(
+                draft_group_id=shortage_group.id,
+                location_id=1,
+                article_id=draft_data["article"].id,
+                batch_id=None,
+                quantity=3.0,
+                uom=draft_data["uom"].code,
+                status=DraftStatus.DRAFT,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(shortage_draft)
+            _db.session.commit()
+            shortage_draft_id = shortage_draft.id
+
+        resp = client.get("/api/v1/drafts?date=today", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+
+        same_day_ids = [line["id"] for line in data["same_day_lines"]]
+        assert shortage_draft_id not in same_day_ids
+
+    def test_same_day_lines_includes_both_pending_and_resolved_groups(self, client, draft_data, app):
+        """same_day_lines spans multiple same-day groups (closed + pending)."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            closed_group = DraftGroup(
+                group_number="IZL-MULTI-001",
+                status=DraftGroupStatus.REJECTED,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(closed_group)
+            _db.session.flush()
+
+            closed_draft = Draft(
+                draft_group_id=closed_group.id,
+                location_id=1,
+                article_id=draft_data["article"].id,
+                batch_id=None,
+                quantity=2.0,
+                uom=draft_data["uom"].code,
+                status=DraftStatus.REJECTED,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(closed_draft)
+            _db.session.commit()
+            closed_draft_id = closed_draft.id
+
+        # Create new line via the API (creates new pending group)
+        new_eid = str(uuid.uuid4())
+        new_resp = client.post(
+            "/api/v1/drafts",
+            json={
+                "article_id": draft_data["article"].id,
+                "quantity": 1.0,
+                "uom": draft_data["uom"].code,
+                "source": "manual",
+                "client_event_id": new_eid,
+            },
+            headers=_auth_header(token),
+        )
+        assert new_resp.status_code == 201
+        new_draft_id = new_resp.get_json()["id"]
+
+        resp = client.get("/api/v1/drafts?date=today", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+
+        same_day_ids = [line["id"] for line in data["same_day_lines"]]
+        assert closed_draft_id in same_day_ids
+        assert new_draft_id in same_day_ids
+        # items should only contain the pending group line
+        item_ids = [item["id"] for item in data["items"]]
+        assert new_draft_id in item_ids
+        assert closed_draft_id not in item_ids
+
+    def test_rejected_line_serialization_includes_rejection_reason_string(self, client, draft_data, app):
+        """A REJECTED line returns its rejection reason exactly as saved."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            ApprovalAction.query.delete()
+            _db.session.commit()
+
+            group = DraftGroup(
+                group_number="IZL-REJ-001",
+                status=DraftGroupStatus.PENDING,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=date.today(),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(group)
+            _db.session.flush()
+
+            draft = Draft(
+                draft_group_id=group.id,
+                location_id=1,
+                article_id=draft_data["article"].id,
+                batch_id=None,
+                quantity=1.0,
+                uom=draft_data["uom"].code,
+                status=DraftStatus.REJECTED,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(draft)
+            _db.session.flush()
+
+            action = ApprovalAction(
+                draft_id=draft.id,
+                actor_id=draft_data["admin"].id,
+                action=ApprovalActionType.REJECTED,
+                note="Kriva količina, molim provjerite ponovo."
+            )
+            _db.session.add(action)
+            _db.session.commit()
+
+        resp = client.get("/api/v1/drafts?date=today", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+
+        same_day_lines = data["same_day_lines"]
+        assert len(same_day_lines) == 1
+        line = same_day_lines[0]
+        assert line["status"] == "REJECTED"
+        assert line["rejection_reason"] == "Kriva količina, molim provjerite ponovo."
