@@ -209,19 +209,23 @@ export default function WarehouseArticleForm({
       </SimpleGrid>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-        <Switch
-          label="Artikl sa šaržom"
-          checked={form.hasBatch}
-          onChange={(event) => onChange('hasBatch', event.currentTarget.checked)}
-          disabled={disabled}
-        />
+        <div style={{ width: 'fit-content' }}>
+          <Switch
+            label="Artikl sa šaržom"
+            checked={form.hasBatch}
+            onChange={(event) => onChange('hasBatch', event.currentTarget.checked)}
+            disabled={disabled}
+          />
+        </div>
 
-        <Switch
-          label="Aktivan artikl"
-          checked={form.isActive}
-          onChange={(event) => onChange('isActive', event.currentTarget.checked)}
-          disabled={disabled}
-        />
+        <div style={{ width: 'fit-content' }}>
+          <Switch
+            label="Aktivan artikl"
+            checked={form.isActive}
+            onChange={(event) => onChange('isActive', event.currentTarget.checked)}
+            disabled={disabled}
+          />
+        </div>
       </SimpleGrid>
 
       <Stack gap="sm">

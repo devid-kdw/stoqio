@@ -277,10 +277,10 @@ export default function WarehousePage() {
       setCreateSubmitting(true)
 
       try {
-        const createdArticle = await runWithRetry(() => articlesApi.create(buildArticlePayload(createForm)))
+        await runWithRetry(() => articlesApi.create(buildArticlePayload(createForm)))
         showSuccessToast('Artikl je kreiran.')
         handleCloseCreate()
-        navigate(`/warehouse/articles/${createdArticle.id}`)
+        navigate('/warehouse')
       } catch (error) {
         if (isNetworkOrServerError(error)) {
           setFatalError(true)
