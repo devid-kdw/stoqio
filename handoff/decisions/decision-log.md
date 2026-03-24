@@ -591,3 +591,14 @@
 - Decision: The first-run setup screen at `/setup` now uses centered full-viewport presentation with a larger/wider setup card. This baseline is implemented locally in `frontend/src/pages/auth/SetupPage.tsx` rather than through a shared auth-layout abstraction. Future frontend/auth agents should preserve this centered onboarding-style layout unless the user explicitly requests a new auth/setup visual direction.
 - Impact: Future work on setup/auth screens should not revert `/setup` to the previous narrow, visually top-left layout. Because the change is local to `SetupPage.tsx`, later cleanup of shared auth page layouts or legacy Vite scaffold styles must preserve the current centered setup-card behavior.
 - Docs update required: no
+
+---
+
+## DEC-WH-009
+
+- Date: 2026-03-24
+- Phase: phase-09-wave-01-search-dropdown-prefetch
+- Source: Backend agent implementation of the additive supplier preload mode
+- Decision: `GET /api/v1/suppliers` now operates in two modes. Bare mode (no `page` or `per_page` query params) returns the existing flat active-suppliers array for backward compatibility. Paginated preload mode (when `page` and/or `per_page` are present) returns paginated `{ items, total, page, per_page }` with `page` defaulting to `1` when omitted if `per_page` is present alone. Active suppliers only, ordered by name then id in both modes. `GET /api/v1/orders` list mode now accepts an optional `status` query param (`OPEN` or `CLOSED`); `status` is ignored when `q` is present, preserving Receiving exact-match compatibility.
+- Impact: Frontend agents must send `per_page` to activate the paginated response shape; bare `/suppliers` callers remain unaffected. The `status` filter on `/orders` is additive and does not change the existing list or `q` behaviour.
+- Docs update required: no

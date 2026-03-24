@@ -1119,6 +1119,30 @@ def lookup_suppliers() -> list[dict[str, Any]]:
     ]
 
 
+def lookup_suppliers_paginated(page: int, per_page: int) -> dict[str, Any]:
+    """Return the paginated Warehouse supplier preload response."""
+    query = (
+        Supplier.query
+        .filter(Supplier.is_active.is_(True))
+        .order_by(Supplier.name.asc(), Supplier.id.asc())
+    )
+    total = query.count()
+    rows = query.offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "items": [
+            {
+                "id": supplier.id,
+                "name": supplier.name,
+                "internal_code": supplier.internal_code,
+            }
+            for supplier in rows
+        ],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+    }
+
+
 def list_articles(
     page: int,
     per_page: int,

@@ -98,7 +98,18 @@ def get_uom_lookups():
 @articles_bp.route("/suppliers", methods=["GET"])
 @require_role("ADMIN", "MANAGER")
 def get_supplier_lookups():
-    return jsonify(article_service.lookup_suppliers()), 200
+    try:
+        if "page" in request.args or "per_page" in request.args:
+            page = _parse_positive_int(
+                request.args.get("page"), field_name="page", default=1
+            )
+            per_page = _parse_positive_int(
+                request.args.get("per_page"), field_name="per_page", default=50
+            )
+            return jsonify(article_service.lookup_suppliers_paginated(page, per_page)), 200
+        return jsonify(article_service.lookup_suppliers()), 200
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
 @articles_bp.route("/identifier", methods=["GET"])

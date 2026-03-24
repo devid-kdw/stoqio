@@ -839,3 +839,129 @@ class TestOrdersLookupsAndPdf:
             headers=_auth_header(manager_token),
         )
         assert manager_delete.status_code == 403
+
+
+class TestOrdersStatusFilter:
+    def test_status_open_returns_only_open_orders(self, client, app, orders_data):
+        _create_order(
+            app,
+            supplier_id=orders_data["supplier_id"],
+            created_by_id=orders_data["admin_id"],
+            order_number="ORD-STAT-OPEN",
+            status=OrderStatus.OPEN,
+            lines=[
+                {
+                    "article_id": orders_data["plain_article_id"],
+                    "ordered_qty": 1,
+                    "uom": orders_data["piece_uom"],
+                    "unit_price": 1,
+                }
+            ],
+        )
+        _create_order(
+            app,
+            supplier_id=orders_data["supplier_id"],
+            created_by_id=orders_data["admin_id"],
+            order_number="ORD-STAT-CLOSED",
+            status=OrderStatus.CLOSED,
+            lines=[
+                {
+                    "article_id": orders_data["plain_article_id"],
+                    "ordered_qty": 1,
+                    "uom": orders_data["piece_uom"],
+                    "unit_price": 1,
+                    "status": OrderLineStatus.CLOSED,
+                }
+            ],
+        )
+        token = _login(client, orders_data["admin_username"])
+        response = client.get(
+            "/api/v1/orders?status=OPEN&per_page=200",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        statuses = {item["status"] for item in body["items"]}
+        assert statuses == {"OPEN"}
+        assert body["total"] >= 1
+
+    def test_status_closed_returns_only_closed_orders(self, client, app, orders_data):
+        _create_order(
+            app,
+            supplier_id=orders_data["supplier_id"],
+            created_by_id=orders_data["admin_id"],
+            order_number="ORD-FC-OPEN",
+            status=OrderStatus.OPEN,
+            lines=[
+                {
+                    "article_id": orders_data["plain_article_id"],
+                    "ordered_qty": 1,
+                    "uom": orders_data["piece_uom"],
+                    "unit_price": 1,
+                }
+            ],
+        )
+        _create_order(
+            app,
+            supplier_id=orders_data["supplier_id"],
+            created_by_id=orders_data["admin_id"],
+            order_number="ORD-FC-CLOSED",
+            status=OrderStatus.CLOSED,
+            lines=[
+                {
+                    "article_id": orders_data["plain_article_id"],
+                    "ordered_qty": 1,
+                    "uom": orders_data["piece_uom"],
+                    "unit_price": 1,
+                    "status": OrderLineStatus.CLOSED,
+                }
+            ],
+        )
+        token = _login(client, orders_data["admin_username"])
+        response = client.get(
+            "/api/v1/orders?status=CLOSED&per_page=200",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        statuses = {item["status"] for item in body["items"]}
+        assert statuses == {"CLOSED"}
+        assert body["total"] >= 1
+
+    def test_invalid_status_returns_400(self, client, orders_data):
+        token = _login(client, orders_data["admin_username"])
+        response = client.get(
+            "/api/v1/orders?status=PENDING",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_q_param_ignores_status_and_returns_exact_match(
+        self, client, app, orders_data
+    ):
+        _create_order(
+            app,
+            supplier_id=orders_data["supplier_id"],
+            created_by_id=orders_data["admin_id"],
+            order_number="ORD-Q-COMPAT",
+            status=OrderStatus.OPEN,
+            lines=[
+                {
+                    "article_id": orders_data["plain_article_id"],
+                    "ordered_qty": 1,
+                    "uom": orders_data["piece_uom"],
+                    "unit_price": 1,
+                }
+            ],
+        )
+        token = _login(client, orders_data["admin_username"])
+        response = client.get(
+            "/api/v1/orders?q=ORD-Q-COMPAT",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        # Exact-match mode returns single object, not paginated list
+        assert body["order_number"] == "ORD-Q-COMPAT"
+        assert "items" not in body

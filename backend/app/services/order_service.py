@@ -762,10 +762,17 @@ def _serialize_receiving_detail(order: Order) -> dict[str, Any]:
     }
 
 
-def list_orders(page: int, per_page: int) -> dict[str, Any]:
-    """Return the paginated orders list."""
+def list_orders(page: int, per_page: int, *, status: str | None = None) -> dict[str, Any]:
+    """Return the paginated orders list, optionally filtered by status."""
     ordering = case((Order.status == OrderStatus.OPEN, 0), else_=1)
-    query = Order.query.order_by(ordering.asc(), Order.created_at.desc(), Order.id.desc())
+    query = Order.query
+
+    if status == "OPEN":
+        query = query.filter(Order.status == OrderStatus.OPEN)
+    elif status == "CLOSED":
+        query = query.filter(Order.status == OrderStatus.CLOSED)
+
+    query = query.order_by(ordering.asc(), Order.created_at.desc(), Order.id.desc())
     total = query.count()
     rows = query.offset((page - 1) * per_page).limit(per_page).all()
     return {

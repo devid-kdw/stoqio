@@ -11,6 +11,7 @@ import {
   NumberInput,
   Paper,
   SegmentedControl,
+  Select,
   Stack,
   Table,
   Tabs,
@@ -19,11 +20,11 @@ import {
   Textarea,
   Title,
 } from '@mantine/core'
-import { IconAlertTriangle, IconSearch } from '@tabler/icons-react'
+import { IconAlertTriangle } from '@tabler/icons-react'
 import axios from 'axios'
 
 import { articlesApi, type ArticleLookupResult } from '../../api/articles'
-import { ordersApi, type ReceivingOrderDetail, type ReceivingOrderLine, type ReceivingOrderSummary } from '../../api/orders'
+import { ordersApi, type OrdersListItem, type ReceivingOrderDetail, type ReceivingOrderLine, type ReceivingOrderSummary } from '../../api/orders'
 import { receivingApi, type CreateReceiptPayload, type ReceivingHistoryItem } from '../../api/receiving'
 import FullPageState from '../../components/shared/FullPageState'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../utils/toasts'
@@ -195,6 +196,10 @@ export default function ReceivingPage() {
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  const [openOrders, setOpenOrders] = useState<OrdersListItem[]>([])
+  const [openOrdersLoading, setOpenOrdersLoading] = useState(false)
+  const [openOrdersError, setOpenOrdersError] = useState<string | null>(null)
+
   const [orderQuery, setOrderQuery] = useState('')
   const [orderSearchError, setOrderSearchError] = useState<string | null>(null)
   const [linkedOrderSummary, setLinkedOrderSummary] = useState<ReceivingOrderSummary | null>(null)
@@ -233,6 +238,27 @@ export default function ReceivingPage() {
     }
   }, [])
 
+  const loadOpenOrders = useCallback(async () => {
+    setOpenOrdersLoading(true)
+    setOpenOrdersError(null)
+
+    try {
+      const response = await runWithRetry(() => ordersApi.listOpenOrdersPreload())
+      setOpenOrders(response.items)
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        handleFatalError()
+        return
+      }
+
+      const message =
+        getApiErrorBody(error)?.message ?? 'Učitavanje narudžbenica nije uspjelo.'
+      setOpenOrdersError(message)
+    } finally {
+      setOpenOrdersLoading(false)
+    }
+  }, [handleFatalError, runWithRetry])
+
   const clearLinkedReceiptForm = useCallback((lines: ReceivingOrderLine[]) => {
     setLinkedHeader(EMPTY_LINKED_HEADER)
     setLinkedHeaderErrors({})
@@ -263,6 +289,39 @@ export default function ReceivingPage() {
     clearLinkedReceiptForm([])
   }, [clearLinkedReceiptForm])
 
+  const handleOrderSelect = useCallback(
+    async (orderId: number, orderItem: OrdersListItem) => {
+      setLinkedOrderLoading(true)
+      setOrderSearchError(null)
+
+      try {
+        const detail = await runWithRetry(() => ordersApi.getReceivingDetail(orderId))
+        const summary: ReceivingOrderSummary = {
+          id: orderItem.id,
+          order_number: orderItem.order_number,
+          status: detail.status,
+          supplier_id: orderItem.supplier_id,
+          supplier_name: orderItem.supplier_name,
+          open_line_count: detail.lines.length,
+          created_at: orderItem.created_at,
+        }
+        setLinkedOrderData(summary, detail)
+      } catch (error) {
+        if (isNetworkOrServerError(error)) {
+          handleFatalError()
+          return
+        }
+
+        const apiError = getApiErrorBody(error)
+        setOrderSearchError(apiError?.message ?? 'Učitavanje narudžbenice nije uspjelo.')
+        clearLinkedOrderData()
+      } finally {
+        setLinkedOrderLoading(false)
+      }
+    },
+    [clearLinkedOrderData, handleFatalError, runWithRetry, setLinkedOrderData]
+  )
+
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
 
@@ -289,6 +348,10 @@ export default function ReceivingPage() {
       void loadHistory()
     }
   }, [activeTab, historyLoaded, loadHistory])
+
+  useEffect(() => {
+    void loadOpenOrders()
+  }, [loadOpenOrders])
 
   useEffect(() => {
     return () => {
@@ -330,42 +393,6 @@ export default function ReceivingPage() {
       setLinkedOrderLoading(false)
     }
   }, [handleFatalError, linkedOrderSummary, runWithRetry, setLinkedOrderData])
-
-  const handleOrderSearch = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-
-    const normalizedQuery = orderQuery.trim()
-    if (!normalizedQuery) {
-      setOrderSearchError('Broj narudžbenice je obavezan.')
-      clearLinkedOrderData()
-      return
-    }
-
-    setLinkedOrderLoading(true)
-    setOrderSearchError(null)
-
-    try {
-      const summary = await runWithRetry(() => ordersApi.lookupForReceiving(normalizedQuery))
-      const detail = await runWithRetry(() => ordersApi.getReceivingDetail(summary.id))
-      setLinkedOrderData(summary, detail)
-    } catch (error) {
-      if (isNetworkOrServerError(error)) {
-        handleFatalError()
-        return
-      }
-
-      const apiError = getApiErrorBody(error)
-      if (apiError?.error === 'ORDER_NOT_FOUND') {
-        setOrderSearchError('Order not found.')
-        clearLinkedOrderData()
-        return
-      }
-
-      showErrorToast(apiError?.message ?? 'Učitavanje narudžbenice nije uspjelo.')
-    } finally {
-      setLinkedOrderLoading(false)
-    }
-  }
 
   const resolveArticle = useCallback(
     async (query: string) => {
@@ -855,37 +882,76 @@ export default function ReceivingPage() {
                     <Stack gap="md">
                       <div>
                         <Text fw={600} mb={6}>
-                          Pretraga narudžbenice
+                          Odabir narudžbenice
                         </Text>
                         <Text c="dimmed" size="sm">
-                          Pretraga je točna i vraća samo jednu narudžbenicu po broju.
+                          Odaberi otvorenu narudžbenicu ili pretraži po broju ili dobavljaču.
                         </Text>
                       </div>
 
-                      <form onSubmit={handleOrderSearch}>
-                        <Group align="flex-start">
-                          <TextInput
-                            label="Broj narudžbenice"
-                            placeholder="npr. ORD-0042"
-                            value={orderQuery}
-                            onChange={(event) => {
-                              setOrderQuery(event.currentTarget.value)
-                              setOrderSearchError(null)
-                            }}
-                            error={orderSearchError}
-                            flex={1}
-                            withAsterisk
-                          />
+                      {openOrdersError ? (
+                        <Group justify="space-between" align="center">
+                          <Text size="sm" c="red">{openOrdersError}</Text>
                           <Button
-                            type="submit"
-                            mt={24}
-                            leftSection={<IconSearch size={16} />}
-                            loading={linkedOrderLoading}
+                            size="xs"
+                            variant="default"
+                            onClick={() => void loadOpenOrders()}
                           >
-                            Pronađi
+                            Pokušaj ponovno
                           </Button>
                         </Group>
-                      </form>
+                      ) : (
+                        <Select
+                          label="Broj narudžbenice"
+                          placeholder={openOrdersLoading ? 'Učitavanje…' : 'Odaberi narudžbenicu'}
+                          searchable
+                          clearable
+                          disabled={openOrdersLoading}
+                          data={openOrders.map((o) => ({
+                            value: String(o.id),
+                            label: o.order_number,
+                          }))}
+                          onSearchChange={setOrderQuery}
+                          onChange={(value) => {
+                            setOrderSearchError(null)
+                            if (!value) {
+                              clearLinkedOrderData()
+                              return
+                            }
+                            const orderId = Number(value)
+                            const orderItem = openOrders.find((o) => o.id === orderId)
+                            if (orderItem) void handleOrderSelect(orderId, orderItem)
+                          }}
+                          error={orderSearchError}
+                          nothingFoundMessage={orderQuery.trim() ? 'Nema rezultata.' : undefined}
+                          filter={({ options, search }) => {
+                            const q = search.trim().toLowerCase()
+                            if (!q) return options
+                            return options.filter((opt) => {
+                              if (!('value' in opt)) return false
+                              const order = openOrders.find((o) => String(o.id) === opt.value)
+                              if (!order) return false
+                              return (
+                                order.order_number.toLowerCase().includes(q) ||
+                                (order.supplier_name ?? '').toLowerCase().includes(q)
+                              )
+                            })
+                          }}
+                          renderOption={({ option }) => {
+                            const order = openOrders.find((o) => String(o.id) === option.value)
+                            return (
+                              <Stack gap={2}>
+                                <Text size="sm" fw={600}>{option.label}</Text>
+                                {order?.supplier_name ? (
+                                  <Text size="xs" c="dimmed">{order.supplier_name}</Text>
+                                ) : null}
+                              </Stack>
+                            )
+                          }}
+                          maxDropdownHeight={280}
+                          rightSection={linkedOrderLoading ? <Loader size={16} /> : undefined}
+                        />
+                      )}
                     </Stack>
                   </Paper>
 

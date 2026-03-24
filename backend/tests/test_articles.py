@@ -1118,9 +1118,49 @@ class TestWarehouseArticles:
         )
         assert response.status_code == 200
         payload = response.get_json()
+        # Bare mode must remain a flat array for backward compatibility
+        assert isinstance(payload, list)
         internal_codes = {row["internal_code"] for row in payload}
         assert {"WH-SUP-001", "WH-SUP-002", "WH-SUP-003"}.issubset(internal_codes)
         assert "WH-SUP-004" not in internal_codes
+
+    def test_supplier_paginated_preload_returns_paginated_shape(self, client, warehouse_data):
+        token = _login(client, "warehouse_manager")
+        response = client.get(
+            "/api/v1/suppliers?per_page=200",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert "items" in payload
+        assert "total" in payload
+        assert payload["page"] == 1
+        assert payload["per_page"] == 200
+        internal_codes = {row["internal_code"] for row in payload["items"]}
+        assert {"WH-SUP-001", "WH-SUP-002", "WH-SUP-003"}.issubset(internal_codes)
+        assert "WH-SUP-004" not in internal_codes
+
+    def test_supplier_paginated_explicit_page_and_per_page(self, client, warehouse_data):
+        token = _login(client, "warehouse_manager")
+        response = client.get(
+            "/api/v1/suppliers?page=1&per_page=2",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["page"] == 1
+        assert payload["per_page"] == 2
+        assert len(payload["items"]) <= 2
+        assert payload["total"] >= 3  # at least three active suppliers in seed data
+
+    def test_supplier_paginated_invalid_page_returns_400(self, client, warehouse_data):
+        token = _login(client, "warehouse_manager")
+        response = client.get(
+            "/api/v1/suppliers?page=abc&per_page=10",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "VALIDATION_ERROR"
 
     def test_barcode_routes_are_admin_only(self, client, app, warehouse_data):
         manager_token = _login(client, "warehouse_manager")

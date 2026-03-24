@@ -164,6 +164,7 @@ export default function OrdersPage() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null)
   const [selectedSupplier, setSelectedSupplier] = useState<OrderSupplierLookupItem | null>(null)
   const [supplierOptions, setSupplierOptions] = useState<OrderSupplierLookupItem[]>([])
+  const [supplierQuery, setSupplierQuery] = useState('')
   const [supplierConfirmationNumber, setSupplierConfirmationNumber] = useState('')
   const [note, setNote] = useState('')
   const [lineDrafts, setLineDrafts] = useState<OrderLineDraft[]>([createEmptyOrderLineDraft()])
@@ -171,7 +172,6 @@ export default function OrdersPage() {
   const [lineErrors, setLineErrors] = useState<Record<string, OrderLineFormErrors>>({})
   const [submitting, setSubmitting] = useState(false)
 
-  const supplierLookupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const articleLookupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const loadOrders = useCallback(async () => {
@@ -194,18 +194,29 @@ export default function OrdersPage() {
     }
   }, [])
 
+  const loadSupplierOptions = useCallback(async () => {
+    try {
+      const response = await runWithRetry(() => ordersApi.preloadSuppliers())
+      setSupplierOptions(response.items)
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        setFatalError(true)
+        return
+      }
+
+      showErrorToast(getApiErrorBody(error)?.message ?? 'Dohvat dobavljača nije uspio.')
+    }
+  }, [])
+
   useEffect(() => {
     void loadOrders()
-  }, [loadOrders])
+    void loadSupplierOptions()
+  }, [loadOrders, loadSupplierOptions])
 
   useEffect(() => {
     const articleLookupTimers = articleLookupTimersRef.current
 
     return () => {
-      if (supplierLookupTimerRef.current) {
-        clearTimeout(supplierLookupTimerRef.current)
-      }
-
       Object.values(articleLookupTimers).forEach((timer) => clearTimeout(timer))
     }
   }, [])
@@ -214,7 +225,7 @@ export default function OrdersPage() {
     setOrderNumber('')
     setSelectedSupplierId(null)
     setSelectedSupplier(null)
-    setSupplierOptions([])
+    setSupplierQuery('')
     setSupplierConfirmationNumber('')
     setNote('')
     setLineDrafts([createEmptyOrderLineDraft()])
@@ -245,35 +256,6 @@ export default function OrdersPage() {
           [field]: value,
         },
       }))
-    },
-    []
-  )
-
-  const handleSupplierSearch = useCallback(
-    (query: string) => {
-      if (supplierLookupTimerRef.current) {
-        clearTimeout(supplierLookupTimerRef.current)
-      }
-
-      const normalized = query.trim()
-      if (!normalized) {
-        setSupplierOptions([])
-        return
-      }
-
-      supplierLookupTimerRef.current = setTimeout(async () => {
-        try {
-          const response = await runWithRetry(() => ordersApi.lookupSuppliers(normalized))
-          setSupplierOptions(response.items)
-        } catch (error) {
-          if (isNetworkOrServerError(error)) {
-            setFatalError(true)
-            return
-          }
-
-          showErrorToast(getApiErrorBody(error)?.message ?? 'Dohvat dobavljača nije uspio.')
-        }
-      }, 300)
     },
     []
   )
@@ -595,10 +577,20 @@ export default function OrdersPage() {
                   clearable
                   value={selectedSupplierId}
                   data={buildSupplierSelectData(supplierOptions, selectedSupplier)}
-                  onSearchChange={handleSupplierSearch}
+                  onSearchChange={setSupplierQuery}
                   onChange={handleSupplierChange}
                   error={headerErrors.supplierId}
-                  nothingFoundMessage="Nema rezultata."
+                  nothingFoundMessage={supplierQuery.trim() ? 'Nema rezultata.' : undefined}
+                  filter={({ options, search }) => {
+                    const q = search.trim().toLowerCase()
+                    if (!q) return options
+                    return options.filter(
+                      (opt) =>
+                        'value' in opt &&
+                        opt.label?.toLowerCase().includes(q)
+                    )
+                  }}
+                  maxDropdownHeight={260}
                 />
               </Group>
 

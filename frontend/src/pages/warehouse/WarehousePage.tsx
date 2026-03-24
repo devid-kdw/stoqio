@@ -219,8 +219,8 @@ export default function WarehousePage() {
     setSupplierOptionsError(null)
 
     try {
-      const response = await runWithRetry(() => articlesApi.lookupSuppliers())
-      setSupplierOptions(response)
+      const response = await runWithRetry(() => articlesApi.lookupSuppliersPreload())
+      setSupplierOptions(response.items)
       supplierOptionsLoadedRef.current = true
     } catch (error) {
       const message = isNetworkOrServerError(error)

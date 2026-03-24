@@ -168,6 +168,13 @@ export interface SupplierLookupItem {
   internal_code: string
 }
 
+export interface SupplierLookupPreloadResponse {
+  items: SupplierLookupItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
 export interface ArticleSupplierMutationPayload {
   supplier_id: number
   supplier_article_code?: string | null
@@ -307,6 +314,13 @@ export const articlesApi = {
 
   lookupSuppliers: async (): Promise<SupplierLookupItem[]> => {
     const response = await client.get<SupplierLookupItem[]>('/suppliers')
+    return response.data
+  },
+
+  lookupSuppliersPreload: async (): Promise<SupplierLookupPreloadResponse> => {
+    const response = await client.get<SupplierLookupPreloadResponse>('/suppliers', {
+      params: { per_page: 200 },
+    })
     return response.data
   },
 

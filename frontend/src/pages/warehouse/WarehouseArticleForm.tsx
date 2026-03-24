@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import {
   Button,
   Checkbox,
@@ -56,6 +58,8 @@ export default function WarehouseArticleForm({
   onRetrySuppliers,
   onChange,
 }: WarehouseArticleFormProps) {
+  const [supplierSearchQueries, setSupplierSearchQueries] = useState<Record<string, string>>({})
+
   const uomMap = buildUomMap(uoms)
   const supplierSelectData = supplierOptions.map((supplier) => ({
     value: String(supplier.id),
@@ -279,10 +283,24 @@ export default function WarehouseArticleForm({
                   label="Dobavljač"
                   placeholder="Odaberi dobavljača"
                   searchable
-                  nothingFoundMessage="Nema rezultata."
+                  clearable
                   data={supplierSelectData}
                   value={supplier.supplierId}
                   onChange={(value) => updateSupplier(index, 'supplierId', value)}
+                  onSearchChange={(q) =>
+                    setSupplierSearchQueries((prev) => ({ ...prev, [supplier.key]: q }))
+                  }
+                  nothingFoundMessage={
+                    supplierSearchQueries[supplier.key]?.trim() ? 'Nema rezultata.' : undefined
+                  }
+                  filter={({ options, search }) => {
+                    const q = search.trim().toLowerCase()
+                    if (!q) return options
+                    return options.filter(
+                      (opt) => 'value' in opt && opt.label?.toLowerCase().includes(q)
+                    )
+                  }}
+                  maxDropdownHeight={260}
                   error={errors.supplierRows?.[index]?.supplierId}
                   disabled={disabled || supplierOptionsLoading || Boolean(supplierOptionsError)}
                 />

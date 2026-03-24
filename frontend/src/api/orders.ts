@@ -230,6 +230,13 @@ export const ordersApi = {
     window.URL.revokeObjectURL(objectUrl)
   },
 
+  preloadSuppliers: async (): Promise<OrderSupplierLookupResponse> => {
+    const response = await client.get<{ items: OrderSupplierLookupItem[]; total: number; page: number; per_page: number }>('/suppliers', {
+      params: { per_page: 200 },
+    })
+    return { items: response.data.items }
+  },
+
   lookupSuppliers: async (query: string): Promise<OrderSupplierLookupResponse> => {
     const response = await client.get<OrderSupplierLookupResponse>('/orders/lookups/suppliers', {
       params: { q: query },
@@ -248,6 +255,13 @@ export const ordersApi = {
 
     const response = await client.get<OrderArticleLookupResponse>('/orders/lookups/articles', {
       params,
+    })
+    return response.data
+  },
+
+  listOpenOrdersPreload: async (): Promise<OrdersListResponse> => {
+    const response = await client.get<OrdersListResponse>('/orders', {
+      params: { status: 'OPEN', per_page: 200 },
     })
     return response.data
   },

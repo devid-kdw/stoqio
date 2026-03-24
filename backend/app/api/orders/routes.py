@@ -77,6 +77,9 @@ def lookup_articles():
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
+_VALID_ORDER_STATUSES = {"OPEN", "CLOSED"}
+
+
 @orders_bp.route("/orders", methods=["GET"])
 @require_role("ADMIN", "MANAGER")
 def get_orders():
@@ -90,7 +93,18 @@ def get_orders():
                 field_name="per_page",
                 default=50,
             )
-            result = order_service.list_orders(page, per_page)
+            status_raw = request.args.get("status")
+            if status_raw is not None:
+                status_upper = status_raw.strip().upper()
+                if status_upper not in _VALID_ORDER_STATUSES:
+                    return _error(
+                        "VALIDATION_ERROR",
+                        f"status must be one of: {', '.join(sorted(_VALID_ORDER_STATUSES))}.",
+                        400,
+                    )
+            else:
+                status_upper = None
+            result = order_service.list_orders(page, per_page, status=status_upper)
         return jsonify(result), 200
     except OrderServiceError as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
