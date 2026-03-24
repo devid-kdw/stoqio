@@ -16,6 +16,7 @@ from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
 from app.models.enums import (
     DraftGroupType,
+    DraftStatus,
     DraftType,
     InventoryCountLineResolution,
     InventoryCountStatus,
@@ -972,3 +973,260 @@ def test_count_detail_shows_opening_type(client, inv_data):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["type"] == "OPENING"
+
+
+# ---------------------------------------------------------------------------
+# Test: shortage_drafts_summary — zero shortages
+# ---------------------------------------------------------------------------
+
+def test_shortage_drafts_summary_no_shortages(client, inv_data):
+    """A completed count with no shortage lines should return all-zero summary."""
+    headers = _admin_headers(client)
+    history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+
+    # Find a count that had no shortages (the latest regular count matched all lines)
+    # History is ordered newest-first; find the one from
+    # test_start_regular_count_allowed_when_opening_exists which matched all lines.
+    regular_counts = [c for c in history["items"] if c["type"] == "REGULAR"]
+    # The most recent regular count matched all system quantities → no shortages
+    latest = regular_counts[0]
+    summary = latest["shortage_drafts_summary"]
+    assert summary["total"] == 0
+    assert summary["approved"] == 0
+    assert summary["rejected"] == 0
+    assert summary["pending"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Test: shortage_drafts_summary — mixed statuses (pending + approved)
+# ---------------------------------------------------------------------------
+
+def test_shortage_drafts_summary_mixed_statuses(client, inv_data, app):
+    """A count with shortage drafts in mixed states → correct summary counts."""
+    headers = _admin_headers(client)
+    history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+
+    # The first completed count (test_complete_count) created a shortage for INV-ART-002.
+    # Find it by looking for regular counts with discrepancies >= 2
+    regular_counts = [c for c in history["items"] if c["type"] == "REGULAR"]
+    # Oldest regular count is the one from test_complete_count
+    first_count = regular_counts[-1]
+    count_id = first_count["id"]
+
+    # Check that it has at least 1 pending shortage draft
+    summary_before = first_count["shortage_drafts_summary"]
+    assert summary_before["total"] >= 1
+    assert summary_before["pending"] >= 1
+
+    # Now approve one of the shortage drafts to create a mixed state
+    with app.app_context():
+        prefix = f"inv-count-{count_id}-line-%"
+        drafts = (
+            _db.session.query(Draft)
+            .filter(
+                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
+                Draft.client_event_id.like(prefix),
+            )
+            .all()
+        )
+        assert len(drafts) >= 1
+        # Approve the first draft
+        drafts[0].status = DraftStatus.APPROVED
+        _db.session.commit()
+
+    try:
+        # Re-fetch history and check the summary
+        history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+        first_count = next(c for c in history["items"] if c["id"] == count_id)
+        summary = first_count["shortage_drafts_summary"]
+        assert summary["approved"] >= 1
+        assert summary["total"] == summary["approved"] + summary["rejected"] + summary["pending"]
+    finally:
+        # Restore draft status to DRAFT for other tests
+        with app.app_context():
+            drafts = (
+                _db.session.query(Draft)
+                .filter(
+                    Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
+                    Draft.client_event_id.like(f"inv-count-{count_id}-line-%"),
+                )
+                .all()
+            )
+            for d in drafts:
+                d.status = DraftStatus.DRAFT
+            _db.session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Test: shortage_drafts_summary — rejected state
+# ---------------------------------------------------------------------------
+
+def test_shortage_drafts_summary_rejected_state(client, inv_data, app):
+    """A count with rejected shortage drafts → correct rejected count."""
+    headers = _admin_headers(client)
+    history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+
+    regular_counts = [c for c in history["items"] if c["type"] == "REGULAR"]
+    first_count = regular_counts[-1]
+    count_id = first_count["id"]
+
+    # Reject all shortage drafts for this count
+    with app.app_context():
+        prefix = f"inv-count-{count_id}-line-%"
+        drafts = (
+            _db.session.query(Draft)
+            .filter(
+                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
+                Draft.client_event_id.like(prefix),
+            )
+            .all()
+        )
+        total_drafts = len(drafts)
+        assert total_drafts >= 1
+        for d in drafts:
+            d.status = DraftStatus.REJECTED
+        _db.session.commit()
+
+    try:
+        history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+        first_count = next(c for c in history["items"] if c["id"] == count_id)
+        summary = first_count["shortage_drafts_summary"]
+        assert summary["rejected"] == total_drafts
+        assert summary["pending"] == 0
+        assert summary["approved"] == 0
+        assert summary["total"] == total_drafts
+    finally:
+        # Restore draft status to DRAFT
+        with app.app_context():
+            drafts = (
+                _db.session.query(Draft)
+                .filter(
+                    Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
+                    Draft.client_event_id.like(f"inv-count-{count_id}-line-%"),
+                )
+                .all()
+            )
+            for d in drafts:
+                d.status = DraftStatus.DRAFT
+            _db.session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Test: shortage_drafts_summary — detail endpoint includes the field
+# ---------------------------------------------------------------------------
+
+def test_shortage_drafts_summary_in_detail(client, inv_data):
+    """GET /api/v1/inventory/{id} must include shortage_drafts_summary."""
+    headers = _admin_headers(client)
+    history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+    count_id = history["items"][0]["id"]
+
+    resp = client.get(f"/api/v1/inventory/{count_id}", headers=headers)
+    assert resp.status_code == 200
+    data = resp.get_json()
+
+    assert "shortage_drafts_summary" in data
+    summary = data["shortage_drafts_summary"]
+    assert isinstance(summary["total"], int)
+    assert isinstance(summary["approved"], int)
+    assert isinstance(summary["rejected"], int)
+    assert isinstance(summary["pending"], int)
+    assert summary["total"] == summary["approved"] + summary["rejected"] + summary["pending"]
+
+
+# ---------------------------------------------------------------------------
+# Test: shortage_drafts_summary — isolation between counts
+# ---------------------------------------------------------------------------
+
+def test_shortage_drafts_summary_isolation(client, inv_data, app):
+    """Ensure shortage drafts from one count do not leak into another count's summary."""
+    from app.models.draft import Draft
+    from app.models.enums import DraftType, DraftStatus
+    from app.extensions import db as _db
+
+    headers = _admin_headers(client)
+    
+    # 1. Start a new count (Count B)
+    resp = client.post("/api/v1/inventory", headers=headers)
+    assert resp.status_code == 201
+    count_b_id = resp.get_json()["id"]
+
+    # 2. Add a shortage to Count B and complete it
+    active = client.get("/api/v1/inventory/active", headers=headers).get_json()
+    for line in active["lines"]:
+        qty = line["system_quantity"]
+        # Create a shortage for INV-ART-002
+        if line["article_no"] == "INV-ART-002":
+            qty = max(0, qty - 5)
+        payload_qty = int(qty) if qty == int(qty) else qty
+        client.patch(
+            f"/api/v1/inventory/{count_b_id}/lines/{line['line_id']}",
+            json={"counted_quantity": payload_qty},
+            headers=headers,
+        )
+
+    client.post(f"/api/v1/inventory/{count_b_id}/complete", headers=headers)
+
+    # 3. Identify Count A (existing with shortages) and Count B
+    history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+    regular_counts = [c for c in history["items"] if c["type"] == "REGULAR"]
+    
+    count_b = regular_counts[0]  # newest
+    assert count_b["id"] == count_b_id
+    
+    count_a = next(c for c in regular_counts if c["id"] != count_b_id and c["shortage_drafts_summary"]["total"] > 0)
+    count_a_id = count_a["id"]
+
+    # 4. Modify drafts: Reject Count A's drafts, Approve Count B's drafts
+    with app.app_context():
+        # Count A drafts -> REJECTED
+        drafts_a = (
+            _db.session.query(Draft)
+            .filter(
+                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
+                Draft.client_event_id.like(f"inv-count-{count_a_id}-line-%"),
+            )
+            .all()
+        )
+        assert len(drafts_a) > 0
+        for d in drafts_a:
+            d.status = DraftStatus.REJECTED
+
+        # Count B drafts -> APPROVED
+        drafts_b = (
+            _db.session.query(Draft)
+            .filter(
+                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
+                Draft.client_event_id.like(f"inv-count-{count_b_id}-line-%"),
+            )
+            .all()
+        )
+        assert len(drafts_b) > 0
+        for d in drafts_b:
+            d.status = DraftStatus.APPROVED
+
+        _db.session.commit()
+
+    try:
+        # 5. Verify Isolation
+        history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+        
+        ca_summary = next(c for c in history["items"] if c["id"] == count_a_id)["shortage_drafts_summary"]
+        assert ca_summary["rejected"] == len(drafts_a)
+        assert ca_summary["approved"] == 0
+        assert ca_summary["pending"] == 0
+
+        cb_summary = next(c for c in history["items"] if c["id"] == count_b_id)["shortage_drafts_summary"]
+        assert cb_summary["approved"] == len(drafts_b)
+        assert cb_summary["rejected"] == 0
+        assert cb_summary["pending"] == 0
+
+    finally:
+        # Restore draft status
+        with app.app_context():
+            # Must re-query since we are in a new session
+            da = _db.session.query(Draft).filter(Draft.client_event_id.like(f"inv-count-{count_a_id}-line-%")).all()
+            db_b = _db.session.query(Draft).filter(Draft.client_event_id.like(f"inv-count-{count_b_id}-line-%")).all()
+            for d in da + db_b:
+                d.status = DraftStatus.DRAFT
+            _db.session.commit()

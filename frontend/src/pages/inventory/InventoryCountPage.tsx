@@ -30,6 +30,7 @@ import {
   type HistoryItem,
   type InventoryCountLine,
   type InventoryCountType,
+  type ShortageApprovalSummary,
 } from '../../api/inventory'
 import FullPageState from '../../components/shared/FullPageState'
 import { getApiErrorBody, isNetworkOrServerError, runWithRetry } from '../../utils/http'
@@ -124,6 +125,24 @@ function ResolutionBadge({ resolution }: { resolution: string | null }) {
   const entry = map[resolution]
   if (!entry) return <Badge>{resolution}</Badge>
   return <Badge color={entry.color}>{entry.label}</Badge>
+}
+
+// ---------------------------------------------------------------------------
+// ShortageApprovalBadge
+// ---------------------------------------------------------------------------
+
+function ShortageApprovalBadge({ summary }: { summary: ShortageApprovalSummary | undefined }) {
+  if (!summary || summary.total === 0) return null
+  if (summary.pending > 0) {
+    return <Badge color="yellow">Na čekanju ({summary.pending})</Badge>
+  }
+  if (summary.rejected === 0) {
+    return <Badge color="green">Odobreno</Badge>
+  }
+  if (summary.approved > 0) {
+    return <Badge color="red">Djelomično odbijeno</Badge>
+  }
+  return <Badge color="red">Odbijeno</Badge>
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +281,7 @@ function HistoryView({
                           {item.type === 'OPENING' && (
                             <Badge color="violet">Opening Stock</Badge>
                           )}
+                          <ShortageApprovalBadge summary={item.shortage_drafts_summary} />
                         </Group>
                       </Table.Td>
                     </Table.Tr>

@@ -90,6 +90,35 @@ def _next_group_number() -> str:
     return f"IZL-{max_suffix + 1:04d}"
 
 
+def _get_shortage_drafts_summary(count_id: int) -> dict:
+    """Derive shortage-draft approval summary for a completed inventory count.
+
+    Links drafts to a count via the deterministic ``client_event_id`` pattern
+    emitted by ``complete_count(...)``:
+        ``inv-count-{count_id}-line-{line_id}``
+
+    No FK or schema change is required.
+    """
+    prefix = f"inv-count-{count_id}-line-%"
+    drafts = (
+        db.session.query(Draft.status)
+        .filter(
+            Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
+            Draft.client_event_id.like(prefix),
+        )
+        .all()
+    )
+    approved = sum(1 for (s,) in drafts if s == DraftStatus.APPROVED)
+    rejected = sum(1 for (s,) in drafts if s == DraftStatus.REJECTED)
+    pending = sum(1 for (s,) in drafts if s == DraftStatus.DRAFT)
+    return {
+        "total": len(drafts),
+        "approved": approved,
+        "rejected": rejected,
+        "pending": pending,
+    }
+
+
 def _get_default_location() -> Location | None:
     return db.session.get(Location, 1) or db.session.query(Location).first()
 
@@ -325,6 +354,7 @@ def list_counts(page: int, per_page: int) -> dict:
                 ),
                 "total_lines": total_lines,
                 "discrepancies": discrepancies,
+                "shortage_drafts_summary": _get_shortage_drafts_summary(count.id),
             }
         )
 
@@ -410,6 +440,7 @@ def get_count_detail(count_id: int) -> dict:
             "surplus_added": surplus_added,
             "shortage_drafts_created": shortage_drafts,
         },
+        "shortage_drafts_summary": _get_shortage_drafts_summary(count_id),
         "lines": [_serialize_line(l) for l in all_lines],
     }
 

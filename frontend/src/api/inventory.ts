@@ -2,6 +2,13 @@ import client from './client'
 
 export type InventoryCountType = 'REGULAR' | 'OPENING'
 
+export interface ShortageApprovalSummary {
+  total: number
+  approved: number
+  rejected: number
+  pending: number
+}
+
 export interface InventoryCountSummary {
   total_lines: number
   no_change: number
@@ -46,6 +53,7 @@ export interface HistoryItem {
   completed_at: string | null
   total_lines: number
   discrepancies: number
+  shortage_drafts_summary?: ShortageApprovalSummary
 }
 
 export interface HistoryResponse {
@@ -64,6 +72,7 @@ export interface CountDetail {
   started_at: string | null
   completed_at: string | null
   summary: InventoryCountSummary
+  shortage_drafts_summary?: ShortageApprovalSummary
   lines: InventoryCountLine[]
 }
 
