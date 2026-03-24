@@ -52,6 +52,29 @@ export interface UpdateDraftGroupPayload {
   draft_note: string
 }
 
+/** A line returned by the dedicated /drafts/my endpoint. */
+export interface MyDraftLine {
+  id: number
+  draft_group_id: number
+  article_id: number
+  article_no: string | null
+  description: string | null
+  batch_id: number | null
+  batch_code: string | null
+  quantity: number
+  uom: string
+  employee_id_ref: string | null
+  status: 'DRAFT' | 'APPROVED' | 'REJECTED' | string
+  source: string
+  created_by: string | null
+  created_at: string | null
+  rejection_reason?: string | null
+}
+
+export interface GetMyLinesResponse {
+  lines: MyDraftLine[]
+}
+
 export const draftsApi = {
   /**
    * Fetch today's draft lines (newest first).
@@ -61,6 +84,15 @@ export const draftsApi = {
     const response = await client.get<GetDraftsResponse>('/drafts', {
       params: { date: 'today' },
     })
+    return response.data
+  },
+
+  /**
+   * Fetch the authenticated user's own draft lines for today.
+   * GET /api/v1/drafts/my
+   */
+  getMyLines: async (): Promise<GetMyLinesResponse> => {
+    const response = await client.get<GetMyLinesResponse>('/drafts/my')
     return response.data
   },
 

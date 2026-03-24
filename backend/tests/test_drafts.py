@@ -148,12 +148,19 @@ _token_cache: dict[str, str] = {}
 
 
 def _login(client, username):
-    """Log in and return an access token (cached to avoid rate limiting)."""
+    """Log in and return an access token (cached to avoid rate limiting).
+
+    Each username gets a stable synthetic loopback IP so full-suite runs do not
+    accidentally share auth rate-limit state across otherwise unrelated draft
+    tests.
+    """
     if username in _token_cache:
         return _token_cache[username]
+    octet = (sum(ord(ch) for ch in username) % 200) + 20
     resp = client.post(
         "/api/v1/auth/login",
         json={"username": username, "password": "pass"},
+        environ_base={"REMOTE_ADDR": f"127.0.12.{octet}"},
     )
     token = resp.get_json()["access_token"]
     _token_cache[username] = token
@@ -1095,3 +1102,397 @@ class TestSameDayLinesAndRejectionReason:
         line = same_day_lines[0]
         assert line["status"] == "REJECTED"
         assert line["rejection_reason"] == "Kriva količina, molim provjerite ponovo."
+
+
+# ==========================================================================
+# Wave 1 Phase 7: GET /api/v1/drafts/my
+# ==========================================================================
+
+
+class TestMyDraftLines:
+    """GET /api/v1/drafts/my
+
+    Covers:
+    - OPERATOR → 200, VIEWER → 403
+    - default (no ?date) returns today
+    - explicit ?date=YYYY-MM-DD returns that day
+    - invalid ?date → 400 VALIDATION_ERROR
+    - returns only authenticated user's own lines (not other operators)
+    - required fields present on each line
+    - rejected lines expose rejection_reason correctly
+    - INVENTORY_SHORTAGE groups excluded
+    - newest-first ordering
+    """
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+
+    def _make_group(self, op_date, operator_id, group_type=DraftGroupType.DAILY_OUTBOUND,
+                    status=DraftGroupStatus.PENDING, suffix="MY"):
+        gn = f"IZL-{suffix}"
+        group = DraftGroup(
+            group_number=gn,
+            status=status,
+            group_type=group_type,
+            operational_date=op_date,
+            created_by=operator_id,
+        )
+        _db.session.add(group)
+        _db.session.flush()
+        return group
+
+    def _make_draft(self, group_id, article_id, uom_code, operator_id,
+                    quantity=1.0, status=DraftStatus.DRAFT):
+        draft = Draft(
+            draft_group_id=group_id,
+            location_id=1,
+            article_id=article_id,
+            batch_id=None,
+            quantity=quantity,
+            uom=uom_code,
+            status=status,
+            draft_type=DraftType.OUTBOUND,
+            source=DraftSource.manual,
+            client_event_id=str(uuid.uuid4()),
+            created_by=operator_id,
+        )
+        _db.session.add(draft)
+        _db.session.flush()
+        return draft
+
+    # ------------------------------------------------------------------
+    # RBAC
+    # ------------------------------------------------------------------
+
+    def test_operator_gets_200(self, client, draft_data):
+        token = _login(client, "draft_operator")
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "lines" in data
+        assert isinstance(data["lines"], list)
+
+    def test_viewer_gets_403(self, client, draft_data, app):
+        """A VIEWER role must be rejected with 403."""
+        # Create a VIEWER user once; skip creation if already present.
+        with app.app_context():
+            viewer = User.query.filter_by(username="draft_viewer").first()
+            if viewer is None:
+                viewer = User(
+                    username="draft_viewer",
+                    password_hash=generate_password_hash("pass", method="pbkdf2:sha256"),
+                    role=UserRole.VIEWER,
+                    is_active=True,
+                )
+                _db.session.add(viewer)
+                _db.session.commit()
+
+        token = _login(client, "draft_viewer")
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 403
+
+    def test_unauthenticated_gets_401(self, client, draft_data):
+        resp = client.get("/api/v1/drafts/my")
+        assert resp.status_code == 401
+
+    # ------------------------------------------------------------------
+    # Date handling
+    # ------------------------------------------------------------------
+
+    def test_default_date_returns_today(self, client, draft_data, app):
+        """No ?date param → today's lines are returned."""
+        token = _login(client, "draft_operator")
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            group = self._make_group(op_date, draft_data["operator"].id, suffix="MY-T1")
+            self._make_draft(
+                group.id,
+                draft_data["article"].id,
+                draft_data["uom"].code,
+                draft_data["operator"].id,
+            )
+            _db.session.commit()
+
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 200
+        assert len(resp.get_json()["lines"]) >= 1
+
+    def test_explicit_date_param_returns_matching_entries(self, client, draft_data, app):
+        """?date=YYYY-MM-DD returns entries for that specific operational date."""
+        token = _login(client, "draft_operator")
+        target_date = date(2026, 1, 15)
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            group = self._make_group(target_date, draft_data["operator"].id, suffix="MY-D1")
+            draft = self._make_draft(
+                group.id,
+                draft_data["article"].id,
+                draft_data["uom"].code,
+                draft_data["operator"].id,
+                quantity=3.0,
+            )
+            _db.session.commit()
+            target_draft_id = draft.id
+
+        resp = client.get(
+            "/api/v1/drafts/my?date=2026-01-15",
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+        ids = [line["id"] for line in resp.get_json()["lines"]]
+        assert target_draft_id in ids
+
+    def test_explicit_date_param_excludes_other_dates(self, client, draft_data, app):
+        """?date for a day with no entries returns an empty list."""
+        token = _login(client, "draft_operator")
+        resp = client.get(
+            "/api/v1/drafts/my?date=2020-01-01",
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["lines"] == []
+
+    def test_invalid_date_param_returns_400(self, client, draft_data):
+        token = _login(client, "draft_operator")
+        resp = client.get(
+            "/api/v1/drafts/my?date=not-a-date",
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_invalid_date_format_returns_400(self, client, draft_data):
+        """Partial or ambiguous formats must also be rejected."""
+        token = _login(client, "draft_operator")
+        resp = client.get(
+            "/api/v1/drafts/my?date=2026-13-01",
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    # ------------------------------------------------------------------
+    # User scoping
+    # ------------------------------------------------------------------
+
+    def test_returns_only_authenticated_user_lines(self, client, draft_data, app):
+        """Each operator sees only their own lines, not another operator's."""
+        token_op = _login(client, "draft_operator")
+
+        with app.app_context():
+            # Ensure second operator exists
+            op2 = User.query.filter_by(username="draft_operator2").first()
+            if op2 is None:
+                op2 = User(
+                    username="draft_operator2",
+                    password_hash=generate_password_hash("pass", method="pbkdf2:sha256"),
+                    role=UserRole.OPERATOR,
+                    is_active=True,
+                )
+                _db.session.add(op2)
+                _db.session.flush()
+
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            group = self._make_group(op_date, draft_data["operator"].id, suffix="MY-SC1")
+            draft_op1 = self._make_draft(
+                group.id, draft_data["article"].id, draft_data["uom"].code,
+                draft_data["operator"].id,
+            )
+            # Draft created by op2, same group
+            draft_op2 = self._make_draft(
+                group.id, draft_data["article"].id, draft_data["uom"].code,
+                op2.id,
+            )
+            _db.session.commit()
+            op1_id = draft_op1.id
+            op2_id = draft_op2.id
+
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token_op))
+        assert resp.status_code == 200
+        line_ids = [line["id"] for line in resp.get_json()["lines"]]
+        assert op1_id in line_ids
+        assert op2_id not in line_ids
+
+    # ------------------------------------------------------------------
+    # Response shape / required fields
+    # ------------------------------------------------------------------
+
+    def test_required_fields_present_on_each_line(self, client, draft_data, app):
+        """Every returned line must expose all required fields."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            group = self._make_group(op_date, draft_data["operator"].id, suffix="MY-RF1")
+            self._make_draft(
+                group.id, draft_data["article"].id, draft_data["uom"].code,
+                draft_data["operator"].id,
+            )
+            _db.session.commit()
+
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 200
+        lines = resp.get_json()["lines"]
+        assert len(lines) >= 1
+        required = {
+            "article_no", "description", "quantity", "uom",
+            "batch_code", "status", "rejection_reason", "created_at",
+        }
+        for line in lines:
+            assert required.issubset(line.keys()), f"Missing keys: {required - line.keys()}"
+
+    def test_pending_draft_line_has_null_rejection_reason(self, client, draft_data, app):
+        """A DRAFT-status line returns rejection_reason: null."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            group = self._make_group(op_date, draft_data["operator"].id, suffix="MY-NR1")
+            self._make_draft(
+                group.id, draft_data["article"].id, draft_data["uom"].code,
+                draft_data["operator"].id,
+            )
+            _db.session.commit()
+
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 200
+        line = resp.get_json()["lines"][0]
+        assert line["rejection_reason"] is None
+
+    def test_rejected_line_has_rejection_reason_string(self, client, draft_data, app):
+        """A REJECTED line exposes its rejection reason."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            ApprovalAction.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            group = self._make_group(
+                op_date, draft_data["operator"].id,
+                suffix="MY-RJ1", status=DraftGroupStatus.REJECTED,
+            )
+            draft = self._make_draft(
+                group.id, draft_data["article"].id, draft_data["uom"].code,
+                draft_data["operator"].id, status=DraftStatus.REJECTED,
+            )
+            action = ApprovalAction(
+                draft_id=draft.id,
+                actor_id=draft_data["admin"].id,
+                action=ApprovalActionType.REJECTED,
+                note="Nedostaje šarža.",
+            )
+            _db.session.add(action)
+            _db.session.commit()
+            draft_id = draft.id
+
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 200
+        line = next(l for l in resp.get_json()["lines"] if l["id"] == draft_id)
+        assert line["status"] == "REJECTED"
+        assert line["rejection_reason"] == "Nedostaje šarža."
+
+    # ------------------------------------------------------------------
+    # INVENTORY_SHORTAGE exclusion
+    # ------------------------------------------------------------------
+
+    def test_excludes_inventory_shortage_group_lines(self, client, draft_data, app):
+        """INVENTORY_SHORTAGE group lines must never appear in /drafts/my."""
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            shortage_group = self._make_group(
+                op_date, draft_data["operator"].id,
+                group_type=DraftGroupType.INVENTORY_SHORTAGE,
+                suffix="MY-SH1",
+            )
+            shortage_draft = self._make_draft(
+                shortage_group.id, draft_data["article"].id,
+                draft_data["uom"].code, draft_data["operator"].id,
+            )
+            _db.session.commit()
+            shortage_id = shortage_draft.id
+
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 200
+        line_ids = [l["id"] for l in resp.get_json()["lines"]]
+        assert shortage_id not in line_ids
+
+    # ------------------------------------------------------------------
+    # Ordering
+    # ------------------------------------------------------------------
+
+    def test_newest_first_ordering(self, client, draft_data, app):
+        """Lines are returned newest-first (created_at DESC)."""
+        from datetime import datetime, timezone
+
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            group = self._make_group(op_date, draft_data["operator"].id, suffix="MY-ORD")
+
+            older = self._make_draft(
+                group.id, draft_data["article"].id, draft_data["uom"].code,
+                draft_data["operator"].id, quantity=1.0,
+            )
+            older.created_at = datetime(2026, 3, 24, 8, 0, 0, tzinfo=timezone.utc)
+
+            newer = self._make_draft(
+                group.id, draft_data["article"].id, draft_data["uom"].code,
+                draft_data["operator"].id, quantity=2.0,
+            )
+            newer.created_at = datetime(2026, 3, 24, 10, 0, 0, tzinfo=timezone.utc)
+            _db.session.commit()
+            older_id = older.id
+            newer_id = newer.id
+
+        resp = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp.status_code == 200
+        ids = [l["id"] for l in resp.get_json()["lines"]]
+        assert ids.index(newer_id) < ids.index(older_id)
+
+    # ------------------------------------------------------------------
+    # Backward-compat: existing GET /api/v1/drafts still works
+    # ------------------------------------------------------------------
+
+    def test_existing_get_drafts_still_has_same_day_lines(self, client, draft_data):
+        """Sanity check: the Phase 5 same_day_lines key is still present."""
+        token = _login(client, "draft_operator")
+        resp = client.get("/api/v1/drafts?date=today", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "same_day_lines" in data
+        assert "items" in data

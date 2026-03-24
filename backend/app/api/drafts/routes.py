@@ -1,7 +1,8 @@
 """Draft Entry routes.
 
 Provides:
-  GET    /api/v1/drafts?date=today  — today's draft lines
+  GET    /api/v1/drafts?date=today  — today's draft lines (shared)
+  GET    /api/v1/drafts/my          — authenticated user's own lines
   POST   /api/v1/drafts             — add a draft line
   PATCH  /api/v1/drafts/{id}        — update quantity
   DELETE /api/v1/drafts/{id}        — remove a draft line
@@ -260,6 +261,65 @@ def get_drafts():
         ),
         200,
     )
+
+
+
+# ---------------------------------------------------------------------------
+# GET /drafts/my
+# ---------------------------------------------------------------------------
+
+
+@drafts_bp.route("/drafts/my", methods=["GET"])
+@require_role("OPERATOR", "ADMIN")
+def get_my_drafts():
+    """Return the authenticated user's own DAILY_OUTBOUND draft lines.
+
+    Accepts an optional ``?date=YYYY-MM-DD`` query parameter (ISO format).
+    Omitting ``date`` defaults to the current operational date.
+
+    Only ``DAILY_OUTBOUND`` draft groups are considered; ``INVENTORY_SHORTAGE``
+    groups are never included in this response.
+    """
+    user = get_current_user()
+
+    date_param = request.args.get("date")
+    if date_param:
+        try:
+            from datetime import date as _date
+            op_date = _date.fromisoformat(date_param)
+        except ValueError:
+            return _error(
+                "VALIDATION_ERROR",
+                f"Invalid date '{date_param}'. Expected ISO format YYYY-MM-DD.",
+                400,
+            )
+    else:
+        op_date = _get_operational_today()
+
+    # All DAILY_OUTBOUND groups for the operational date (any status).
+    same_day_groups = (
+        DraftGroup.query.filter_by(
+            operational_date=op_date,
+            group_type=DraftGroupType.DAILY_OUTBOUND,
+        )
+        .all()
+    )
+    same_day_group_ids = [g.id for g in same_day_groups]
+
+    if same_day_group_ids:
+        my_drafts = (
+            Draft.query
+            .filter(
+                Draft.draft_group_id.in_(same_day_group_ids),
+                Draft.created_by == user.id,
+            )
+            .order_by(Draft.created_at.desc())
+            .all()
+        )
+    else:
+        my_drafts = []
+
+    return jsonify({"lines": [_serialize_draft(d) for d in my_drafts]}), 200
 
 
 # ---------------------------------------------------------------------------
