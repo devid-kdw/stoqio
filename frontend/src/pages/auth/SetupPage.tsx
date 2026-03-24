@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import {
-  Box,
   Button,
   Paper,
   Select,
@@ -12,6 +11,7 @@ import {
   Title,
 } from '@mantine/core'
 import axios from 'axios'
+import AuthLayout from '../../components/auth/AuthLayout'
 import FullPageState from '../../components/shared/FullPageState'
 import { setupApi } from '../../api/setup'
 import { useAuthStore } from '../../store/authStore'
@@ -219,71 +219,68 @@ export default function SetupPage() {
   }
 
   return (
-    <Box
+    <AuthLayout
       style={{
-        minHeight: '100vh',
-        padding: '2rem',
+        padding: 'clamp(1.5rem, 4vw, 3rem)',
         background:
           'radial-gradient(circle at top left, rgba(197, 224, 222, 0.55) 0%, rgba(247, 248, 250, 1) 45%, rgba(232, 238, 244, 0.9) 100%)',
       }}
     >
-      <Box style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <Paper
-          withBorder
-          radius="xl"
-          shadow="md"
-          p="xl"
-          style={{ width: '100%', maxWidth: 620 }}
-        >
-          <Stack gap="xl">
-            <Stack gap="xs">
-              <Text size="sm" tt="uppercase" fw={700} c="dimmed">
-                Prvo pokretanje
-              </Text>
-              <Title order={1}>Postavljanje lokacije</Title>
-              <Text c="dimmed">
-                Prije rada u aplikaciji potrebno je unijeti osnovnu lokaciju sustava.
-              </Text>
-            </Stack>
-
-            <form onSubmit={handleSubmit}>
-              <Stack gap="md">
-                <TextInput
-                  label="Naziv lokacije"
-                  placeholder="npr. Skladiste Tvornica d.o.o."
-                  required
-                  maxLength={100}
-                  value={name}
-                  onChange={(event) => {
-                    setName(event.currentTarget.value)
-                    setErrors((currentErrors) => ({ ...currentErrors, name: undefined }))
-                  }}
-                  error={errors.name}
-                />
-
-                <Select
-                  label="Vremenska zona"
-                  placeholder="Odaberite vremensku zonu"
-                  required
-                  searchable
-                  data={timezoneOptions}
-                  value={timezone}
-                  onChange={(value) => {
-                    setTimezone(value ?? '')
-                    setErrors((currentErrors) => ({ ...currentErrors, timezone: undefined }))
-                  }}
-                  error={errors.timezone}
-                  nothingFoundMessage="Nema rezultata"
-                />
-
-                <Button type="submit" loading={submitting} mt="sm">
-                  Spremi i nastavi
-                </Button>
-              </Stack>
-            </form>
+      <Paper
+        withBorder
+        radius="xl"
+        shadow="md"
+        p="clamp(1.75rem, 3vw, 2.75rem)"
+        style={{ width: '100%', maxWidth: 760 }}
+      >
+        <Stack gap="xl">
+          <Stack gap="xs">
+            <Text size="sm" tt="uppercase" fw={700} c="dimmed">
+              Prvo pokretanje
+            </Text>
+            <Title order={1}>Postavljanje lokacije</Title>
+            <Text c="dimmed">
+              Prije rada u aplikaciji potrebno je unijeti osnovnu lokaciju sustava.
+            </Text>
           </Stack>
-        </Paper>
-      </Box>
-    </Box>
+
+          <form onSubmit={handleSubmit}>
+            <Stack gap="md">
+              <TextInput
+                label="Naziv lokacije"
+                placeholder="npr. Skladiste Tvornica d.o.o."
+                required
+                maxLength={100}
+                value={name}
+                onChange={(event) => {
+                  setName(event.currentTarget.value)
+                  setErrors((currentErrors) => ({ ...currentErrors, name: undefined }))
+                }}
+                error={errors.name}
+              />
+
+              <Select
+                label="Vremenska zona"
+                placeholder="Odaberite vremensku zonu"
+                required
+                searchable
+                data={timezoneOptions}
+                value={timezone}
+                onChange={(value) => {
+                  setTimezone(value ?? '')
+                  setErrors((currentErrors) => ({ ...currentErrors, timezone: undefined }))
+                }}
+                error={errors.timezone}
+                nothingFoundMessage="Nema rezultata"
+              />
+
+              <Button type="submit" loading={submitting} mt="sm">
+                Spremi i nastavi
+              </Button>
+            </Stack>
+          </form>
+        </Stack>
+      </Paper>
+    </AuthLayout>
   )
 }

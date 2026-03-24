@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { TextInput, PasswordInput, Button, Paper, Title, Container, Text } from '@mantine/core'
 import axios from 'axios'
+import AuthLayout from '../../components/auth/AuthLayout'
 import { useAuthStore } from '../../store/authStore'
 import { authApi } from '../../api/auth'
 import { fetchSetupStatus, getAuthenticatedDestination } from '../../utils/setup'
@@ -69,38 +70,40 @@ export default function LoginPage() {
   }
 
   return (
-    <Container size={420} my={40}>
-      <Title ta="center" order={1}>
-        STOQIO Login
-      </Title>
-      <Text c="dimmed" size="sm" ta="center" mt={5}>
-        Please sign in with your credentials
-      </Text>
+    <AuthLayout>
+      <Container size={420}>
+        <Title ta="center" order={1}>
+          STOQIO Login
+        </Title>
+        <Text c="dimmed" size="sm" ta="center" mt={5}>
+          Please sign in with your credentials
+        </Text>
 
-      <Paper withBorder shadow="md" p={30} mt={30} radius="md">
-        <form onSubmit={handleSubmit}>
-          <TextInput
-            label="Username"
-            placeholder="Your username"
-            required
-            value={username}
-            onChange={(event) => setUsername(event.currentTarget.value)}
-          />
-          <PasswordInput
-            label="Password"
-            placeholder="Your password"
-            required
-            mt="md"
-            value={password}
-            onChange={(event) => setPassword(event.currentTarget.value)}
-            error={error}
-          />
-          
-          <Button fullWidth mt="xl" type="submit" loading={loading}>
-            Sign in
-          </Button>
-        </form>
-      </Paper>
-    </Container>
+        <Paper withBorder shadow="md" p={30} mt={30} radius="md">
+          <form onSubmit={handleSubmit}>
+            <TextInput
+              label="Username"
+              placeholder="Your username"
+              required
+              value={username}
+              onChange={(event) => setUsername(event.currentTarget.value)}
+            />
+            <PasswordInput
+              label="Password"
+              placeholder="Your password"
+              required
+              mt="md"
+              value={password}
+              onChange={(event) => setPassword(event.currentTarget.value)}
+              error={error}
+            />
+
+            <Button fullWidth mt="xl" type="submit" loading={loading}>
+              Sign in
+            </Button>
+          </form>
+        </Paper>
+      </Container>
+    </AuthLayout>
   )
 }

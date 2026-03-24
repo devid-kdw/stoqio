@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Badge,
@@ -20,7 +20,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core'
-import { IconArrowLeft } from '@tabler/icons-react'
+import { IconArrowLeft, IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import axios from 'axios'
 
 import {
@@ -88,6 +88,27 @@ function fmtDiff(n: number, decimalDisplay: boolean): string {
   const sign = n > 0 ? '+' : ''
   return `${sign}${fmtQty(n, decimalDisplay)}`
 }
+
+// ---------------------------------------------------------------------------
+// Active count display types
+// ---------------------------------------------------------------------------
+
+interface BatchGroup {
+  article_id: number
+  article_no: string | null
+  description: string | null
+  uom: string
+  decimal_display: boolean
+  lines: InventoryCountLine[]
+}
+
+type ActiveDisplayItem =
+  | { kind: 'non-batch'; line: InventoryCountLine }
+  | { kind: 'batch-group'; group: BatchGroup }
+
+type FilteredDisplayItem =
+  | { kind: 'non-batch'; line: InventoryCountLine }
+  | { kind: 'batch-group'; group: BatchGroup; visibleChildren: InventoryCountLine[] }
 
 // ---------------------------------------------------------------------------
 // ResolutionBadge
@@ -321,10 +342,20 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
   const [filterUncounted, setFilterUncounted] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [expandedArticles, setExpandedArticles] = useState<Set<number>>(new Set())
 
-  // A line is "counted" when its edit value is a valid number (>= 0)
+  // Progress operates on leaf count-lines only (flat lines array, no parent rows)
   const countedCount = lines.filter((l) => typeof lineEdits[l.line_id]?.value === 'number').length
   const allCounted = countedCount === lines.length && lines.length > 0
+
+  function toggleArticle(articleId: number) {
+    setExpandedArticles((prev) => {
+      const next = new Set(prev)
+      if (next.has(articleId)) next.delete(articleId)
+      else next.add(articleId)
+      return next
+    })
+  }
 
   function getLocalCounted(lineId: number, savedQty: number | null): number | null {
     const edit = lineEdits[lineId]
@@ -340,25 +371,75 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
     return 'var(--mantine-color-yellow-0)'
   }
 
-  const displayLines = lines.filter((line) => {
-    const localCounted = getLocalCounted(line.line_id, line.counted_quantity)
-    if (filterUncounted && localCounted !== null) return false
-    if (filterDiscrepancies) {
-      if (localCounted === null) return false
-      if (localCounted === line.system_quantity) return false
+  // Build ordered display items, grouping batch lines under their article (memoised on lines)
+  const allDisplayItems = useMemo((): ActiveDisplayItem[] => {
+    const items: ActiveDisplayItem[] = []
+    const seenArticles = new Set<number>()
+    const groups = new Map<number, BatchGroup>()
+
+    for (const line of lines) {
+      if (line.batch_id !== null && line.article_id !== null) {
+        if (!groups.has(line.article_id)) {
+          groups.set(line.article_id, {
+            article_id: line.article_id,
+            article_no: line.article_no,
+            description: line.description,
+            uom: line.uom,
+            decimal_display: line.decimal_display,
+            lines: [],
+          })
+        }
+        groups.get(line.article_id)!.lines.push(line)
+      }
     }
-    return true
-  })
+
+    for (const line of lines) {
+      if (line.batch_id === null) {
+        items.push({ kind: 'non-batch', line })
+      } else if (line.article_id !== null && !seenArticles.has(line.article_id)) {
+        seenArticles.add(line.article_id)
+        items.push({ kind: 'batch-group', group: groups.get(line.article_id)! })
+      }
+    }
+
+    return items
+  }, [lines])
+
+  // Apply filters to leaf rows; a batch group survives only if at least one child passes
+  const filteredDisplayItems: FilteredDisplayItem[] = []
+  for (const item of allDisplayItems) {
+    if (item.kind === 'non-batch') {
+      const line = item.line
+      const localCounted = getLocalCounted(line.line_id, line.counted_quantity)
+      if (filterUncounted && localCounted !== null) continue
+      if (filterDiscrepancies) {
+        if (localCounted === null) continue
+        if (localCounted === line.system_quantity) continue
+      }
+      filteredDisplayItems.push({ kind: 'non-batch', line })
+    } else {
+      const visibleChildren = item.group.lines.filter((line) => {
+        const localCounted = getLocalCounted(line.line_id, line.counted_quantity)
+        if (filterUncounted && localCounted !== null) return false
+        if (filterDiscrepancies) {
+          if (localCounted === null) return false
+          if (localCounted === line.system_quantity) return false
+        }
+        return true
+      })
+      if (visibleChildren.length > 0) {
+        filteredDisplayItems.push({ kind: 'batch-group', group: item.group, visibleChildren })
+      }
+    }
+  }
 
   async function handleBlur(line: InventoryCountLine) {
     const edit = lineEdits[line.line_id]
     if (!edit) return
 
-    // Parse the current input value
     const raw = edit.value
     const val = typeof raw === 'number' ? raw : parseFloat(String(raw))
 
-    // If empty/invalid, revert to last saved value
     if (isNaN(val)) {
       setLineEdits((prev) => ({
         ...prev,
@@ -367,7 +448,6 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
       return
     }
 
-    // Reject negative
     if (val < 0) {
       setLineEdits((prev) => ({
         ...prev,
@@ -377,7 +457,6 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
       return
     }
 
-    // No change from saved value — skip
     if (val === line.counted_quantity) return
 
     setLineEdits((prev) => ({
@@ -438,6 +517,42 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
     }
   }
 
+  function renderCountedQtyInput(line: InventoryCountLine) {
+    const edit = lineEdits[line.line_id]
+    return (
+      <NumberInput
+        value={edit?.value ?? ''}
+        onChange={(v) =>
+          setLineEdits((prev) => ({
+            ...prev,
+            [line.line_id]: { ...prev[line.line_id], value: v },
+          }))
+        }
+        onBlur={() => handleBlur(line)}
+        min={0}
+        size="xs"
+        w={110}
+        step={line.decimal_display ? 0.01 : 1}
+        disabled={edit?.saving}
+        rightSection={edit?.saving ? <Loader size={12} /> : null}
+        hideControls
+      />
+    )
+  }
+
+  function renderDiff(displayDiff: number | null, decimalDisplay: boolean) {
+    if (displayDiff === null) return '—'
+    return (
+      <Text
+        size="sm"
+        fw={500}
+        c={displayDiff > 0 ? 'blue' : displayDiff < 0 ? 'yellow.7' : 'green'}
+      >
+        {fmtDiff(displayDiff, decimalDisplay)}
+      </Text>
+    )
+  }
+
   return (
     <Stack gap="lg" p="md">
       <Group justify="space-between" align="flex-start">
@@ -495,7 +610,7 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
               <Table.Tr>
                 <Table.Th>Artikl br.</Table.Th>
                 <Table.Th>Opis</Table.Th>
-                <Table.Th>Serija</Table.Th>
+                <Table.Th>Batch</Table.Th>
                 <Table.Th>Rok valjanosti</Table.Th>
                 <Table.Th>Stanje sustava</Table.Th>
                 <Table.Th>JMJ</Table.Th>
@@ -504,7 +619,7 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {displayLines.length === 0 ? (
+              {filteredDisplayItems.length === 0 ? (
                 <Table.Tr>
                   <Table.Td colSpan={8}>
                     <Text c="dimmed" ta="center" py="md">
@@ -513,61 +628,106 @@ function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCountViewPr
                   </Table.Td>
                 </Table.Tr>
               ) : (
-                displayLines.map((line) => {
-                  const edit = lineEdits[line.line_id]
-                  const localCounted = getLocalCounted(line.line_id, line.counted_quantity)
-                  const displayDiff =
-                    localCounted !== null ? localCounted - line.system_quantity : null
-                  const bg = getActiveBg(line.line_id, line.system_quantity, line.counted_quantity)
+                filteredDisplayItems.flatMap((item) => {
+                  if (item.kind === 'non-batch') {
+                    const line = item.line
+                    const localCounted = getLocalCounted(line.line_id, line.counted_quantity)
+                    const displayDiff =
+                      localCounted !== null ? localCounted - line.system_quantity : null
+                    const bg = getActiveBg(line.line_id, line.system_quantity, line.counted_quantity)
 
-                  return (
-                    <Table.Tr key={line.line_id} style={{ backgroundColor: bg }}>
-                      <Table.Td>{line.article_no || '—'}</Table.Td>
-                      <Table.Td>{line.description || '—'}</Table.Td>
-                      <Table.Td>{line.batch_code || '—'}</Table.Td>
-                      <Table.Td>{formatDate(line.expiry_date)}</Table.Td>
-                      <Table.Td>{fmtQty(line.system_quantity, line.decimal_display)}</Table.Td>
-                      <Table.Td>{line.uom}</Table.Td>
-                      <Table.Td>
-                        <NumberInput
-                          value={edit?.value ?? ''}
-                          onChange={(v) =>
-                            setLineEdits((prev) => ({
-                              ...prev,
-                              [line.line_id]: { ...prev[line.line_id], value: v },
-                            }))
-                          }
-                          onBlur={() => handleBlur(line)}
-                          min={0}
-                          size="xs"
-                          w={110}
-                          step={line.decimal_display ? 0.01 : 1}
-                          disabled={edit?.saving}
-                          rightSection={edit?.saving ? <Loader size={12} /> : null}
-                          hideControls
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        {displayDiff !== null ? (
-                          <Text
-                            size="sm"
-                            fw={500}
-                            c={
-                              displayDiff > 0
-                                ? 'blue'
-                                : displayDiff < 0
-                                  ? 'yellow.7'
-                                  : 'green'
-                            }
-                          >
-                            {fmtDiff(displayDiff, line.decimal_display)}
+                    return [
+                      <Table.Tr key={line.line_id} style={{ backgroundColor: bg }}>
+                        <Table.Td>{line.article_no || '—'}</Table.Td>
+                        <Table.Td>{line.description || '—'}</Table.Td>
+                        <Table.Td>{line.batch_code || '—'}</Table.Td>
+                        <Table.Td>{formatDate(line.expiry_date)}</Table.Td>
+                        <Table.Td>{fmtQty(line.system_quantity, line.decimal_display)}</Table.Td>
+                        <Table.Td>{line.uom}</Table.Td>
+                        <Table.Td>{renderCountedQtyInput(line)}</Table.Td>
+                        <Table.Td>{renderDiff(displayDiff, line.decimal_display)}</Table.Td>
+                      </Table.Tr>,
+                    ]
+                  } else {
+                    // batch-group: parent row + optional child rows
+                    const { group, visibleChildren } = item
+                    const isExpanded = expandedArticles.has(group.article_id)
+                    const totalQty = group.lines.reduce((sum, l) => sum + l.system_quantity, 0)
+                    const summaryText = `${group.lines.length} batches / ${fmtQty(totalQty, group.decimal_display)} ${group.uom} total`
+
+                    const rows = [
+                      <Table.Tr
+                        key={`group-${group.article_id}`}
+                        style={{
+                          cursor: 'pointer',
+                          backgroundColor: 'var(--mantine-color-gray-1)',
+                        }}
+                        onClick={() => toggleArticle(group.article_id)}
+                      >
+                        <Table.Td>
+                          <Group gap="xs" wrap="nowrap">
+                            {isExpanded ? (
+                              <IconChevronDown size={14} />
+                            ) : (
+                              <IconChevronRight size={14} />
+                            )}
+                            <Text size="sm" fw={600}>
+                              {group.article_no || '—'}
+                            </Text>
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" fw={600}>
+                            {group.description || '—'}
                           </Text>
-                        ) : (
-                          '—'
-                        )}
-                      </Table.Td>
-                    </Table.Tr>
-                  )
+                        </Table.Td>
+                        <Table.Td>—</Table.Td>
+                        <Table.Td>—</Table.Td>
+                        <Table.Td>
+                          <Text size="sm" c="dimmed">
+                            {summaryText}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>—</Table.Td>
+                        <Table.Td>—</Table.Td>
+                        <Table.Td>—</Table.Td>
+                      </Table.Tr>,
+                    ]
+
+                    if (isExpanded) {
+                      for (const line of visibleChildren) {
+                        const localCounted = getLocalCounted(line.line_id, line.counted_quantity)
+                        const displayDiff =
+                          localCounted !== null ? localCounted - line.system_quantity : null
+                        const bg = getActiveBg(
+                          line.line_id,
+                          line.system_quantity,
+                          line.counted_quantity
+                        )
+
+                        rows.push(
+                          <Table.Tr key={line.line_id} style={{ backgroundColor: bg }}>
+                            <Table.Td />
+                            <Table.Td />
+                            <Table.Td>
+                              <Text size="sm" pl="sm">
+                                {line.batch_code || '—'}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>{formatDate(line.expiry_date)}</Table.Td>
+                            <Table.Td>
+                              {fmtQty(line.system_quantity, line.decimal_display)}
+                            </Table.Td>
+                            <Table.Td>{line.uom}</Table.Td>
+                            <Table.Td>{renderCountedQtyInput(line)}</Table.Td>
+                            <Table.Td>{renderDiff(displayDiff, line.decimal_display)}</Table.Td>
+                          </Table.Tr>
+                        )
+                      }
+                    }
+
+                    return rows
+                  }
                 })
               )}
             </Table.Tbody>

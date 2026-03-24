@@ -580,3 +580,14 @@
 - Decision: `GET /api/v1/drafts?date=today` response shape is extended with a `same_day_lines` array and per-line `rejection_reason` field. `same_day_lines` contains all `Draft` rows belonging to any `DAILY_OUTBOUND` `DraftGroup` for the operational day (both `PENDING` and resolved groups), ordered newest-first. `INVENTORY_SHORTAGE` groups are explicitly excluded. The existing `items` array and `draft_group` object remain backward-compatible and continue to represent only the current `PENDING` `DAILY_OUTBOUND` group (or empty/null when none exists). Each serialised draft line now includes `rejection_reason: string | null`; for non-rejected lines and rejected lines with no note, the value is `null`. Rejection reason is optional on both rejection endpoints: blank or whitespace-only input normalizes to `null` (stored as `ApprovalAction.note = NULL`), not a 400 error.
 - Impact: Frontend and testing agents must consume the new `same_day_lines` field for the "My entries today" operator view rather than infer same-day data from `items`. The `rejection_reason` field is now present on every draft-line serialisation; old consumers that do not reference it are unaffected. Both rejection endpoints now accept omitted or blank reasons; any frontend validation requiring a non-empty reason must be removed.
 - Docs update required: no
+
+---
+
+## DEC-FE-007
+
+- Date: 2026-03-24
+- Phase: phase-06-1-setup-screen-layout
+- Source: User-directed orchestrator-only fix after manual review of the backend-served `/setup` screen
+- Decision: The first-run setup screen at `/setup` now uses centered full-viewport presentation with a larger/wider setup card. This baseline is implemented locally in `frontend/src/pages/auth/SetupPage.tsx` rather than through a shared auth-layout abstraction. Future frontend/auth agents should preserve this centered onboarding-style layout unless the user explicitly requests a new auth/setup visual direction.
+- Impact: Future work on setup/auth screens should not revert `/setup` to the previous narrow, visually top-left layout. Because the change is local to `SetupPage.tsx`, later cleanup of shared auth page layouts or legacy Vite scaffold styles must preserve the current centered setup-card behavior.
+- Docs update required: no
