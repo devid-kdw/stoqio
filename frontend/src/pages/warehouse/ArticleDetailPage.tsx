@@ -4,10 +4,12 @@ import {
   ActionIcon,
   Badge,
   Button,
+  Collapse,
   Group,
   Loader,
   Pagination,
   Paper,
+  SegmentedControl,
   ScrollArea,
   SimpleGrid,
   Stack,
@@ -15,16 +17,30 @@ import {
   Text,
   TextInput,
   Title,
+  UnstyledButton,
 } from '@mantine/core'
-import { IconX } from '@tabler/icons-react'
+import { IconX, IconChevronDown, IconChevronUp } from '@tabler/icons-react'
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from 'recharts'
 
 import {
   articlesApi,
   type ArticleAliasItem,
   type ArticleCategoryLookupItem,
+  type ArticleStatsResponse,
   type SupplierLookupItem,
   type ArticleTransactionItem,
   type ArticleUomLookupItem,
+  type StatPeriod,
   type WarehouseArticleDetail,
 } from '../../api/articles'
 import FullPageState from '../../components/shared/FullPageState'
@@ -105,6 +121,14 @@ export default function ArticleDetailPage() {
   const [aliasSubmitting, setAliasSubmitting] = useState(false)
   const [aliasError, setAliasError] = useState<string | null>(null)
   const [aliasDeletingId, setAliasDeletingId] = useState<number | null>(null)
+
+  // Statistics section state — lazy-loaded on first expand
+  const [statsOpen, setStatsOpen] = useState(false)
+  const [statsPeriod, setStatsPeriod] = useState<StatPeriod>(90)
+  const [stats, setStats] = useState<ArticleStatsResponse | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const statsLoadedForRef = useRef<{ articleId: number; period: StatPeriod } | null>(null)
 
   const initialLoadDoneRef = useRef(false)
   const supplierOptionsLoadedRef = useRef(false)
@@ -503,6 +527,57 @@ export default function ArticleDetailPage() {
 
   const transactionTotalPages = Math.max(1, Math.ceil(transactionsTotal / TRANSACTIONS_PER_PAGE))
 
+  const loadStats = useCallback(
+    async (aid: number, period: StatPeriod) => {
+      setStatsLoading(true)
+      setStatsError(null)
+
+      try {
+        const result = await runWithRetry(() => articlesApi.getStats(aid, period))
+        setStats(result)
+        statsLoadedForRef.current = { articleId: aid, period }
+      } catch (error) {
+        if (isNetworkOrServerError(error)) {
+          setStatsError('Greška pri povezivanju. Pokušajte ponovno.')
+          return
+        }
+        setStatsError(
+          translateArticleApiMessage(
+            getApiErrorBody(error),
+            'Statistika nije dostupna.'
+          )
+        )
+      } finally {
+        setStatsLoading(false)
+      }
+    },
+    []
+  )
+
+  const handleToggleStats = useCallback(() => {
+    const nextOpen = !statsOpen
+    setStatsOpen(nextOpen)
+
+    if (nextOpen) {
+      const alreadyLoaded =
+        statsLoadedForRef.current?.articleId === articleId &&
+        statsLoadedForRef.current?.period === statsPeriod
+
+      if (!alreadyLoaded) {
+        void loadStats(articleId, statsPeriod)
+      }
+    }
+  }, [articleId, loadStats, statsOpen, statsPeriod])
+
+  const handleStatsPeriodChange = useCallback(
+    (value: string) => {
+      const next = Number(value) as StatPeriod
+      setStatsPeriod(next)
+      void loadStats(articleId, next)
+    },
+    [articleId, loadStats]
+  )
+
   if (fatalError) {
     return (
       <FullPageState
@@ -855,6 +930,122 @@ export default function ArticleDetailPage() {
             </Stack>
           ) : null}
         </Stack>
+      </Paper>
+
+      {/* ── Statistics Section ─────────────────────────────────── */}
+      <Paper withBorder radius="lg" p="lg">
+        <UnstyledButton
+          id="article-stats-toggle"
+          onClick={handleToggleStats}
+          style={{ width: '100%' }}
+        >
+          <Group justify="space-between" align="center">
+            <Title order={3}>Statistika</Title>
+            {statsOpen ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
+          </Group>
+        </UnstyledButton>
+
+        <Collapse in={statsOpen}>
+          <Stack gap="md" mt="md">
+            <Group>
+              <SegmentedControl
+                id="article-stats-period"
+                value={String(statsPeriod)}
+                onChange={handleStatsPeriodChange}
+                disabled={statsLoading}
+                data={[
+                  { label: '30 dana', value: '30' },
+                  { label: '90 dana', value: '90' },
+                  { label: '180 dana', value: '180' },
+                ]}
+              />
+              {statsLoading ? <Loader size="xs" /> : null}
+            </Group>
+
+            {statsError ? (
+              <Text c="red">{statsError}</Text>
+            ) : statsLoading && !stats ? (
+              <Text c="dimmed">Učitavanje statistike…</Text>
+            ) : stats &&
+              stats.outbound_by_week.length === 0 &&
+              stats.inbound_by_week.length === 0 &&
+              stats.price_history.length === 0 ? (
+              <Text c="dimmed">No transaction history available yet.</Text>
+            ) : stats ? (
+              <Stack gap="xl">
+                <Stack gap="xs">
+                  <Text fw={600}>Tjedni izlaz</Text>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={stats.outbound_by_week} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="week_start"
+                        tick={{ fontSize: 11 }}
+                        tickFormatter={(v: string) => v.slice(5)}
+                      />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <RechartsTooltip
+                        formatter={(value) => [String(value), 'Izlaz']}
+                        labelFormatter={(label) => `Tjedan: ${String(label)}`}
+                      />
+                      <Bar dataKey="quantity" name="Izlaz" fill="#f03e3e" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Stack>
+
+                <Stack gap="xs">
+                  <Text fw={600}>Tjedni ulaz</Text>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={stats.inbound_by_week} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="week_start"
+                        tick={{ fontSize: 11 }}
+                        tickFormatter={(v: string) => v.slice(5)}
+                      />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <RechartsTooltip
+                        formatter={(value) => [String(value), 'Ulaz']}
+                        labelFormatter={(label) => `Tjedan: ${String(label)}`}
+                      />
+                      <Bar dataKey="quantity" name="Ulaz" fill="#1c7ed6" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Stack>
+
+                {stats.price_history.length > 0 ? (
+                  <Stack gap="xs">
+                    <Text fw={600}>Povijest cijene (primke)</Text>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={stats.price_history} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(v: string) => v.slice(0, 10)}
+                        />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <RechartsTooltip
+                          formatter={(value) => [String(value), 'Cijena/jed.']}
+                          labelFormatter={(label) => String(label).slice(0, 10)}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="unit_price"
+                          name="Cijena/jed."
+                          stroke="#37b24d"
+                          strokeWidth={2}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Stack>
+                ) : null}
+              </Stack>
+            ) : null}
+          </Stack>
+        </Collapse>
       </Paper>
 
       <Paper withBorder radius="lg" p="lg">

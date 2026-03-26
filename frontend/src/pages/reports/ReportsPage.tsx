@@ -19,6 +19,8 @@ import {
   Text,
   TextInput,
   Title,
+  useMantineColorScheme,
+  useMantineTheme,
 } from '@mantine/core'
 import {
   IconChartBar,
@@ -193,6 +195,9 @@ function ConsumptionBarChart({
   onSelect: (item: TopConsumptionItem) => void
   uomMap: Record<string, ArticleUomLookupItem>
 }) {
+  const theme = useMantineTheme()
+  const { colorScheme } = useMantineColorScheme()
+  const isDark = colorScheme === 'dark'
   const maxValue = Math.max(...items.map((item) => item.outbound), 1)
 
   return (
@@ -203,9 +208,9 @@ function ConsumptionBarChart({
           type="button"
           onClick={() => onSelect(item)}
           style={{
-            border: '1px solid #e9ecef',
+            border: `1px solid ${isDark ? theme.colors.dark[4] : '#e9ecef'}`,
             borderRadius: 14,
-            background: '#fff',
+            background: isDark ? theme.colors.dark[6] : '#fff',
             padding: '0.9rem 1rem',
             textAlign: 'left',
             cursor: 'pointer',
@@ -232,7 +237,7 @@ function ConsumptionBarChart({
               style={{
                 height: 12,
                 borderRadius: 999,
-                background: '#edf2f7',
+                background: isDark ? theme.colors.dark[4] : '#edf2f7',
                 overflow: 'hidden',
               }}
             >
@@ -374,6 +379,9 @@ function MovementLineChart({ items }: { items: MovementStatisticsItem[] }) {
 }
 
 export default function ReportsPage() {
+  const theme = useMantineTheme()
+  const { colorScheme } = useMantineColorScheme()
+  const isDark = colorScheme === 'dark'
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'ADMIN'
 
@@ -1738,9 +1746,9 @@ export default function ReportsPage() {
                           type="button"
                           onClick={() => handleReorderDrilldown(item.reorder_status as ZoneFilter)}
                           style={{
-                            border: '1px solid #e9ecef',
+                            border: `1px solid ${isDark ? theme.colors.dark[4] : '#e9ecef'}`,
                             borderRadius: 14,
-                            background: '#fff',
+                            background: isDark ? theme.colors.dark[6] : '#fff',
                             padding: '0.95rem 1rem',
                             textAlign: 'left',
                             cursor: 'pointer',

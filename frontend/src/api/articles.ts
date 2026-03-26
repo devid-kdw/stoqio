@@ -199,6 +199,38 @@ export interface ArticleMutationPayload {
   suppliers: ArticleSupplierMutationPayload[]
 }
 
+// ---------------------------------------------------------------------------
+// Article statistics (Wave 1 Phase 13)
+// ---------------------------------------------------------------------------
+
+export type StatPeriod = 30 | 90 | 180
+
+export interface ArticleStatWeekBucket {
+  /** ISO date string of the Monday that starts this week bucket */
+  week_start: string
+  quantity: number
+}
+
+export interface ArticleStatPricePoint {
+  /** ISO date string */
+  date: string
+  unit_price: number
+}
+
+export interface ArticleStatStockPoint {
+  /** ISO date string */
+  date: string
+  quantity: number
+}
+
+export interface ArticleStatsResponse {
+  outbound_by_week: ArticleStatWeekBucket[]
+  inbound_by_week: ArticleStatWeekBucket[]
+  price_history: ArticleStatPricePoint[]
+  // Returned by the backend but not rendered in this wave.
+  stock_history: ArticleStatStockPoint[]
+}
+
 export const articlesApi = {
   /**
    * Lookup an article by article_no or barcode.
@@ -331,5 +363,19 @@ export const articlesApi = {
 
   deleteAlias: async (articleId: number, aliasId: number): Promise<void> => {
     await client.delete(`/articles/${articleId}/aliases/${aliasId}`)
+  },
+
+  /**
+   * Fetch article statistics for the given period.
+   * GET /api/v1/articles/{id}/stats?period={days}
+   *
+   * Lazy — call only when the Statistics section is first opened.
+   * Valid period values: 30, 90, 180.
+   */
+  getStats: async (articleId: number, period: StatPeriod): Promise<ArticleStatsResponse> => {
+    const response = await client.get<ArticleStatsResponse>(`/articles/${articleId}/stats`, {
+      params: { period },
+    })
+    return response.data
   },
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
@@ -19,7 +19,8 @@ from app.models.article_supplier import ArticleSupplier
 from app.models.batch import Batch
 from app.models.category import Category
 from app.models.draft import Draft
-from app.models.enums import DraftStatus, MissingArticleReportStatus
+from app.models.enums import DraftStatus, MissingArticleReportStatus, TxType
+from app.models.receiving import Receiving
 from app.models.missing_article_report import MissingArticleReport
 from app.models.stock import Stock
 from app.models.supplier import Supplier
@@ -1480,6 +1481,121 @@ def list_article_transactions(article_id: int, page: int, per_page: int) -> dict
         "total": total,
         "page": page,
         "per_page": per_page,
+    }
+
+
+def get_article_stats(article_id: int, period: int) -> dict[str, Any]:
+    """Return article statistics (outbound/inbound trends, price history, stock balance) for a given period."""
+    _get_article(article_id)
+
+    today = datetime.now(timezone.utc).date()
+    cutoff_date = today - timedelta(days=period)
+    cutoff_dt = datetime(cutoff_date.year, cutoff_date.month, cutoff_date.day, tzinfo=timezone.utc)
+
+    # --- Weekly bucket helpers: Monday-based, oldest-first ---
+    def _monday_of(d: date) -> date:
+        return d - timedelta(days=d.weekday())
+
+    def _bucket_key(dt: datetime) -> str:
+        return _monday_of(dt.date()).isoformat()
+
+    # --- outbound_by_week: STOCK_CONSUMED + SURPLUS_CONSUMED (absolute quantities) ---
+    outbound_txs = (
+        Transaction.query
+        .filter(
+            Transaction.article_id == article_id,
+            Transaction.tx_type.in_([TxType.STOCK_CONSUMED, TxType.SURPLUS_CONSUMED]),
+            Transaction.occurred_at >= cutoff_dt,
+        )
+        .order_by(Transaction.occurred_at.asc(), Transaction.id.asc())
+        .all()
+    )
+    outbound_sums: dict[str, Decimal] = {}
+    for tx in outbound_txs:
+        bk = _bucket_key(tx.occurred_at)
+        outbound_sums[bk] = outbound_sums.get(bk, Decimal("0")) + abs(_decimal_from_model(tx.quantity))
+    outbound_by_week = [
+        {"week_start": bk, "quantity": float(outbound_sums[bk])}
+        for bk in sorted(outbound_sums)
+    ]
+
+    # --- inbound_by_week: Receiving rows summed by week ---
+    inbound_rows = (
+        Receiving.query
+        .filter(
+            Receiving.article_id == article_id,
+            Receiving.received_at >= cutoff_dt,
+        )
+        .order_by(Receiving.received_at.asc(), Receiving.id.asc())
+        .all()
+    )
+    inbound_sums: dict[str, Decimal] = {}
+    for rec in inbound_rows:
+        bk = _bucket_key(rec.received_at)
+        inbound_sums[bk] = inbound_sums.get(bk, Decimal("0")) + _decimal_from_model(rec.quantity)
+    inbound_by_week = [
+        {"week_start": bk, "quantity": float(inbound_sums[bk])}
+        for bk in sorted(inbound_sums)
+    ]
+
+    # --- price_history: Receiving rows with non-null unit_price, oldest-first ---
+    price_rows = (
+        Receiving.query
+        .filter(
+            Receiving.article_id == article_id,
+            Receiving.unit_price.isnot(None),
+            Receiving.received_at >= cutoff_dt,
+        )
+        .order_by(Receiving.received_at.asc(), Receiving.id.asc())
+        .all()
+    )
+    price_history = [
+        {
+            "date": rec.received_at.date().isoformat() if rec.received_at else None,
+            "unit_price": float(_decimal_from_model(rec.unit_price)),
+        }
+        for rec in price_rows
+    ]
+
+    # --- stock_history: running balance snapshots derived from transactions ---
+    # Rule: opening balance = algebraic sum of ALL transaction quantities for this article
+    # with occurred_at < cutoff_dt (all tx_types included). Then walk through transactions
+    # in the window oldest-first, accumulating the running balance. The last balance
+    # observed on each calendar day is emitted as that day's snapshot quantity.
+    opening_scalar = (
+        db.session.query(func.coalesce(func.sum(Transaction.quantity), 0))
+        .filter(
+            Transaction.article_id == article_id,
+            Transaction.occurred_at < cutoff_dt,
+        )
+        .scalar()
+    )
+    running_balance = _decimal_from_model(opening_scalar)
+
+    window_txs = (
+        Transaction.query
+        .filter(
+            Transaction.article_id == article_id,
+            Transaction.occurred_at >= cutoff_dt,
+        )
+        .order_by(Transaction.occurred_at.asc(), Transaction.id.asc())
+        .all()
+    )
+    stock_history_map: dict[str, float] = {}
+    for tx in window_txs:
+        running_balance += _decimal_from_model(tx.quantity)
+        stock_history_map[tx.occurred_at.date().isoformat()] = float(running_balance)
+
+    stock_history = [
+        {"date": snapshot_date, "quantity": quantity}
+        for snapshot_date, quantity in stock_history_map.items()
+    ]
+
+    return {
+        "outbound_by_week": outbound_by_week,
+        "inbound_by_week": inbound_by_week,
+        "price_history": price_history,
+        "stock_history": stock_history,
     }
 
 

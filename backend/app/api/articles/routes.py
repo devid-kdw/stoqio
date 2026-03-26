@@ -275,6 +275,21 @@ def get_article_transactions(article_id: int):
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
+@articles_bp.route("/articles/<int:article_id>/stats", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_article_stats(article_id: int):
+    try:
+        period = _parse_positive_int(
+            request.args.get("period"),
+            field_name="period",
+            default=90,
+        )
+        result = article_service.get_article_stats(article_id, period)
+        return jsonify(result), 200
+    except ArticleServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
 @articles_bp.route("/articles/<int:article_id>/barcode", methods=["GET"])
 @require_role("ADMIN")
 def get_article_barcode(article_id: int):

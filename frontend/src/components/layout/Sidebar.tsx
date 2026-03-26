@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { Button, Stack, Text } from '@mantine/core'
+import { ActionIcon, Button, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core'
+import { IconSun, IconMoon } from '@tabler/icons-react'
 import { authApi } from '../../api/auth'
 import {
   DEFAULT_LOCATION_NAME,
@@ -11,6 +12,7 @@ export default function Sidebar() {
   const { user, refreshToken, logout } = useAuthStore()
   const locationName = useSettingsStore((state) => state.locationName)
   const roleDisplayNames = useSettingsStore((state) => state.roleDisplayNames)
+  const { colorScheme, toggleColorScheme } = useMantineColorScheme()
 
   const handleLogout = async () => {
     try {
@@ -40,18 +42,20 @@ export default function Sidebar() {
   const canSeeReports = ['ADMIN', 'MANAGER'].includes(role)
   const canSeeSettings = ['ADMIN'].includes(role)
 
+  const isDark = colorScheme === 'dark'
+
   const linkStyle = {
     display: 'block',
     padding: '0.75rem 1rem',
     textDecoration: 'none',
-    color: '#333',
+    color: isDark ? '#c1c2c5' : '#333',
     borderRadius: '4px',
     marginBottom: '0.25rem',
   }
 
   const activeStyle = {
     ...linkStyle,
-    background: '#e0e0e0',
+    background: isDark ? '#2c2e33' : '#e0e0e0',
     fontWeight: 'bold',
   }
 
@@ -59,9 +63,9 @@ export default function Sidebar() {
     <nav
       style={{
         width: '240px',
-        background: '#f5f5f5',
+        background: isDark ? '#1a1b1e' : '#f5f5f5',
         padding: '1rem',
-        borderRight: '1px solid #ddd',
+        borderRight: `1px solid ${isDark ? '#373a40' : '#ddd'}`,
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -133,7 +137,19 @@ export default function Sidebar() {
         )}
       </Stack>
 
-      <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #ddd' }}>
+      <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: `1px solid ${isDark ? '#373a40' : '#ddd'}` }}>
+        <Tooltip label={isDark ? 'Svijetli način' : 'Tamni način'} position="right" withArrow>
+          <ActionIcon
+            id="sidebar-color-scheme-toggle"
+            variant="subtle"
+            size="lg"
+            aria-label={isDark ? 'Prebaci na svijetli način' : 'Prebaci na tamni način'}
+            onClick={() => toggleColorScheme()}
+            mb="xs"
+          >
+            {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
+          </ActionIcon>
+        </Tooltip>
         <Button variant="outline" color="red" fullWidth onClick={handleLogout}>
           Odjava
         </Button>

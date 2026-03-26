@@ -17,6 +17,8 @@ import {
   TextInput,
   Textarea,
   Title,
+  useMantineColorScheme,
+  useMantineTheme,
 } from '@mantine/core'
 import {
   IconAlertCircle,
@@ -89,6 +91,10 @@ function isAvailabilityOnlyResult(
 }
 
 function IdentifierResultCard({ item }: { item: IdentifierSearchItem }) {
+  const theme = useMantineTheme()
+  const { colorScheme } = useMantineColorScheme()
+  const isDark = colorScheme === 'dark'
+
   return (
     <Paper
       withBorder
@@ -96,7 +102,9 @@ function IdentifierResultCard({ item }: { item: IdentifierSearchItem }) {
       p="lg"
       style={{
         background:
-          'linear-gradient(180deg, rgba(250, 252, 255, 1) 0%, rgba(244, 248, 251, 1) 100%)',
+          isDark
+            ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+            : 'linear-gradient(180deg, rgba(250, 252, 255, 1) 0%, rgba(244, 248, 251, 1) 100%)',
       }}
     >
       <Stack gap="md">
@@ -157,7 +165,10 @@ function IdentifierResultCard({ item }: { item: IdentifierSearchItem }) {
           <>
             <Divider />
             <Text size="sm" c="dimmed">
-              Pronađeno preko aliasa: <Text span c="dark" fw={500}>{item.matched_alias}</Text>
+              Pronađeno preko aliasa:{' '}
+              <Text span c="inherit" fw={500}>
+                {item.matched_alias}
+              </Text>
             </Text>
           </>
         ) : null}
@@ -167,6 +178,9 @@ function IdentifierResultCard({ item }: { item: IdentifierSearchItem }) {
 }
 
 export default function IdentifierPage() {
+  const theme = useMantineTheme()
+  const { colorScheme } = useMantineColorScheme()
+  const isDark = colorScheme === 'dark'
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'ADMIN'
 
@@ -566,7 +580,9 @@ export default function IdentifierPage() {
                 p="xl"
                 style={{
                   background:
-                    'linear-gradient(145deg, rgba(247, 251, 252, 1) 0%, rgba(239, 245, 247, 1) 100%)',
+                    isDark
+                      ? `linear-gradient(145deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+                      : 'linear-gradient(145deg, rgba(247, 251, 252, 1) 0%, rgba(239, 245, 247, 1) 100%)',
                 }}
               >
                 <Stack gap="md">

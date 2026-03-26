@@ -1,31 +1,55 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { Center, Loader, Stack, Text } from '@mantine/core'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import SetupGuard from './components/layout/SetupGuard'
 import AppShell from './components/layout/AppShell'
 import LoginPage from './pages/auth/LoginPage'
 import SetupPage from './pages/auth/SetupPage'
-import FullPageState from './components/shared/FullPageState'
 import { useAuthStore } from './store/authStore'
 import { getHomeRouteForRole } from './utils/roles'
+import {
+  loadApprovalsPage,
+  loadArticleDetailPage,
+  loadDraftEntryPage,
+  loadEmployeeDetailPage,
+  loadEmployeesPage,
+  loadIdentifierPage,
+  loadInventoryCountPage,
+  loadOrderDetailPage,
+  loadOrdersPage,
+  loadReceivingPage,
+  loadReportsPage,
+  loadSettingsPage,
+  loadWarehousePage,
+} from './routePreload'
 
 // Route-level lazy imports — keeps the main bundle lean.
-const DraftEntryPage = lazy(() => import('./pages/drafts/DraftEntryPage'))
-const ApprovalsPage = lazy(() => import('./pages/approvals/ApprovalsPage'))
-const ReceivingPage = lazy(() => import('./pages/receiving/ReceivingPage'))
-const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'))
-const OrderDetailPage = lazy(() => import('./pages/orders/OrderDetailPage'))
-const WarehousePage = lazy(() => import('./pages/warehouse/WarehousePage'))
-const ArticleDetailPage = lazy(() => import('./pages/warehouse/ArticleDetailPage'))
-const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
-const IdentifierPage = lazy(() => import('./pages/identifier/IdentifierPage'))
-const EmployeesPage = lazy(() => import('./pages/employees/EmployeesPage'))
-const EmployeeDetailPage = lazy(() => import('./pages/employees/EmployeeDetailPage'))
-const InventoryCountPage = lazy(() => import('./pages/inventory/InventoryCountPage'))
-const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
+const DraftEntryPage = lazy(loadDraftEntryPage)
+const ApprovalsPage = lazy(loadApprovalsPage)
+const ReceivingPage = lazy(loadReceivingPage)
+const OrdersPage = lazy(loadOrdersPage)
+const OrderDetailPage = lazy(loadOrderDetailPage)
+const WarehousePage = lazy(loadWarehousePage)
+const ArticleDetailPage = lazy(loadArticleDetailPage)
+const ReportsPage = lazy(loadReportsPage)
+const IdentifierPage = lazy(loadIdentifierPage)
+const EmployeesPage = lazy(loadEmployeesPage)
+const EmployeeDetailPage = lazy(loadEmployeeDetailPage)
+const InventoryCountPage = lazy(loadInventoryCountPage)
+const SettingsPage = lazy(loadSettingsPage)
 
 // Suspense fallback shared across lazy routes
-const LazyFallback = <FullPageState title="Učitavanje…" loading />
+const LazyFallback = (
+  <Center style={{ minHeight: '32vh', width: '100%' }}>
+    <Stack gap="xs" align="center">
+      <Loader size="sm" />
+      <Text size="sm" c="dimmed">
+        Učitavanje modula…
+      </Text>
+    </Stack>
+  </Center>
+)
 
 function HomeRedirect() {
   const user = useAuthStore((state) => state.user)

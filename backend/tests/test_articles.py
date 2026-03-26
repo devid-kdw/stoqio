@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import re
 
@@ -1527,3 +1527,256 @@ class TestIdentifier:
             assert stored.status == MissingArticleReportStatus.RESOLVED
             assert stored.resolution_note == "Article added as WH-RESOLVE-001."
             assert stored.resolved_at is not None
+
+
+@pytest.fixture(scope="module")
+def stats_article_data(app, warehouse_data):
+    """Seed article stats test data with controlled dates for period-filter testing."""
+    with app.app_context():
+        today = datetime.now(timezone.utc).date()
+        old_date = today - timedelta(days=60)
+        recent_date = today - timedelta(days=10)
+
+        location_id = warehouse_data["location"].id
+        active_category_id = warehouse_data["active_category"].id
+        admin_id = warehouse_data["admin"].id
+
+        kg_id = warehouse_data["kg"].id
+
+        stats_article = Article.query.filter_by(article_no="WH-STATS-999").first()
+        if stats_article is None:
+            stats_article = Article(
+                article_no="WH-STATS-999",
+                description="Stats test article",
+                category_id=active_category_id,
+                base_uom=kg_id,
+                has_batch=False,
+                density=Decimal("1.000"),
+                is_active=True,
+            )
+            _db.session.add(stats_article)
+            _db.session.flush()
+
+        old_receiving = Receiving.query.filter_by(
+            delivery_note_number="STATS-REC-OLD", article_id=stats_article.id
+        ).first()
+        if old_receiving is None:
+            old_receiving = Receiving(
+                article_id=stats_article.id,
+                batch_id=None,
+                location_id=location_id,
+                quantity=Decimal("10.000"),
+                uom="whkg",
+                unit_price=Decimal("5.0000"),
+                delivery_note_number="STATS-REC-OLD",
+                barcodes_printed=0,
+                received_by=admin_id,
+            )
+            _db.session.add(old_receiving)
+        old_receiving.received_at = datetime(
+            old_date.year, old_date.month, old_date.day, 12, 0, tzinfo=timezone.utc
+        )
+
+        recent_receiving = Receiving.query.filter_by(
+            delivery_note_number="STATS-REC-NEW", article_id=stats_article.id
+        ).first()
+        if recent_receiving is None:
+            recent_receiving = Receiving(
+                article_id=stats_article.id,
+                batch_id=None,
+                location_id=location_id,
+                quantity=Decimal("20.000"),
+                uom="whkg",
+                unit_price=Decimal("5.5000"),
+                delivery_note_number="STATS-REC-NEW",
+                barcodes_printed=0,
+                received_by=admin_id,
+            )
+            _db.session.add(recent_receiving)
+        recent_receiving.received_at = datetime(
+            recent_date.year, recent_date.month, recent_date.day, 12, 0, tzinfo=timezone.utc
+        )
+
+        old_transaction = Transaction.query.filter_by(
+            article_id=stats_article.id, reference_id=9991, reference_type="draft"
+        ).first()
+        if old_transaction is None:
+            old_transaction = Transaction(
+                tx_type=TxType.STOCK_CONSUMED,
+                location_id=location_id,
+                article_id=stats_article.id,
+                batch_id=None,
+                quantity=Decimal("-3.000"),
+                uom="whkg",
+                user_id=admin_id,
+                reference_type="draft",
+                reference_id=9991,
+            )
+            _db.session.add(old_transaction)
+        old_transaction.occurred_at = datetime(
+            old_date.year, old_date.month, old_date.day, 14, 0, tzinfo=timezone.utc
+        )
+
+        recent_transaction = Transaction.query.filter_by(
+            article_id=stats_article.id, reference_id=9992, reference_type="draft"
+        ).first()
+        if recent_transaction is None:
+            recent_transaction = Transaction(
+                tx_type=TxType.STOCK_CONSUMED,
+                location_id=location_id,
+                article_id=stats_article.id,
+                batch_id=None,
+                quantity=Decimal("-5.000"),
+                uom="whkg",
+                user_id=admin_id,
+                reference_type="draft",
+                reference_id=9992,
+            )
+            _db.session.add(recent_transaction)
+        recent_transaction.occurred_at = datetime(
+            recent_date.year, recent_date.month, recent_date.day, 14, 0, tzinfo=timezone.utc
+        )
+
+        _db.session.commit()
+        yield {
+            "stats_article": stats_article,
+            "old_date": old_date,
+            "recent_date": recent_date,
+        }
+
+
+class TestArticleStats:
+    """Tests for GET /api/v1/articles/{id}/stats (Phase 13 Wave 1 Item A)."""
+
+    def test_200_response_shape(self, client, warehouse_data):
+        """200 response contains all required top-level keys with correct types."""
+        token = _login(client, "warehouse_admin")
+        article_id = warehouse_data["batch_article"].id
+        response = client.get(
+            f"/api/v1/articles/{article_id}/stats",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert set(payload.keys()) == {
+            "outbound_by_week",
+            "inbound_by_week",
+            "price_history",
+            "stock_history",
+        }
+        assert isinstance(payload["outbound_by_week"], list)
+        assert isinstance(payload["inbound_by_week"], list)
+        assert isinstance(payload["price_history"], list)
+        assert isinstance(payload["stock_history"], list)
+        for item in payload["outbound_by_week"]:
+            assert "week_start" in item
+            assert "quantity" in item
+        for item in payload["inbound_by_week"]:
+            assert "week_start" in item
+            assert "quantity" in item
+        for item in payload["price_history"]:
+            assert "date" in item
+            assert "unit_price" in item
+        for item in payload["stock_history"]:
+            assert "date" in item
+            assert "quantity" in item
+        # Buckets should be oldest-first ISO Monday dates
+        weeks = [item["week_start"] for item in payload["outbound_by_week"]]
+        assert weeks == sorted(weeks)
+
+    def test_article_with_no_transactions_returns_empty_histories(self, client, warehouse_data):
+        """Article with no transactions/receivings returns empty histories for all four series."""
+        token = _login(client, "warehouse_admin")
+        # active_article (WH-ACT-001) has no Transaction or Receiving rows seeded
+        article_id = warehouse_data["active_article"].id
+        response = client.get(
+            f"/api/v1/articles/{article_id}/stats",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["outbound_by_week"] == []
+        assert payload["inbound_by_week"] == []
+        assert payload["price_history"] == []
+        assert payload["stock_history"] == []
+
+    def test_period_30_excludes_older_seeded_rows(self, client, stats_article_data):
+        """period=30 excludes older seeded rows while 90 keeps both rows in scope."""
+        token = _login(client, "warehouse_admin")
+        article_id = stats_article_data["stats_article"].id
+        old_date = stats_article_data["old_date"]
+        recent_date = stats_article_data["recent_date"]
+
+        def monday_of(value):
+            return (value - timedelta(days=value.weekday())).isoformat()
+
+        resp_90 = client.get(
+            f"/api/v1/articles/{article_id}/stats",
+            headers=_auth_header(token),
+        )
+        assert resp_90.status_code == 200
+        payload_90 = resp_90.get_json()
+        assert len(payload_90["price_history"]) == 2
+        assert [item["date"] for item in payload_90["price_history"]] == [
+            old_date.isoformat(),
+            recent_date.isoformat(),
+        ]
+        assert [item["week_start"] for item in payload_90["outbound_by_week"]] == [
+            monday_of(old_date),
+            monday_of(recent_date),
+        ]
+        assert [item["week_start"] for item in payload_90["inbound_by_week"]] == [
+            monday_of(old_date),
+            monday_of(recent_date),
+        ]
+
+        resp_30 = client.get(
+            f"/api/v1/articles/{article_id}/stats?period=30",
+            headers=_auth_header(token),
+        )
+        assert resp_30.status_code == 200
+        payload_30 = resp_30.get_json()
+        assert len(payload_30["price_history"]) == 1
+        assert payload_30["price_history"][0]["date"] == recent_date.isoformat()
+        assert payload_30["price_history"][0]["unit_price"] == 5.5
+        assert [item["week_start"] for item in payload_30["outbound_by_week"]] == [
+            monday_of(recent_date),
+        ]
+        assert [item["week_start"] for item in payload_30["inbound_by_week"]] == [
+            monday_of(recent_date),
+        ]
+
+        assert len(payload_90["stock_history"]) == 2
+        assert payload_90["stock_history"][0]["date"] == old_date.isoformat()
+        assert payload_90["stock_history"][0]["quantity"] == -3.0
+        assert payload_90["stock_history"][1]["date"] == recent_date.isoformat()
+        assert payload_90["stock_history"][1]["quantity"] == -8.0
+
+        assert len(payload_30["stock_history"]) == 1
+        assert "date" in payload_30["stock_history"][0]
+        assert "quantity" in payload_30["stock_history"][0]
+        assert payload_30["stock_history"][0]["date"] == recent_date.isoformat()
+        assert payload_30["stock_history"][0]["quantity"] == -8.0
+
+    def test_invalid_period_returns_400(self, client, warehouse_data):
+        """Non-positive or non-integer period returns 400 VALIDATION_ERROR."""
+        token = _login(client, "warehouse_admin")
+        article_id = warehouse_data["batch_article"].id
+
+        for bad_period in ("0", "-1", "abc", "1.5"):
+            response = client.get(
+                f"/api/v1/articles/{article_id}/stats?period={bad_period}",
+                headers=_auth_header(token),
+            )
+            assert response.status_code == 400, f"Expected 400 for period={bad_period}"
+            assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_viewer_gets_403(self, client, warehouse_data):
+        """VIEWER role is denied access (FORBIDDEN)."""
+        token = _login(client, "warehouse_viewer")
+        article_id = warehouse_data["batch_article"].id
+        response = client.get(
+            f"/api/v1/articles/{article_id}/stats",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 403
