@@ -420,7 +420,7 @@ class TestOrdersContracts:
 
         invalid_view = client.get(
             f"/api/v1/orders/{order['id']}?view=history",
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
         assert invalid_view.status_code == 400
         assert invalid_view.get_json()["message"] == "view must be 'receiving' when provided."

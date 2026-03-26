@@ -6,31 +6,13 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.location import Location
 from app.utils.auth import require_role
+from app.utils.errors import api_error as _error_response
 
 setup_bp = Blueprint("setup", __name__)
 
 _INITIAL_LOCATION_ID = 1
 _DEFAULT_TIMEZONE = "Europe/Berlin"
 _MAX_LOCATION_NAME_LENGTH = 100
-
-
-def _error_response(
-    error: str,
-    message: str,
-    status_code: int,
-    details=None,
-):
-    """Return a standard API error response."""
-    return (
-        jsonify(
-            {
-                "error": error,
-                "message": message,
-                "details": details or {},
-            }
-        ),
-        status_code,
-    )
 
 
 def _serialize_location(location: Location) -> dict:
@@ -79,7 +61,7 @@ def create_setup_location():
             "VALIDATION_ERROR",
             "Location name is required.",
             400,
-            {"field": "name"},
+            {"field": "name", "_msg_key": "SETUP_LOCATION_NAME_REQUIRED"},
         )
 
     if len(name) > _MAX_LOCATION_NAME_LENGTH:
@@ -90,6 +72,7 @@ def create_setup_location():
             {
                 "field": "name",
                 "max_length": _MAX_LOCATION_NAME_LENGTH,
+                "_msg_key": "SETUP_LOCATION_NAME_TOO_LONG",
             },
         )
 

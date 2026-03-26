@@ -815,7 +815,7 @@ def get_order_detail(order_id: int, *, view: str | None = None) -> dict[str, Any
             "VALIDATION_ERROR",
             "view must be 'receiving' when provided.",
             400,
-            {"view": view},
+            {"view": view, "_msg_key": "ORDER_INVALID_VIEW"},
         )
 
     order = _get_order(order_id)

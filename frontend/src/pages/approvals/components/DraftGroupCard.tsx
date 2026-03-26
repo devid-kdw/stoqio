@@ -31,15 +31,14 @@ import type {
 } from '../../../api/approvals'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../../utils/toasts'
 import axios from 'axios'
+import { INTEGER_UOMS } from '../../../utils/uom'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
-
 function formatQuantity(qty: number, uom: string): string {
-  if (INTEGER_UOMS.has(uom)) {
+  if (INTEGER_UOMS.includes(uom)) {
     return Math.round(qty).toString()
   }
   return qty.toFixed(2)

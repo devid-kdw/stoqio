@@ -154,7 +154,7 @@ def test_setup_creation_with_invalid_name_returns_400(
     response = client.post(
         "/api/v1/setup",
         json=payload,
-        headers=_auth_header(token),
+        headers={**_auth_header(token), "Accept-Language": "en"},
     )
 
     assert response.status_code == 400

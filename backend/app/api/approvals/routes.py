@@ -5,22 +5,9 @@ from flask import Blueprint, jsonify, request
 
 from app.services import approval_service
 from app.utils.auth import get_current_user, require_role
+from app.utils.errors import api_error as _error
 
 approvals_bp = Blueprint("approvals", __name__)
-
-
-def _error(error: str, message: str, status_code: int, details=None):
-    """Return a standard API error response."""
-    return (
-        jsonify(
-            {
-                "error": error,
-                "message": message,
-                "details": details or {},
-            }
-        ),
-        status_code,
-    )
 
 
 @approvals_bp.route("/approvals", methods=["GET"])

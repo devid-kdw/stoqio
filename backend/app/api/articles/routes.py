@@ -12,23 +12,11 @@ from app.services.article_service import ArticleServiceError
 from app.services.barcode_service import BarcodeServiceError
 from app.services import barcode_service
 from app.utils.auth import get_current_user, require_role
+from app.utils.errors import api_error as _error
 
 articles_bp = Blueprint("articles", __name__)
 
 _WAREHOUSE_LIST_PARAMS = {"page", "per_page", "category", "include_inactive"}
-
-
-def _error(error: str, message: str, status_code: int, details=None):
-    return (
-        jsonify(
-            {
-                "error": error,
-                "message": message,
-                "details": details or {},
-            }
-        ),
-        status_code,
-    )
 
 
 def _forbidden(role: str):

@@ -39,6 +39,7 @@ import FullPageState from '../../components/shared/FullPageState'
 import { useAuthStore } from '../../store/authStore'
 import { getApiErrorBody, runWithRetry } from '../../utils/http'
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
+import { INTEGER_UOMS } from '../../utils/uom'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -48,15 +49,12 @@ const ISSUANCES_PER_PAGE = 10
 const EMPLOYEES_CONNECTION_ERROR_MESSAGE =
   'Greška pri povezivanju. Provjerite radi li server i pokušajte ponovno.'
 
-/** UOM codes that use integer display (no decimals). */
-const INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function formatQty(qty: number, uom: string): string {
-  if (INTEGER_UOMS.has(uom)) return Math.round(qty).toString()
+  if (INTEGER_UOMS.includes(uom)) return Math.round(qty).toString()
   return qty.toFixed(2)
 }
 

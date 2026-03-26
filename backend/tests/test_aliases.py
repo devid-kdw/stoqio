@@ -69,7 +69,7 @@ class TestArticleAliases:
         resp2 = client.post(
             f"/api/v1/articles/{article_id}/aliases",
             json={"alias": "Duplicate Test"},
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
         assert resp2.status_code == 409
         payload = resp2.get_json()
@@ -90,7 +90,7 @@ class TestArticleAliases:
         resp = client.post(
             f"/api/v1/articles/{article_id}/aliases",
             json={"alias": " dUplicAte TEst "},
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
         assert resp.status_code == 409
         assert resp.get_json()["error"] == "ALIAS_ALREADY_EXISTS"

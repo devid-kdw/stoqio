@@ -602,3 +602,14 @@
 - Decision: `GET /api/v1/suppliers` now operates in two modes. Bare mode (no `page` or `per_page` query params) returns the existing flat active-suppliers array for backward compatibility. Paginated preload mode (when `page` and/or `per_page` are present) returns paginated `{ items, total, page, per_page }` with `page` defaulting to `1` when omitted if `per_page` is present alone. Active suppliers only, ordered by name then id in both modes. `GET /api/v1/orders` list mode now accepts an optional `status` query param (`OPEN` or `CLOSED`); `status` is ignored when `q` is present, preserving Receiving exact-match compatibility.
 - Impact: Frontend agents must send `per_page` to activate the paginated response shape; bare `/suppliers` callers remain unaffected. The `status` filter on `/orders` is additive and does not change the existing list or `q` behaviour.
 - Docs update required: no
+
+---
+
+## DEC-I18N-001
+
+- Date: 2026-03-24
+- Phase: phase-12-wave-01-tech-debt-cleanup
+- Source: User clarification during orchestrator scoping of the V1 tech-debt follow-up
+- Decision: API error response `message` is no longer treated as fixed English text. It must be localized per request to the active frontend language (`hr`, `en`, `de`, `hu`). The frontend sends the current UI language in the `Accept-Language` header on all API requests. The backend localizes only the human-readable `message` field from that request language, falling back to the configured `default_language` when needed and then to `hr`. Machine-readable `error` codes, response structure, enum values, and field names remain unchanged and stay English.
+- Impact: Backend agents must implement locale-aware error-message resolution instead of one-off hardcoded message replacements, and frontend agents must attach the active i18n language to API requests. Older docs that say raw backend/API business-error messages may remain English are now stale for supported UI languages.
+- Docs update required: yes

@@ -760,7 +760,7 @@ class TestWarehouseArticles:
                     },
                 ],
             },
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
         assert response.status_code == 400
         payload = response.get_json()
@@ -785,7 +785,7 @@ class TestWarehouseArticles:
                     }
                 ],
             },
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
         assert response.status_code == 400
         payload = response.get_json()

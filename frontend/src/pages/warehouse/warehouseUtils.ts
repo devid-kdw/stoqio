@@ -5,8 +5,7 @@ import type {
   WarehouseArticleDetail,
 } from '../../api/articles'
 import type { ApiErrorBody } from '../../utils/http'
-
-const FALLBACK_INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
+import { INTEGER_UOMS } from '../../utils/uom'
 const ARTICLE_NO_RE = /^[A-Z0-9-]+$/
 let supplierRowKeyCounter = 0
 
@@ -142,7 +141,7 @@ function usesDecimalDisplay(
     return lookupValue.decimal_display
   }
 
-  return !FALLBACK_INTEGER_UOMS.has(uom)
+  return !INTEGER_UOMS.includes(uom)
 }
 
 export function formatDate(value: string | null): string {

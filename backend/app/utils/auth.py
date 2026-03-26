@@ -9,8 +9,9 @@ from functools import wraps
 from threading import Lock
 from time import time
 
-from flask import jsonify
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
+
+from app.utils.errors import api_error
 
 # ---------------------------------------------------------------------------
 # Persisted token revocation
@@ -122,29 +123,16 @@ def _build_role_wrapper(fn, allowed_roles: frozenset[str]):
         user = db.session.get(User, int(user_id))
 
         if not user or not user.is_active:
-            return (
-                jsonify(
-                    {
-                        "error": "UNAUTHORIZED",
-                        "message": "User not found or account is inactive.",
-                        "details": {},
-                    }
-                ),
+            return api_error(
+                "UNAUTHORIZED",
+                "User not found or account is inactive.",
                 401,
             )
 
         if user.role.value not in allowed_roles:
-            return (
-                jsonify(
-                    {
-                        "error": "FORBIDDEN",
-                        "message": (
-                            f"Role '{user.role.value}' is not permitted "
-                            "for this endpoint."
-                        ),
-                        "details": {},
-                    }
-                ),
+            return api_error(
+                "FORBIDDEN",
+                f"Role '{user.role.value}' is not permitted for this endpoint.",
                 403,
             )
 

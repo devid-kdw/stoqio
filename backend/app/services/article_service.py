@@ -798,7 +798,7 @@ def _prepare_article_suppliers_payload(
             "VALIDATION_ERROR",
             "suppliers contains duplicate supplier_id values.",
             400,
-            {"supplier_ids": duplicate_ids},
+            {"supplier_ids": duplicate_ids, "_msg_key": "ARTICLE_DUPLICATE_SUPPLIER_ID"},
         )
 
     active_suppliers = (
@@ -818,7 +818,7 @@ def _prepare_article_suppliers_payload(
             "VALIDATION_ERROR",
             "suppliers must reference active suppliers only.",
             400,
-            {"supplier_ids": invalid_supplier_ids},
+            {"supplier_ids": invalid_supplier_ids, "_msg_key": "ARTICLE_INACTIVE_SUPPLIER"},
         )
 
     return [

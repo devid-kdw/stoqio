@@ -8,15 +8,9 @@ from app.extensions import db
 from app.services import settings_service
 from app.services.settings_service import SettingsServiceError
 from app.utils.auth import get_current_user, require_role
+from app.utils.errors import api_error as _error
 
 settings_bp = Blueprint("settings", __name__)
-
-
-def _error(error: str, message: str, status_code: int, details=None):
-    return (
-        jsonify({"error": error, "message": message, "details": details or {}}),
-        status_code,
-    )
 
 
 def _parse_positive_int(value, *, field_name: str, default: int) -> int:

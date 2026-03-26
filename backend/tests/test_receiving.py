@@ -573,7 +573,7 @@ class TestReceivingCreate:
                     {"skip": True},
                 ],
             },
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
 
         assert response.status_code == 400
@@ -595,7 +595,7 @@ class TestReceivingCreate:
                     }
                 ],
             },
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
 
         assert response.status_code == 400

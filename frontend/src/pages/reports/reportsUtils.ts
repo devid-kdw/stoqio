@@ -1,7 +1,6 @@
 import type { ArticleUomLookupItem } from '../../api/articles'
 import type { ReportReorderStatus, ReportTransactionType } from '../../api/reports'
-
-const FALLBACK_INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
+import { INTEGER_UOMS } from '../../utils/uom'
 
 export function getTodayIsoDate(): string {
   return new Date().toISOString().slice(0, 10)
@@ -33,7 +32,7 @@ function usesDecimalDisplay(
     return entry.decimal_display
   }
 
-  return !FALLBACK_INTEGER_UOMS.has(uom)
+  return !INTEGER_UOMS.includes(uom)
 }
 
 function formatNumber(value: number, decimals: number): string {

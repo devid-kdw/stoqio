@@ -499,7 +499,7 @@ def test_update_general_settings_rejects_empty_location_name(client, settings_da
             "timezone": "Europe/Berlin",
             "default_language": "hr",
         },
-        headers=_auth(token),
+        headers={**_auth(token), "Accept-Language": "en"},
     )
 
     assert response.status_code == 400
@@ -886,7 +886,7 @@ def test_admin_cannot_deactivate_self(client, settings_data):
     put_response = client.put(
         f"/api/v1/settings/users/{settings_data['admin_id']}",
         json={"is_active": False},
-        headers=_auth(token),
+        headers={**_auth(token), "Accept-Language": "en"},
     )
     assert put_response.status_code == 400
     assert put_response.get_json()["error"] == "SELF_DEACTIVATION_FORBIDDEN"

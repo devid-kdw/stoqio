@@ -422,7 +422,7 @@ class TestCreateDraft:
                 "source": "manual",
                 "client_event_id": str(uuid.uuid4()),
             },
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": "en"},
         )
         assert resp.status_code == 400
         assert "batch_id" in resp.get_json()["message"].lower()

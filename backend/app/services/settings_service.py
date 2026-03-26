@@ -110,14 +110,14 @@ def _require_text(
             "VALIDATION_ERROR",
             f"{field_name} is required.",
             400,
-            details,
+            {**(details or {}), "_msg_key": "FIELD_REQUIRED", "field": field_name},
         )
     if max_length is not None and len(normalized) > max_length:
         raise SettingsServiceError(
             "VALIDATION_ERROR",
             f"{field_name} must be {max_length} characters or fewer.",
             400,
-            details,
+            {**(details or {}), "_msg_key": "FIELD_TOO_LONG", "field": field_name, "max_length": max_length},
         )
     return normalized
 

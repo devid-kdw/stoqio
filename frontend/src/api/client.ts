@@ -1,17 +1,29 @@
 import axios from 'axios'
 import { authApi } from './auth'
 import { getStoredRefreshToken, useAuthStore } from '../store/authStore'
+import i18n from '../i18n'
+
+const SUPPORTED_LANGUAGES = ['hr', 'en', 'de', 'hu'] as const
+type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number]
+
+function getAcceptLanguage(): SupportedLanguage {
+  const tag = i18n.language?.split('-')[0]?.toLowerCase()
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(tag ?? '')
+    ? (tag as SupportedLanguage)
+    : 'hr'
+}
 
 const client = axios.create({
   baseURL: '/api/v1',
 })
 
-// Request interceptor — attach bearer token from Zustand auth store
+// Request interceptor — attach bearer token and active UI language
 client.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  config.headers['Accept-Language'] = getAcceptLanguage()
   return config
 })
 

@@ -12,6 +12,7 @@ from app.models.enums import InventoryCountType
 from app.services import inventory_service
 from app.services.inventory_service import InventoryServiceError
 from app.utils.auth import get_current_user, require_role
+from app.utils.errors import api_error as _error
 
 inventory_bp = Blueprint("inventory", __name__)
 
@@ -19,12 +20,6 @@ inventory_bp = Blueprint("inventory", __name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _error(error: str, message: str, status_code: int, details=None):
-    return (
-        jsonify({"error": error, "message": message, "details": details or {}}),
-        status_code,
-    )
 
 
 def _parse_positive_int(value, *, field_name: str, default: int) -> int:

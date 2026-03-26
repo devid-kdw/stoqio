@@ -25,6 +25,7 @@ import { articlesApi, type ArticleBatch, type ArticleLookupResult } from '../../
 import { draftsApi, type DraftGroup, type DraftLine, type MyDraftLine } from '../../api/drafts'
 import FullPageState from '../../components/shared/FullPageState'
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
+import { INTEGER_UOMS } from '../../utils/uom'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,11 +34,8 @@ import { showErrorToast, showSuccessToast } from '../../utils/toasts'
 const CONNECTION_ERROR_MESSAGE =
   'Connection error. Please check that the server is running and try again.'
 
-/** UOM codes that use integer display (no decimals). */
-const INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
-
 function formatQuantity(qty: number, uom: string): string {
-  if (INTEGER_UOMS.has(uom)) {
+  if (INTEGER_UOMS.includes(uom)) {
     return Math.round(qty).toString()
   }
   return qty.toFixed(2)
@@ -689,10 +687,10 @@ export default function DraftEntryPage() {
                   placeholder="0"
                   min={0.001}
                   step={
-                    resolvedArticle && INTEGER_UOMS.has(resolvedArticle.base_uom) ? 1 : 0.01
+                    resolvedArticle && INTEGER_UOMS.includes(resolvedArticle.base_uom) ? 1 : 0.01
                   }
                   decimalScale={
-                    resolvedArticle && INTEGER_UOMS.has(resolvedArticle.base_uom) ? 0 : 3
+                    resolvedArticle && INTEGER_UOMS.includes(resolvedArticle.base_uom) ? 0 : 3
                   }
                   value={quantity}
                   onChange={setQuantity}
@@ -827,8 +825,8 @@ export default function DraftEntryPage() {
                               }))
                             }
                             min={0.001}
-                            step={INTEGER_UOMS.has(line.uom) ? 1 : 0.01}
-                            decimalScale={INTEGER_UOMS.has(line.uom) ? 0 : 3}
+                            step={INTEGER_UOMS.includes(line.uom) ? 1 : 0.01}
+                            decimalScale={INTEGER_UOMS.includes(line.uom) ? 0 : 3}
                             style={{ width: 90 }}
                             disabled={action.saving}
                           />

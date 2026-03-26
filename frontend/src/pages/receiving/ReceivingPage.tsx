@@ -28,12 +28,12 @@ import { ordersApi, type OrdersListItem, type ReceivingOrderDetail, type Receivi
 import { receivingApi, type CreateReceiptPayload, type ReceivingHistoryItem } from '../../api/receiving'
 import FullPageState from '../../components/shared/FullPageState'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../utils/toasts'
+import { INTEGER_UOMS } from '../../utils/uom'
 
 const CONNECTION_ERROR_MESSAGE =
   'Greška povezivanja. Provjeri je li server pokrenut i pokušaj ponovno.'
 
 const BATCH_CODE_PATTERN = /^\d{4,5}$|^\d{9,12}$/
-const INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
 
 type PageTab = 'new' | 'history'
 type ReceiptMode = 'linked' | 'adhoc'
@@ -123,7 +123,7 @@ function getApiErrorBody(err: unknown): ApiErrorBody | null {
 }
 
 function formatQuantity(quantity: number, uom: string): string {
-  if (INTEGER_UOMS.has(uom)) {
+  if (INTEGER_UOMS.includes(uom)) {
     return Math.round(quantity).toString()
   }
 
@@ -131,11 +131,11 @@ function formatQuantity(quantity: number, uom: string): string {
 }
 
 function getQuantityStep(uom?: string): number {
-  return uom && INTEGER_UOMS.has(uom) ? 1 : 0.01
+  return uom && INTEGER_UOMS.includes(uom) ? 1 : 0.01
 }
 
 function getQuantityScale(uom?: string): number {
-  return uom && INTEGER_UOMS.has(uom) ? 0 : 3
+  return uom && INTEGER_UOMS.includes(uom) ? 0 : 3
 }
 
 function formatDate(value: string | null): string {

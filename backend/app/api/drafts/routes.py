@@ -34,6 +34,7 @@ from app.models.uom_catalog import UomCatalog
 from app.models.user import User
 from app.utils.auth import get_current_user, require_role
 from app.utils.validators import validate_note, validate_quantity
+from app.utils.errors import api_error as _error
 
 drafts_bp = Blueprint("drafts", __name__)
 
@@ -45,20 +46,6 @@ _DRAFT_GROUP_NUMBER_RE = re.compile(r"^IZL-(\d+)$")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _error(error: str, message: str, status_code: int, details=None):
-    """Return a standard API error response."""
-    return (
-        jsonify(
-            {
-                "error": error,
-                "message": message,
-                "details": details or {},
-            }
-        ),
-        status_code,
-    )
 
 
 def _get_operational_today():
@@ -403,6 +390,7 @@ def create_draft():
                 "VALIDATION_ERROR",
                 "batch_id is required for batch-tracked articles.",
                 400,
+                {"_msg_key": "DRAFT_BATCH_ID_REQUIRED"},
             )
         batch = db.session.get(Batch, batch_id)
         if batch is None or batch.article_id != article.id:

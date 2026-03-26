@@ -878,7 +878,7 @@ def test_active_count_opening_type(client, inv_data):
 
 
 def test_second_opening_while_first_opening_is_in_progress_is_blocked(client, inv_data):
-    headers = _admin_headers(client)
+    headers = {**_admin_headers(client), "Accept-Language": "en"}
     resp = client.post(
         "/api/v1/inventory",
         json={"type": "OPENING"},
@@ -918,7 +918,7 @@ def test_complete_opening_count_generates_discrepancies(client, inv_data):
 
 
 def test_start_second_opening_count_blocked(client, inv_data):
-    headers = _admin_headers(client)
+    headers = {**_admin_headers(client), "Accept-Language": "en"}
     resp = client.post(
         "/api/v1/inventory",
         json={"type": "OPENING"},

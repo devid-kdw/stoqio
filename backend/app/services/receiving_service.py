@@ -563,6 +563,7 @@ def submit_receipt(user_id: int, payload: dict[str, Any] | None) -> dict[str, An
             "VALIDATION_ERROR",
             "At least one line must be received.",
             400,
+            {"_msg_key": "RECEIVING_NO_LINES"},
         )
 
     if has_ad_hoc and note is None:
@@ -570,6 +571,7 @@ def submit_receipt(user_id: int, payload: dict[str, Any] | None) -> dict[str, An
             "VALIDATION_ERROR",
             "A note is required for ad-hoc receipts.",
             400,
+            {"_msg_key": "RECEIVING_ADHOC_NOTE_REQUIRED"},
         )
 
     receiving_ids: list[int] = []

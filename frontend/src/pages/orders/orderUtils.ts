@@ -4,8 +4,7 @@ import type {
   OrderLineStatus,
   OrderStatus,
 } from '../../api/orders'
-
-export const INTEGER_UOMS = new Set(['kom', 'pak', 'pár'])
+import { INTEGER_UOMS } from '../../utils/uom'
 
 export type LookupState = 'idle' | 'loading' | 'found' | 'not-found'
 
@@ -162,7 +161,7 @@ export function formatMoney(value: number | null): string {
 }
 
 export function formatQuantity(quantity: number, uom: string): string {
-  if (INTEGER_UOMS.has(uom)) {
+  if (INTEGER_UOMS.includes(uom)) {
     return Math.round(quantity).toString()
   }
 
@@ -170,11 +169,11 @@ export function formatQuantity(quantity: number, uom: string): string {
 }
 
 export function getQuantityStep(uom?: string): number {
-  return uom && INTEGER_UOMS.has(uom) ? 1 : 0.01
+  return uom && INTEGER_UOMS.includes(uom) ? 1 : 0.01
 }
 
 export function getQuantityScale(uom?: string): number {
-  return uom && INTEGER_UOMS.has(uom) ? 0 : 3
+  return uom && INTEGER_UOMS.includes(uom) ? 0 : 3
 }
 
 export function getOrderStatusLabel(status: OrderStatus): string {

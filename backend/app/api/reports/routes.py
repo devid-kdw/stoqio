@@ -10,21 +10,9 @@ from app.extensions import db
 from app.services import report_service
 from app.services.report_service import ReportServiceError
 from app.utils.auth import require_role
+from app.utils.errors import api_error as _error
 
 reports_bp = Blueprint("reports", __name__)
-
-
-def _error(error: str, message: str, status_code: int, details=None):
-    return (
-        jsonify(
-            {
-                "error": error,
-                "message": message,
-                "details": details or {},
-            }
-        ),
-        status_code,
-    )
 
 
 @reports_bp.route("/reports/stock-overview", methods=["GET"])
