@@ -9,27 +9,9 @@ from app.services import receiving_service
 from app.services.receiving_service import ReceivingServiceError
 from app.utils.auth import get_current_user, require_role
 from app.utils.errors import api_error as _error
+from app.utils.validators import QueryValidationError, parse_positive_int
 
 receiving_bp = Blueprint("receiving", __name__)
-
-
-def _parse_positive_int(value, *, field_name: str, default: int) -> int:
-    raw_value = default if value is None else value
-    try:
-        parsed = int(raw_value)
-    except (TypeError, ValueError):
-        raise ReceivingServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be a valid integer.",
-            400,
-        ) from None
-    if parsed <= 0:
-        raise ReceivingServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be greater than zero.",
-            400,
-        )
-    return parsed
 
 
 @receiving_bp.route("/receiving", methods=["POST"])
@@ -50,13 +32,13 @@ def create_receipt():
 @require_role("ADMIN")
 def get_receiving_history():
     try:
-        page = _parse_positive_int(request.args.get("page"), field_name="page", default=1)
-        per_page = _parse_positive_int(
+        page = parse_positive_int(request.args.get("page"), field_name="page", default=1)
+        per_page = parse_positive_int(
             request.args.get("per_page"),
             field_name="per_page",
             default=50,
         )
         result = receiving_service.list_receiving_history(page, per_page)
         return jsonify(result), 200
-    except ReceivingServiceError as exc:
+    except (ReceivingServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)

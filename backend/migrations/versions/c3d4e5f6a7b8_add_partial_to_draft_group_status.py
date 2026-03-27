@@ -74,11 +74,12 @@ def upgrade() -> None:
     dialect = bind.dialect.name
 
     if dialect == "postgresql":
-        # Extend the existing PostgreSQL enum type with the new value.
-        # IF NOT EXISTS guards against re-runs on an already-migrated DB.
-        bind.execute(
-            sa.text("ALTER TYPE draft_group_status ADD VALUE IF NOT EXISTS 'PARTIAL'")
-        )
+        # PostgreSQL requires the new enum value to be committed before it can
+        # be referenced by UPDATE statements in the same migration.
+        with op.get_context().autocommit_block():
+            bind.execute(
+                sa.text("ALTER TYPE draft_group_status ADD VALUE IF NOT EXISTS 'PARTIAL'")
+            )
     else:
         # SQLite: the column is plain TEXT, so the only thing we need to change
         # is the CHECK constraint stored in the table definition.  We use

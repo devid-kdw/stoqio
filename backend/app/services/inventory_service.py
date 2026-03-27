@@ -93,18 +93,14 @@ def _next_group_number() -> str:
 def _get_shortage_drafts_summary(count_id: int) -> dict:
     """Derive shortage-draft approval summary for a completed inventory count.
 
-    Links drafts to a count via the deterministic ``client_event_id`` pattern
-    emitted by ``complete_count(...)``:
-        ``inv-count-{count_id}-line-{line_id}``
-
-    No FK or schema change is required.
+    Links drafts to a count via the explicit ``Draft.inventory_count_id`` FK
+    populated during ``complete_count(...)``.
     """
-    prefix = f"inv-count-{count_id}-line-%"
     drafts = (
         db.session.query(Draft.status)
         .filter(
             Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
-            Draft.client_event_id.like(prefix),
+            Draft.inventory_count_id == count_id,
         )
         .all()
     )
@@ -615,6 +611,7 @@ def complete_count(count_id: int, current_user: User) -> dict:
                     location_id=location.id,
                     article_id=line.article_id,
                     batch_id=line.batch_id,
+                    inventory_count_id=count.id,
                     quantity=shortage_qty,
                     uom=line.uom,
                     status=DraftStatus.DRAFT,

@@ -22,6 +22,11 @@ from app.models.enums import UserRole
 from app.models.location import Location
 from app.models.uom_catalog import UomCatalog
 from app.models.user import User
+from app.utils.validators import (
+    QueryValidationError,
+    parse_bool_query,
+    parse_positive_int,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +341,42 @@ class TestLocalizedAuthAndValidation:
         data = resp.get_json()
         assert data["error"] == "VALIDATION_ERROR"
         assert data["message"] == "page mora biti cijeli broj."
+
+    def test_employees_invalid_bool_query_is_localized(self, client, i18n_data):
+        tokens = _login(client, i18n_data["admin_username"], "adminpass", "127.0.30.15")
+        resp = client.get(
+            "/api/v1/employees?include_inactive=maybe",
+            headers=_auth(tokens["access_token"], "hr"),
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "VALIDATION_ERROR"
+        assert data["message"] == "include_inactive mora biti 'true' ili 'false'."
+
+
+class TestSharedQueryValidators:
+    def test_parse_positive_int_uses_default_and_canonical_errors(self):
+        assert parse_positive_int(None, field_name="page", default=7) == 7
+        assert parse_positive_int("9", field_name="page", default=1) == 9
+
+        with pytest.raises(QueryValidationError) as excinfo:
+            parse_positive_int("abc", field_name="page", default=1)
+        assert excinfo.value.error == "VALIDATION_ERROR"
+        assert excinfo.value.message == "page must be a valid integer."
+
+        with pytest.raises(QueryValidationError) as excinfo:
+            parse_positive_int("0", field_name="page", default=1)
+        assert excinfo.value.message == "page must be greater than zero."
+
+    def test_parse_bool_query_uses_default_and_canonical_errors(self):
+        assert parse_bool_query(None, field_name="include_inactive", default=False) is False
+        assert parse_bool_query("true", field_name="include_inactive", default=False) is True
+        assert parse_bool_query("0", field_name="include_inactive", default=True) is False
+
+        with pytest.raises(QueryValidationError) as excinfo:
+            parse_bool_query("maybe", field_name="include_inactive", default=False)
+        assert excinfo.value.error == "VALIDATION_ERROR"
+        assert excinfo.value.message == "include_inactive must be 'true' or 'false'."
 
 
 class TestLocalizedOrderLineErrors:

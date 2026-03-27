@@ -24,6 +24,11 @@ class Draft(db.Model):
     batch_id = db.Column(
         db.Integer, db.ForeignKey("batch.id"), nullable=True
     )
+    inventory_count_id = db.Column(
+        db.Integer,
+        db.ForeignKey("inventory_count.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     quantity = db.Column(db.Numeric(14, 3), nullable=False)
     uom = db.Column(db.String, nullable=False)
     status = db.Column(
@@ -60,3 +65,8 @@ class Draft(db.Model):
     article = db.relationship("Article", backref="drafts", lazy="select")
     batch = db.relationship("Batch", backref="drafts", lazy="select")
     creator = db.relationship("User", backref="drafts", lazy="select")
+    inventory_count = db.relationship(
+        "InventoryCount",
+        back_populates="shortage_drafts",
+        lazy="select",
+    )

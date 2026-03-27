@@ -13,6 +13,11 @@ from app.services.barcode_service import BarcodeServiceError
 from app.services import barcode_service
 from app.utils.auth import get_current_user, require_role
 from app.utils.errors import api_error as _error
+from app.utils.validators import (
+    QueryValidationError,
+    parse_bool_query,
+    parse_positive_int,
+)
 
 articles_bp = Blueprint("articles", __name__)
 
@@ -24,41 +29,6 @@ def _forbidden(role: str):
         "FORBIDDEN",
         f"Role '{role}' is not permitted for this endpoint.",
         403,
-    )
-
-
-def _parse_positive_int(value, *, field_name: str, default: int) -> int:
-    raw_value = default if value is None else value
-    try:
-        parsed = int(raw_value)
-    except (TypeError, ValueError):
-        raise ArticleServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be a valid integer.",
-            400,
-        ) from None
-    if parsed <= 0:
-        raise ArticleServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be greater than zero.",
-            400,
-        )
-    return parsed
-
-
-def _parse_bool_query(value, *, field_name: str, default: bool) -> bool:
-    if value is None:
-        return default
-
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1"}:
-        return True
-    if normalized in {"false", "0"}:
-        return False
-    raise ArticleServiceError(
-        "VALIDATION_ERROR",
-        f"{field_name} must be 'true' or 'false'.",
-        400,
     )
 
 
@@ -88,15 +58,15 @@ def get_uom_lookups():
 def get_supplier_lookups():
     try:
         if "page" in request.args or "per_page" in request.args:
-            page = _parse_positive_int(
+            page = parse_positive_int(
                 request.args.get("page"), field_name="page", default=1
             )
-            per_page = _parse_positive_int(
+            per_page = parse_positive_int(
                 request.args.get("per_page"), field_name="per_page", default=50
             )
             return jsonify(article_service.lookup_suppliers_paginated(page, per_page)), 200
         return jsonify(article_service.lookup_suppliers()), 200
-    except ArticleServiceError as exc:
+    except (ArticleServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
@@ -162,13 +132,13 @@ def get_articles():
             if role not in {"ADMIN", "MANAGER"}:
                 return _forbidden(role)
 
-            page = _parse_positive_int(request.args.get("page"), field_name="page", default=1)
-            per_page = _parse_positive_int(
+            page = parse_positive_int(request.args.get("page"), field_name="page", default=1)
+            per_page = parse_positive_int(
                 request.args.get("per_page"),
                 field_name="per_page",
                 default=50,
             )
-            include_inactive = _parse_bool_query(
+            include_inactive = parse_bool_query(
                 request.args.get("include_inactive"),
                 field_name="include_inactive",
                 default=False,
@@ -187,7 +157,7 @@ def get_articles():
 
         result = article_service.find_article_for_lookup(request.args.get("q"))
         return jsonify(result), 200
-    except ArticleServiceError as exc:
+    except (ArticleServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
@@ -263,15 +233,15 @@ def delete_article_alias(article_id: int, alias_id: int):
 @require_role("ADMIN", "MANAGER")
 def get_article_transactions(article_id: int):
     try:
-        page = _parse_positive_int(request.args.get("page"), field_name="page", default=1)
-        per_page = _parse_positive_int(
+        page = parse_positive_int(request.args.get("page"), field_name="page", default=1)
+        per_page = parse_positive_int(
             request.args.get("per_page"),
             field_name="per_page",
             default=50,
         )
         result = article_service.list_article_transactions(article_id, page, per_page)
         return jsonify(result), 200
-    except ArticleServiceError as exc:
+    except (ArticleServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
@@ -279,14 +249,14 @@ def get_article_transactions(article_id: int):
 @require_role("ADMIN", "MANAGER")
 def get_article_stats(article_id: int):
     try:
-        period = _parse_positive_int(
+        period = parse_positive_int(
             request.args.get("period"),
             field_name="period",
             default=90,
         )
         result = article_service.get_article_stats(article_id, period)
         return jsonify(result), 200
-    except ArticleServiceError as exc:
+    except (ArticleServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 

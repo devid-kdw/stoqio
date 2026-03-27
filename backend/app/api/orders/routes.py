@@ -11,27 +11,9 @@ from app.services import order_service
 from app.services.order_service import OrderServiceError
 from app.utils.auth import get_current_user, require_role
 from app.utils.errors import api_error as _error
+from app.utils.validators import QueryValidationError, parse_positive_int
 
 orders_bp = Blueprint("orders", __name__)
-
-
-def _parse_positive_int(value, *, field_name: str, default: int) -> int:
-    raw_value = default if value is None else value
-    try:
-        parsed = int(raw_value)
-    except (TypeError, ValueError):
-        raise OrderServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be a valid integer.",
-            400,
-        ) from None
-    if parsed <= 0:
-        raise OrderServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be greater than zero.",
-            400,
-        )
-    return parsed
 
 
 @orders_bp.route("/orders/lookups/suppliers", methods=["GET"])
@@ -51,7 +33,7 @@ def lookup_articles():
     try:
         parsed_supplier_id = None
         if supplier_id not in (None, ""):
-            parsed_supplier_id = _parse_positive_int(
+            parsed_supplier_id = parse_positive_int(
                 supplier_id,
                 field_name="supplier_id",
                 default=0,
@@ -61,7 +43,7 @@ def lookup_articles():
             supplier_id=parsed_supplier_id,
         )
         return jsonify(result), 200
-    except OrderServiceError as exc:
+    except (OrderServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
@@ -75,8 +57,8 @@ def get_orders():
         if "q" in request.args:
             result = order_service.find_order_by_number(request.args.get("q"))
         else:
-            page = _parse_positive_int(request.args.get("page"), field_name="page", default=1)
-            per_page = _parse_positive_int(
+            page = parse_positive_int(request.args.get("page"), field_name="page", default=1)
+            per_page = parse_positive_int(
                 request.args.get("per_page"),
                 field_name="per_page",
                 default=50,
@@ -94,7 +76,7 @@ def get_orders():
                 status_upper = None
             result = order_service.list_orders(page, per_page, status=status_upper)
         return jsonify(result), 200
-    except OrderServiceError as exc:
+    except (OrderServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 

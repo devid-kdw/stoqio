@@ -15,7 +15,9 @@ from app.models.category import Category
 from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
 from app.models.enums import (
+    DraftGroupStatus,
     DraftGroupType,
+    DraftSource,
     DraftStatus,
     DraftType,
     InventoryCountLineResolution,
@@ -652,12 +654,14 @@ def test_complete_count(client, inv_data, app):
         draft = (
             _db.session.query(Draft)
             .filter_by(
+                inventory_count_id=count_id,
                 article_id=inv_data["art_batch"].id,
                 draft_type=DraftType.INVENTORY_SHORTAGE,
             )
             .first()
         )
         assert draft is not None
+        assert draft.inventory_count_id == count_id
         assert float(draft.quantity) == pytest.approx(2.5)
 
         group = _db.session.get(DraftGroup, draft.draft_group_id)
@@ -1020,12 +1024,11 @@ def test_shortage_drafts_summary_mixed_statuses(client, inv_data, app):
 
     # Now approve one of the shortage drafts to create a mixed state
     with app.app_context():
-        prefix = f"inv-count-{count_id}-line-%"
         drafts = (
             _db.session.query(Draft)
-            .filter(
-                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
-                Draft.client_event_id.like(prefix),
+            .filter_by(
+                draft_type=DraftType.INVENTORY_SHORTAGE,
+                inventory_count_id=count_id,
             )
             .all()
         )
@@ -1046,9 +1049,9 @@ def test_shortage_drafts_summary_mixed_statuses(client, inv_data, app):
         with app.app_context():
             drafts = (
                 _db.session.query(Draft)
-                .filter(
-                    Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
-                    Draft.client_event_id.like(f"inv-count-{count_id}-line-%"),
+                .filter_by(
+                    draft_type=DraftType.INVENTORY_SHORTAGE,
+                    inventory_count_id=count_id,
                 )
                 .all()
             )
@@ -1072,12 +1075,11 @@ def test_shortage_drafts_summary_rejected_state(client, inv_data, app):
 
     # Reject all shortage drafts for this count
     with app.app_context():
-        prefix = f"inv-count-{count_id}-line-%"
         drafts = (
             _db.session.query(Draft)
-            .filter(
-                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
-                Draft.client_event_id.like(prefix),
+            .filter_by(
+                draft_type=DraftType.INVENTORY_SHORTAGE,
+                inventory_count_id=count_id,
             )
             .all()
         )
@@ -1100,9 +1102,9 @@ def test_shortage_drafts_summary_rejected_state(client, inv_data, app):
         with app.app_context():
             drafts = (
                 _db.session.query(Draft)
-                .filter(
-                    Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
-                    Draft.client_event_id.like(f"inv-count-{count_id}-line-%"),
+                .filter_by(
+                    draft_type=DraftType.INVENTORY_SHORTAGE,
+                    inventory_count_id=count_id,
                 )
                 .all()
             )
@@ -1132,6 +1134,65 @@ def test_shortage_drafts_summary_in_detail(client, inv_data):
     assert isinstance(summary["rejected"], int)
     assert isinstance(summary["pending"], int)
     assert summary["total"] == summary["approved"] + summary["rejected"] + summary["pending"]
+
+
+# ---------------------------------------------------------------------------
+# Test: shortage_drafts_summary ignores legacy client_event_id naming without FK
+# ---------------------------------------------------------------------------
+
+def test_shortage_drafts_summary_ignores_legacy_client_event_id_without_fk(client, inv_data, app):
+    headers = _admin_headers(client)
+    history = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+    regular_count = next(c for c in history["items"] if c["shortage_drafts_summary"]["total"] > 0)
+    count_id = regular_count["id"]
+    summary_before = regular_count["shortage_drafts_summary"]
+
+    with app.app_context():
+        draft_group = DraftGroup(
+            group_number=f"IZL-LEGACY-{count_id}",
+            status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.INVENTORY_SHORTAGE,
+            operational_date=date(2026, 3, 27),
+            created_by=inv_data["admin"].id,
+            description="Legacy linkage probe",
+        )
+        _db.session.add(draft_group)
+        _db.session.flush()
+
+        stray_draft = Draft(
+            draft_group_id=draft_group.id,
+            location_id=inv_data["loc"].id,
+            article_id=inv_data["art_batch"].id,
+            batch_id=inv_data["batch1"].id,
+            inventory_count_id=None,
+            quantity=Decimal("1.000"),
+            uom=inv_data["kg"].code,
+            status=DraftStatus.APPROVED,
+            draft_type=DraftType.INVENTORY_SHORTAGE,
+            source=DraftSource.manual,
+            client_event_id=f"inv-count-{count_id}-line-legacy-null-link",
+            created_by=inv_data["admin"].id,
+        )
+        _db.session.add(stray_draft)
+        _db.session.commit()
+
+    try:
+        refreshed = client.get("/api/v1/inventory?page=1&per_page=50", headers=headers).get_json()
+        summary_after = next(c for c in refreshed["items"] if c["id"] == count_id)[
+            "shortage_drafts_summary"
+        ]
+        assert summary_after == summary_before
+    finally:
+        with app.app_context():
+            stray = Draft.query.filter_by(
+                client_event_id=f"inv-count-{count_id}-line-legacy-null-link"
+            ).first()
+            group = DraftGroup.query.filter_by(group_number=f"IZL-LEGACY-{count_id}").first()
+            if stray is not None:
+                _db.session.delete(stray)
+            if group is not None:
+                _db.session.delete(group)
+            _db.session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -1182,9 +1243,9 @@ def test_shortage_drafts_summary_isolation(client, inv_data, app):
         # Count A drafts -> REJECTED
         drafts_a = (
             _db.session.query(Draft)
-            .filter(
-                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
-                Draft.client_event_id.like(f"inv-count-{count_a_id}-line-%"),
+            .filter_by(
+                draft_type=DraftType.INVENTORY_SHORTAGE,
+                inventory_count_id=count_a_id,
             )
             .all()
         )
@@ -1195,9 +1256,9 @@ def test_shortage_drafts_summary_isolation(client, inv_data, app):
         # Count B drafts -> APPROVED
         drafts_b = (
             _db.session.query(Draft)
-            .filter(
-                Draft.draft_type == DraftType.INVENTORY_SHORTAGE,
-                Draft.client_event_id.like(f"inv-count-{count_b_id}-line-%"),
+            .filter_by(
+                draft_type=DraftType.INVENTORY_SHORTAGE,
+                inventory_count_id=count_b_id,
             )
             .all()
         )
@@ -1225,8 +1286,128 @@ def test_shortage_drafts_summary_isolation(client, inv_data, app):
         # Restore draft status
         with app.app_context():
             # Must re-query since we are in a new session
-            da = _db.session.query(Draft).filter(Draft.client_event_id.like(f"inv-count-{count_a_id}-line-%")).all()
-            db_b = _db.session.query(Draft).filter(Draft.client_event_id.like(f"inv-count-{count_b_id}-line-%")).all()
+            da = (
+                _db.session.query(Draft)
+                .filter_by(
+                    draft_type=DraftType.INVENTORY_SHORTAGE,
+                    inventory_count_id=count_a_id,
+                )
+                .all()
+            )
+            db_b = (
+                _db.session.query(Draft)
+                .filter_by(
+                    draft_type=DraftType.INVENTORY_SHORTAGE,
+                    inventory_count_id=count_b_id,
+                )
+                .all()
+            )
             for d in da + db_b:
                 d.status = DraftStatus.DRAFT
             _db.session.commit()
+
+
+def test_deleting_inventory_count_nulls_linked_draft_fk(client, inv_data, app):
+    with app.app_context():
+        count = InventoryCount(
+            status=InventoryCountStatus.COMPLETED,
+            started_by=inv_data["admin"].id,
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+        )
+        _db.session.add(count)
+        _db.session.flush()
+
+        draft_group = DraftGroup(
+            group_number="IZL-DELETE-LINK",
+            status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.INVENTORY_SHORTAGE,
+            operational_date=date(2026, 3, 27),
+            created_by=inv_data["admin"].id,
+            description="Delete-link contract check",
+        )
+        _db.session.add(draft_group)
+        _db.session.flush()
+
+        draft = Draft(
+            draft_group_id=draft_group.id,
+            location_id=inv_data["loc"].id,
+            article_id=inv_data["art_no_batch"].id,
+            batch_id=None,
+            inventory_count_id=count.id,
+            quantity=Decimal("2.000"),
+            uom=inv_data["kom"].code,
+            status=DraftStatus.DRAFT,
+            draft_type=DraftType.INVENTORY_SHORTAGE,
+            source=DraftSource.manual,
+            client_event_id="inv-count-delete-contract-check",
+            created_by=inv_data["admin"].id,
+        )
+        _db.session.add(draft)
+        _db.session.commit()
+
+        draft_id = draft.id
+        draft_group_id = draft_group.id
+        count_id = count.id
+
+        _db.session.delete(count)
+        _db.session.commit()
+
+        persisted = _db.session.get(Draft, draft_id)
+        assert persisted is not None
+        assert persisted.inventory_count_id is None
+        assert _db.session.get(InventoryCount, count_id) is None
+
+        _db.session.delete(persisted)
+        _db.session.delete(_db.session.get(DraftGroup, draft_group_id))
+        _db.session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Test: DAILY_OUTBOUND drafts remain with inventory_count_id = NULL
+# ---------------------------------------------------------------------------
+
+def test_daily_outbound_draft_keeps_inventory_count_null(client, inv_data, app):
+    """Confirm regular DAILY_OUTBOUND drafts keep inventory_count_id = NULL and are unaffected by this phase."""
+    from app.models.draft import Draft
+    from app.models.enums import DraftType, DraftSource, DraftStatus
+    from datetime import date
+    
+    with app.app_context():
+        draft_group = DraftGroup(
+            group_number="IZL-DAILY-OUT-TEST",
+            status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.DAILY_OUTBOUND,
+            operational_date=date(2099, 12, 31),
+            created_by=inv_data["admin"].id,
+            description="Daily outbound draft linkage check",
+        )
+        _db.session.add(draft_group)
+        _db.session.flush()
+
+        daily_draft = Draft(
+            draft_group_id=draft_group.id,
+            location_id=inv_data["loc"].id,
+            article_id=inv_data["art_batch"].id,
+            batch_id=inv_data["batch1"].id,
+            quantity=Decimal("1.500"),
+            uom=inv_data["kg"].code,
+            status=DraftStatus.DRAFT,
+            draft_type=DraftType.OUTBOUND,
+            source=DraftSource.manual,
+            client_event_id="test-daily-out-draft",
+            created_by=inv_data["admin"].id,
+        )
+        _db.session.add(daily_draft)
+        _db.session.commit()
+        
+        saved_group_id = draft_group.id
+    
+    with app.app_context():
+        fetched = Draft.query.filter_by(draft_group_id=saved_group_id).first()
+        assert fetched.inventory_count_id is None
+        assert fetched.draft_type == DraftType.OUTBOUND
+
+        _db.session.delete(fetched)
+        _db.session.delete(_db.session.get(DraftGroup, saved_group_id))
+        _db.session.commit()

@@ -110,6 +110,14 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
 
     draft_columns = {column["name"] for column in inspector.get_columns("draft")}
     assert "note" not in draft_columns
+    assert "inventory_count_id" in draft_columns
+
+    draft_foreign_keys = inspector.get_foreign_keys("draft")
+    assert any(
+        fk.get("referred_table") == "inventory_count"
+        and fk.get("constrained_columns") == ["inventory_count_id"]
+        for fk in draft_foreign_keys
+    )
 
     draft_group_columns = {
         column["name"] for column in inspector.get_columns("draft_group")
@@ -136,6 +144,13 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
     )
 
     with engine.begin() as conn:
+        draft_fk_rows = conn.execute(text("PRAGMA foreign_key_list('draft')")).mappings().all()
+        assert any(
+            row["table"] == "inventory_count"
+            and row["from"] == "inventory_count_id"
+            and str(row["on_delete"]).upper() == "SET NULL"
+            for row in draft_fk_rows
+        )
         conn.execute(text("PRAGMA foreign_keys=OFF"))
         conn.execute(
             text(

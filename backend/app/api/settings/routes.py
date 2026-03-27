@@ -9,43 +9,13 @@ from app.services import settings_service
 from app.services.settings_service import SettingsServiceError
 from app.utils.auth import get_current_user, require_role
 from app.utils.errors import api_error as _error
+from app.utils.validators import (
+    QueryValidationError,
+    parse_bool_query,
+    parse_positive_int,
+)
 
 settings_bp = Blueprint("settings", __name__)
-
-
-def _parse_positive_int(value, *, field_name: str, default: int) -> int:
-    raw_value = default if value is None else value
-    try:
-        parsed = int(raw_value)
-    except (TypeError, ValueError):
-        raise SettingsServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be a valid integer.",
-            400,
-        ) from None
-    if parsed <= 0:
-        raise SettingsServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be greater than zero.",
-            400,
-        )
-    return parsed
-
-
-def _parse_bool_query(value, *, field_name: str, default: bool) -> bool:
-    if value is None:
-        return default
-
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1"}:
-        return True
-    if normalized in {"false", "0"}:
-        return False
-    raise SettingsServiceError(
-        "VALIDATION_ERROR",
-        f"{field_name} must be 'true' or 'false'.",
-        400,
-    )
 
 
 @settings_bp.route("/settings/general", methods=["GET"])
@@ -217,13 +187,13 @@ def update_export_settings():
 @require_role("ADMIN")
 def get_suppliers():
     try:
-        page = _parse_positive_int(request.args.get("page"), field_name="page", default=1)
-        per_page = _parse_positive_int(
+        page = parse_positive_int(request.args.get("page"), field_name="page", default=1)
+        per_page = parse_positive_int(
             request.args.get("per_page"),
             field_name="per_page",
             default=50,
         )
-        include_inactive = _parse_bool_query(
+        include_inactive = parse_bool_query(
             request.args.get("include_inactive"),
             field_name="include_inactive",
             default=False,
@@ -235,7 +205,7 @@ def get_suppliers():
             include_inactive=include_inactive,
         )
         return jsonify(result), 200
-    except SettingsServiceError as exc:
+    except (SettingsServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 

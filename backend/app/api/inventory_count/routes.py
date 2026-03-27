@@ -13,28 +13,9 @@ from app.services import inventory_service
 from app.services.inventory_service import InventoryServiceError
 from app.utils.auth import get_current_user, require_role
 from app.utils.errors import api_error as _error
+from app.utils.validators import QueryValidationError, parse_positive_int
 
 inventory_bp = Blueprint("inventory", __name__)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _parse_positive_int(value, *, field_name: str, default: int) -> int:
-    raw = default if value is None else value
-    try:
-        parsed = int(raw)
-    except (TypeError, ValueError):
-        raise InventoryServiceError(
-            "VALIDATION_ERROR", f"'{field_name}' must be a valid integer.", 400
-        )
-    if parsed <= 0:
-        raise InventoryServiceError(
-            "VALIDATION_ERROR", f"'{field_name}' must be greater than zero.", 400
-        )
-    return parsed
 
 
 # ---------------------------------------------------------------------------
@@ -63,15 +44,15 @@ def get_active_count():
 def list_counts():
     """GET /api/v1/inventory?page=1&per_page=50 — paginated completed counts."""
     try:
-        page = _parse_positive_int(
+        page = parse_positive_int(
             request.args.get("page"), field_name="page", default=1
         )
-        per_page = _parse_positive_int(
+        per_page = parse_positive_int(
             request.args.get("per_page"), field_name="per_page", default=50
         )
         result = inventory_service.list_counts(page=page, per_page=per_page)
         return jsonify(result), 200
-    except InventoryServiceError as exc:
+    except (InventoryServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
