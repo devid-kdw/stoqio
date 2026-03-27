@@ -28,6 +28,7 @@ from app.utils.auth import (
     add_to_blocklist,
     check_rate_limit,
     get_current_user,
+    get_dummy_hash,
     is_token_revoked,
     require_role,
     token_expiry_from_jwt,
@@ -103,11 +104,7 @@ def login():
 
     # Always run check_password_hash even when user is None to mitigate
     # timing-based username enumeration.
-    _dummy_hash = (
-        "pbkdf2:sha256:600000$dummy$0000000000000000000000000000000000000000"
-        "00000000000000000000"
-    )
-    candidate_hash = user.password_hash if user is not None else _dummy_hash
+    candidate_hash = user.password_hash if user is not None else get_dummy_hash()
     password_valid = check_password_hash(candidate_hash, password)
 
     if user is None or not password_valid:

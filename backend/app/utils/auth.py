@@ -10,8 +10,24 @@ from threading import Lock
 from time import time
 
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
+from werkzeug.security import generate_password_hash
 
 from app.utils.errors import api_error
+
+# ---------------------------------------------------------------------------
+# Timing-safe dummy hash for nonexistent-user login path
+# ---------------------------------------------------------------------------
+
+# Generated once at module load so the route pays no per-request cost.
+# Using pbkdf2:sha256 keeps this aligned with the app's supported hash policy.
+# If the app ever migrates to a different algorithm, update this line and the
+# associated test so the dummy hash stays policy-consistent.
+_DUMMY_HASH: str = generate_password_hash("dummy-placeholder", method="pbkdf2:sha256")
+
+
+def get_dummy_hash() -> str:
+    """Return a valid password hash for timing-safe nonexistent-user login checks."""
+    return _DUMMY_HASH
 
 # ---------------------------------------------------------------------------
 # Persisted token revocation

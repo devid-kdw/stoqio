@@ -12,6 +12,8 @@ Covers:
   - GET /admin-only with non-ADMIN token → 403
   - GET /admin-only with ADMIN token → 200
   - Rate limiting on /login → 429 after 10 requests from same IP
+  - Wave 2 Phase 4: Production config fails fast on missing/blank DATABASE_URL
+  - Wave 2 Phase 4: Nonexistent-user login still exercises the hash-check path
 """
 
 import pytest
@@ -448,3 +450,130 @@ class TestRateLimit:
         # A fresh IP should still be allowed
         resp = _login(client, "auth_admin", "adminpass", remote_addr="10.99.1.1")
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 Phase 4 — Production config startup hardening
+# ---------------------------------------------------------------------------
+
+
+class TestProductionConfig:
+    """Production config must fail fast on missing/blank DATABASE_URL (F-036).
+
+    These tests use direct class instantiation with a monkeypatched environment
+    so they run without a Flask app context and do not interact with the DB.
+    """
+
+    def test_production_raises_on_missing_database_url(self, monkeypatch):
+        """Missing DATABASE_URL must raise RuntimeError during Production init."""
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.setenv("JWT_SECRET_KEY", "a-very-strong-secret-key-for-testing-2026")
+
+        from app.config import Production
+
+        with pytest.raises(RuntimeError, match="DATABASE_URL"):
+            Production()
+
+    def test_production_raises_on_blank_database_url(self, monkeypatch):
+        """Blank DATABASE_URL must raise RuntimeError during Production init."""
+        monkeypatch.setenv("DATABASE_URL", "")
+        monkeypatch.setenv("JWT_SECRET_KEY", "a-very-strong-secret-key-for-testing-2026")
+
+        from app.config import Production
+
+        with pytest.raises(RuntimeError, match="DATABASE_URL"):
+            Production()
+
+    def test_production_raises_on_whitespace_only_database_url(self, monkeypatch):
+        """Whitespace-only DATABASE_URL must also fail fast during Production init."""
+        monkeypatch.setenv("DATABASE_URL", "   ")
+        monkeypatch.setenv("JWT_SECRET_KEY", "a-very-strong-secret-key-for-testing-2026")
+
+        from app.config import Production
+
+        with pytest.raises(RuntimeError, match="DATABASE_URL"):
+            Production()
+
+    def test_production_starts_with_valid_database_url(self, monkeypatch):
+        """Production must not raise when both DATABASE_URL and JWT_SECRET_KEY are valid."""
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/wms_prod")
+        monkeypatch.setenv("JWT_SECRET_KEY", "a-very-strong-secret-key-for-testing-2026")
+
+        from app.config import Production
+
+        cfg = Production()
+        assert cfg.SQLALCHEMY_DATABASE_URI == "postgresql://user:pass@localhost/wms_prod"
+
+    def test_production_still_raises_on_weak_jwt_secret(self, monkeypatch):
+        """Existing weak/missing JWT_SECRET_KEY protection must remain unchanged."""
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/wms_prod")
+        monkeypatch.setenv("JWT_SECRET_KEY", "weak")
+
+        from app.config import Production
+
+        with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
+            Production()
+
+    def test_production_still_raises_on_missing_jwt_secret(self, monkeypatch):
+        """Missing JWT_SECRET_KEY must still raise RuntimeError."""
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/wms_prod")
+        monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+
+        from app.config import Production
+
+        with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
+            Production()
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 Phase 4 — Timing-safe dummy hash path (F-035)
+# ---------------------------------------------------------------------------
+
+
+class TestNonexistentUserLoginPath:
+    """Nonexistent-user login must still invoke check_password_hash (F-035).
+
+    After removing the hardcoded PBKDF2 literal, the route must call
+    get_dummy_hash() to get a policy-consistent hash and then pass it to
+    check_password_hash — preserving timing-safe behavior for username enum.
+    """
+
+    def test_nonexistent_user_returns_401_invalid_credentials(self, client, auth_users):
+        """Nonexistent user must still yield 401 INVALID_CREDENTIALS (contract lock)."""
+        resp = _login(client, "user_does_not_exist", "anything", remote_addr="127.1.0.1")
+        assert resp.status_code == 401
+        assert resp.get_json()["error"] == "INVALID_CREDENTIALS"
+
+    def test_nonexistent_user_invokes_check_password_hash(self, client, auth_users, monkeypatch):
+        """The hash-check path must be executed even when the user does not exist."""
+        import app.api.auth.routes as _routes
+        from werkzeug.security import check_password_hash as _real_check
+
+        calls = []
+
+        def _spy_check(pwhash, password):
+            calls.append(pwhash)
+            return _real_check(pwhash, password)
+
+        monkeypatch.setattr(_routes, "check_password_hash", _spy_check)
+
+        _login(client, "user_does_not_exist", "anything", remote_addr="127.1.0.2")
+
+        assert len(calls) == 1, "check_password_hash must be called exactly once"
+
+    def test_get_dummy_hash_returns_valid_pbkdf2_hash(self):
+        """get_dummy_hash() must return a hash that check_password_hash can verify."""
+        from werkzeug.security import check_password_hash
+
+        from app.utils.auth import get_dummy_hash
+
+        h = get_dummy_hash()
+        assert h.startswith("pbkdf2:sha256:")
+        # The dummy hash must not match an arbitrary password (sanity check)
+        assert not check_password_hash(h, "should-not-match")
+
+    def test_get_dummy_hash_is_stable_within_process(self):
+        """get_dummy_hash() must return the same value on repeated calls (no per-call churn)."""
+        from app.utils.auth import get_dummy_hash
+
+        assert get_dummy_hash() is get_dummy_hash()

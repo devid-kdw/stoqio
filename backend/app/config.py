@@ -44,7 +44,13 @@ class Production(_Base):
 
     def __init__(self) -> None:
         super().__init__()
-        self.SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "")
+        db_url = (os.getenv("DATABASE_URL") or "").strip()
+        if not db_url:
+            raise RuntimeError(
+                "Production requires DATABASE_URL to be set. "
+                "Set it in your .env file."
+            )
+        self.SQLALCHEMY_DATABASE_URI = db_url
         secret = os.getenv("JWT_SECRET_KEY", "")
         if not secret or secret in self._WEAK_SECRETS or len(secret) < 32:
             raise RuntimeError(
