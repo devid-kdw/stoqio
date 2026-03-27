@@ -858,3 +858,207 @@ class TestRejectionReasonVisibility:
         )
         assert resp.status_code == 400
         assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 Phase 1 — Persisted PARTIAL status (DEC-APP-001)
+# ---------------------------------------------------------------------------
+
+class TestPartialStatusPersistence:
+    """Assert that DraftGroup.status is persisted as PARTIAL after a mixed
+    approve/reject resolution — not just computed at display time."""
+
+    def test_partial_persisted_in_db_after_mixed_resolution(self, client, app, app_data):
+        """Core contract: mixed approve+reject sets DraftGroup.status = PARTIAL in DB."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "quantity": 2.0, "uom": "akg"},
+        ])
+
+        token = _login(client, "appr_admin")
+
+        no_batch_line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{no_batch_line_id}/approve",
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        batch_line_id = _get_line_id(client, token, group_id, app_data["art_with_batch"].id, app_data["b1"].id)
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{batch_line_id}/reject",
+            json={"reason": "wrong quantity"},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        with app.app_context():
+            group = _db.session.get(DraftGroup, group_id)
+            assert group is not None
+            assert group.status == DraftGroupStatus.PARTIAL, (
+                f"Expected DraftGroup.status == PARTIAL but got {group.status!r}"
+            )
+
+    def test_partial_group_not_in_pending_list(self, client, app, app_data):
+        """A PARTIAL group (no remaining DRAFT lines) must NOT appear in the pending list."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 1.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "quantity": 1.0, "uom": "akg"},
+        ])
+
+        token = _login(client, "appr_admin")
+        no_batch_line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        client.post(f"/api/v1/approvals/{group_id}/lines/{no_batch_line_id}/approve", headers=_auth_header(token))
+        batch_line_id = _get_line_id(client, token, group_id, app_data["art_with_batch"].id, app_data["b1"].id)
+        client.post(f"/api/v1/approvals/{group_id}/lines/{batch_line_id}/reject", json={"reason": "rejected"}, headers=_auth_header(token))
+
+        with app.app_context():
+            group = _db.session.get(DraftGroup, group_id)
+            assert group.status == DraftGroupStatus.PARTIAL
+
+        resp = client.get("/api/v1/approvals?status=pending", headers=_auth_header(token))
+        assert resp.status_code == 200
+        pending_ids = {item["draft_group_id"] for item in resp.get_json().get("items", [])}
+        assert group_id not in pending_ids, "PARTIAL group should not appear in the pending approvals list"
+
+    def test_partial_group_appears_in_history_with_correct_status(self, client, app, app_data):
+        """A PARTIAL group must appear in the history list with status='PARTIAL'."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 3.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "quantity": 1.0, "uom": "akg"},
+        ])
+
+        token = _login(client, "appr_admin")
+        no_batch_line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        client.post(f"/api/v1/approvals/{group_id}/lines/{no_batch_line_id}/approve", headers=_auth_header(token))
+        batch_line_id = _get_line_id(client, token, group_id, app_data["art_with_batch"].id, app_data["b1"].id)
+        client.post(f"/api/v1/approvals/{group_id}/lines/{batch_line_id}/reject", json={"reason": "n/a"}, headers=_auth_header(token))
+
+        resp = client.get("/api/v1/approvals?status=history", headers=_auth_header(token))
+        assert resp.status_code == 200
+        history_items = resp.get_json().get("items", [])
+        this_group = next((g for g in history_items if g["draft_group_id"] == group_id), None)
+        assert this_group is not None, "PARTIAL group not found in history response"
+        assert this_group["status"] == "PARTIAL", (
+            f"Expected status='PARTIAL' in history response but got {this_group['status']!r}"
+        )
+
+    def test_partial_group_detail_returns_partial_status(self, client, app, app_data):
+        """A PARTIAL group detail fetch must return status='PARTIAL'."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 3.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "quantity": 1.0, "uom": "akg"},
+        ])
+
+        token = _login(client, "appr_admin")
+        no_batch_line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        client.post(f"/api/v1/approvals/{group_id}/lines/{no_batch_line_id}/approve", headers=_auth_header(token))
+        batch_line_id = _get_line_id(client, token, group_id, app_data["art_with_batch"].id, app_data["b1"].id)
+        client.post(f"/api/v1/approvals/{group_id}/lines/{batch_line_id}/reject", json={"reason": "n/a"}, headers=_auth_header(token))
+
+        detail = _get_detail(client, token, group_id)
+        assert detail["status"] == "PARTIAL", f"Expected detail status='PARTIAL', got {detail.get('status')!r}"
+
+    def test_fully_approved_group_still_persists_as_approved(self, client, app, app_data):
+        """Regression: all-approved groups continue to persist as APPROVED."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"},
+        ])
+
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        resp = client.post(f"/api/v1/approvals/{group_id}/lines/{line_id}/approve", headers=_auth_header(token))
+        assert resp.status_code == 200
+
+        with app.app_context():
+            group = _db.session.get(DraftGroup, group_id)
+            assert group.status == DraftGroupStatus.APPROVED
+
+    def test_fully_rejected_group_still_persists_as_rejected(self, client, app, app_data):
+        """Regression: all-rejected groups continue to persist as REJECTED."""
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"},
+        ])
+
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/reject",
+            json={"reason": "wrong"},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        with app.app_context():
+            group = _db.session.get(DraftGroup, group_id)
+            assert group.status == DraftGroupStatus.REJECTED
+
+    def test_group_with_remaining_draft_lines_stays_pending(self, client, app, app_data):
+        """A group where only some lines are resolved must stay PENDING until all are done."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"},
+        ])
+
+        # Inject a second bucket into the same group that stays DRAFT
+        with app.app_context():
+            extra_draft = Draft(
+                draft_group_id=group_id,
+                location_id=app_data["loc"].id,
+                article_id=app_data["art_with_batch"].id,
+                batch_id=app_data["b1"].id,
+                quantity=Decimal("1.0"),
+                uom="akg",
+                status=DraftStatus.DRAFT,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=app_data["operator"].id,
+            )
+            _db.session.add(extra_draft)
+            _db.session.commit()
+
+        token = _login(client, "appr_admin")
+
+        # Approve only the first bucket
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/approve",
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        # Group must still be PENDING
+        with app.app_context():
+            group = _db.session.get(DraftGroup, group_id)
+            assert group.status == DraftGroupStatus.PENDING, (
+                f"Expected PENDING while drafts remain, got {group.status!r}"
+            )
+
+        # And it must still appear in the pending list
+        resp = client.get("/api/v1/approvals?status=pending", headers=_auth_header(token))
+        assert resp.status_code == 200
+        pending_ids = {item["draft_group_id"] for item in resp.get_json().get("items", [])}
+        assert group_id in pending_ids, "Group with remaining DRAFT lines must remain in the pending list"

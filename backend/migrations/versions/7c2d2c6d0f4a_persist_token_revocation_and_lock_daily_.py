@@ -153,16 +153,34 @@ def upgrade() -> None:
     )
     if bind.dialect.name == "postgresql":
         group_type_enum.create(bind, checkfirst=True)
-
-    op.add_column(
-        "draft_group",
-        sa.Column(
-            "group_type",
-            group_type_enum,
-            nullable=False,
-            server_default="DAILY_OUTBOUND",
-        ),
-    )
+        op.add_column(
+            "draft_group",
+            sa.Column(
+                "group_type",
+                group_type_enum,
+                nullable=False,
+                server_default="DAILY_OUTBOUND",
+            ),
+        )
+    else:
+        # SQLite: use batch_alter_table (copy-and-move) so that existing named
+        # constraints (e.g. UniqueConstraint on group_number) are properly
+        # reconstructed and Alembic does not emit the "Skipping unsupported
+        # ALTER for creation of implicit constraint" UserWarning.
+        with op.batch_alter_table("draft_group", schema=None) as batch_op:
+            batch_op.add_column(
+                sa.Column(
+                    "group_type",
+                    sa.Enum(
+                        "DAILY_OUTBOUND",
+                        "INVENTORY_SHORTAGE",
+                        name="draft_group_type",
+                        create_constraint=True,
+                    ),
+                    nullable=False,
+                    server_default="DAILY_OUTBOUND",
+                )
+            )
 
     op.create_table(
         "revoked_token",

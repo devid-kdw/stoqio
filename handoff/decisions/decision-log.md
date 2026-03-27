@@ -613,3 +613,14 @@
 - Decision: API error response `message` is no longer treated as fixed English text. It must be localized per request to the active frontend language (`hr`, `en`, `de`, `hu`). The frontend sends the current UI language in the `Accept-Language` header on all API requests. The backend localizes only the human-readable `message` field from that request language, falling back to the configured `default_language` when needed and then to `hr`. Machine-readable `error` codes, response structure, enum values, and field names remain unchanged and stay English.
 - Impact: Backend agents must implement locale-aware error-message resolution instead of one-off hardcoded message replacements, and frontend agents must attach the active i18n language to API requests. Older docs that say raw backend/API business-error messages may remain English are now stale for supported UI languages.
 - Docs update required: yes
+
+---
+
+## DEC-APP-001
+
+- Date: 2026-03-26
+- Phase: phase-01-wave-02-draft-group-partial-status
+- Source: User-directed Wave 2 Phase 1 orchestrator brief resolving code-review finding F-030
+- Decision: `DraftGroup.status` is authoritative for resolved approval-group state and now formally supports persisted `PARTIAL`. A group must be stored as `PARTIAL` only when it has no remaining `Draft.status = DRAFT` rows and contains a mix of approved and rejected lines. Pending/history segmentation remains based on whether unresolved draft lines still exist, not on a naive `DraftGroup.status` filter alone. The upgrade path must also correct existing persisted `PENDING` groups that are already effectively mixed-and-resolved.
+- Impact: Backend agents must extend the enum/model + migration path, persist `PARTIAL` in the shared status-update helper, and backfill inconsistent historical rows. Frontend agents must treat `PARTIAL` as a first-class approval-group status in badge/type/display logic without re-showing resolved groups in Pending. Testing must assert both API output and persisted database state for mixed approval groups.
+- Docs update required: yes

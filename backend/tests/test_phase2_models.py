@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from app.models.article import Article
@@ -116,6 +116,13 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
     }
     assert "group_type" in draft_group_columns
 
+    draft_group_constraints = inspector.get_check_constraints("draft_group")
+    assert any(
+        constraint.get("name") == "draft_group_status"
+        and "PARTIAL" in (constraint.get("sqltext") or "")
+        for constraint in draft_group_constraints
+    )
+
     revoked_token_columns = {
         column["name"] for column in inspector.get_columns("revoked_token")
     }
@@ -127,3 +134,14 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
         or "quantity >= 0" in (constraint.get("sqltext") or "")
         for constraint in check_constraints
     )
+
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        conn.execute(
+            text(
+                "INSERT INTO draft_group "
+                "(group_number, description, status, operational_date, created_by, created_at, group_type) "
+                "VALUES "
+                "('IZL-PHASE2', NULL, 'PARTIAL', '2026-03-27', 1, '2026-03-27 00:00:00', 'DAILY_OUTBOUND')"
+            )
+        )

@@ -76,13 +76,10 @@ def get_history_draft_groups():
         pending_groups.c.draft_group_id.is_(None)
     ).order_by(DraftGroup.operational_date.desc()).all()
 
-    # We need to compute their display status
-    results = []
-    for g in groups:
-        # Determine if it's PARTIAL, APPROVED, or REJECTED
-        status = _compute_group_display_status(g.id)
-        results.append(_serialize_group(g, status))
-    return results
+    # DraftGroup.status is now authoritative for resolved groups (APPROVED/REJECTED/PARTIAL).
+    # Use the stored status directly — no need to recompute display status per group.
+    return [_serialize_group(g, g.status.value if hasattr(g.status, "value") else g.status)
+            for g in groups]
 
 
 def _compute_group_display_status(group_id: int) -> str:
@@ -539,22 +536,22 @@ def reject_group(user_id: int, group_id: int, reason: Optional[str]) -> dict:
 
 
 def _update_group_status_if_done(group_id: int):
-    # Determine the status and store it compatible with DraftGroupStatus
-    # But ONLY update real model status if there's NO MORE PENDING.
+    """Persist the resolved group status once no DRAFT lines remain.
+
+    PARTIAL is now a real persisted status (DEC-APP-001 / Wave 2 Phase 1):
+    - all APPROVED        -> DraftGroupStatus.APPROVED
+    - all REJECTED        -> DraftGroupStatus.REJECTED
+    - mixed (no DRAFTs)   -> DraftGroupStatus.PARTIAL
+    - any DRAFT remaining -> leave as PENDING (no-op)
+    """
     group = db.session.get(DraftGroup, group_id)
     if not group:
         return
-    status = _compute_group_display_status(group_id)
-    if status != "PENDING":
-        if status == "PARTIAL":
-            # Just stay PENDING visually on model or whatever, but the display status computes to PARTIAL in history view
-            # WMS ui asks to not add PARTIAL to Enum. So we leave it PENDING maybe, or pick something? 
-            # The UI docs say "History = only fully resolved groups with no remaining DRAFT lines".
-            # So if status is PARTIAL, it means no DRAFTs are left, but it's mixed.
-            # We can't save "PARTIAL". The easiest is to not write to DB and let group display compute it, or
-            # the docs say: "recompute draft-group stored status if possible with existing enum; if mixed resolved state cannot be stored, keep storage compatible and return computed display status from API".
-            pass
-        elif status == "APPROVED":
-            group.status = DraftGroupStatus.APPROVED
-        elif status == "REJECTED":
-            group.status = DraftGroupStatus.REJECTED
+    computed = _compute_group_display_status(group_id)
+    if computed == "APPROVED":
+        group.status = DraftGroupStatus.APPROVED
+    elif computed == "REJECTED":
+        group.status = DraftGroupStatus.REJECTED
+    elif computed == "PARTIAL":
+        group.status = DraftGroupStatus.PARTIAL
+    # PENDING: still has unresolved DRAFT lines — leave status unchanged

@@ -23,6 +23,7 @@ class DraftGroupStatus(str, enum.Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    PARTIAL = "PARTIAL"
 
 
 class DraftGroupType(str, enum.Enum):
