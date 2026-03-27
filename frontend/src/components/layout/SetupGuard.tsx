@@ -3,10 +3,8 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import FullPageState from '../shared/FullPageState'
 import { useAuthStore } from '../../store/authStore'
 import { fetchSetupStatus } from '../../utils/setup'
+import { CONNECTION_ERROR_MESSAGE } from '../../utils/http'
 import { showErrorToast } from '../../utils/toasts'
-
-const CONNECTION_ERROR_MESSAGE =
-  'Connection error. Please check that the server is running and try again.'
 
 export default function SetupGuard() {
   const location = useLocation()
@@ -63,7 +61,7 @@ export default function SetupGuard() {
 
   useEffect(() => {
     if (setupStatus === 'required' && user && user.role !== 'ADMIN') {
-      showErrorToast('Initial setup must be completed by an admin.')
+      showErrorToast('Početno postavljanje mora dovršiti administrator.')
       logout()
     }
   }, [logout, setupStatus, user])
@@ -72,7 +70,7 @@ export default function SetupGuard() {
     return (
       <FullPageState
         title="Provjera inicijalnog postavljanja"
-        message="Sustav provjerava je li lokacija vec konfigurirana."
+        message="Sustav provjerava je li lokacija već konfigurirana."
         loading
       />
     )
@@ -81,9 +79,9 @@ export default function SetupGuard() {
   if (hasError) {
     return (
       <FullPageState
-        title="Connection error"
+        title="Greška povezivanja"
         message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Try again"
+        actionLabel="Pokušaj ponovno"
         onAction={() => {
           setHasError(false)
           setLoading(true)

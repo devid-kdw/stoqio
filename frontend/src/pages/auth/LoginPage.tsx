@@ -32,7 +32,7 @@ export default function LoginPage() {
     setError(null)
 
     if (!username || !password) {
-      setError('Username and password are required.')
+      setError('Korisničko ime i lozinka su obavezni.')
       return
     }
 
@@ -46,7 +46,7 @@ export default function LoginPage() {
         setSetupStatus(setupRequired)
 
         if (setupRequired && data.user.role !== 'ADMIN') {
-          showErrorToast('Initial setup must be completed by an admin.')
+          showErrorToast('Početno postavljanje mora dovršiti administrator.')
           logout()
           return
         }
@@ -60,8 +60,8 @@ export default function LoginPage() {
       }
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Login failed. Please try again.'
-        : 'Login failed. Please try again.'
+        ? err.response?.data?.message || 'Prijava nije uspjela. Pokušaj ponovno.'
+        : 'Prijava nije uspjela. Pokušaj ponovno.'
       setError(msg)
       showErrorToast(msg)
     } finally {
@@ -73,24 +73,24 @@ export default function LoginPage() {
     <AuthLayout>
       <Container size={420}>
         <Title ta="center" order={1}>
-          STOQIO Login
+          Prijava u STOQIO
         </Title>
         <Text c="dimmed" size="sm" ta="center" mt={5}>
-          Please sign in with your credentials
+          Prijavi se svojim vjerodajnicama
         </Text>
 
         <Paper withBorder shadow="md" p={30} mt={30} radius="md">
           <form onSubmit={handleSubmit}>
             <TextInput
-              label="Username"
-              placeholder="Your username"
+              label="Korisničko ime"
+              placeholder="Unesite korisničko ime"
               required
               value={username}
               onChange={(event) => setUsername(event.currentTarget.value)}
             />
             <PasswordInput
-              label="Password"
-              placeholder="Your password"
+              label="Lozinka"
+              placeholder="Unesite lozinku"
               required
               mt="md"
               value={password}
@@ -99,7 +99,7 @@ export default function LoginPage() {
             />
 
             <Button fullWidth mt="xl" type="submit" loading={loading}>
-              Sign in
+              Prijavi se
             </Button>
           </form>
         </Paper>

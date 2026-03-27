@@ -24,15 +24,13 @@ import axios from 'axios'
 import { articlesApi, type ArticleBatch, type ArticleLookupResult } from '../../api/articles'
 import { draftsApi, type DraftGroup, type DraftLine, type MyDraftLine } from '../../api/drafts'
 import FullPageState from '../../components/shared/FullPageState'
+import { CONNECTION_ERROR_MESSAGE, isNetworkOrServerError } from '../../utils/http'
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
 import { INTEGER_UOMS } from '../../utils/uom'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const CONNECTION_ERROR_MESSAGE =
-  'Connection error. Please check that the server is running and try again.'
 
 function formatQuantity(qty: number, uom: string): string {
   if (INTEGER_UOMS.includes(uom)) {
@@ -52,15 +50,6 @@ function formatTime(isoString: string | null): string {
   } catch {
     return '—'
   }
-}
-
-function isNetworkOrServerError(err: unknown): boolean {
-  if (axios.isAxiosError(err)) {
-    // Network errors have no response; 5xx are server errors
-    if (!err.response) return true
-    if (err.response.status >= 500) return true
-  }
-  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -594,9 +583,9 @@ export default function DraftEntryPage() {
   if (pageError) {
     return (
       <FullPageState
-        title="Connection error"
+        title="Greška povezivanja"
         message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Try again"
+        actionLabel="Pokušaj ponovno"
         onAction={() => window.location.reload()}
       />
     )
@@ -605,9 +594,9 @@ export default function DraftEntryPage() {
   if (submitConnectionError) {
     return (
       <FullPageState
-        title="Connection error"
+        title="Greška povezivanja"
         message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Try again"
+        actionLabel="Pokušaj ponovno"
         onAction={() => window.location.reload()}
       />
     )

@@ -21,11 +21,9 @@ import {
   getTimezoneOptions,
   isRetryableSetupRequestError,
 } from '../../utils/setup'
+import { CONNECTION_ERROR_MESSAGE } from '../../utils/http'
 import { getHomeRouteForRole } from '../../utils/roles'
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
-
-const CONNECTION_ERROR_MESSAGE =
-  'Connection error. Please check that the server is running and try again.'
 
 interface FormErrors {
   name?: string
@@ -99,7 +97,7 @@ export default function SetupPage() {
     return (
       <FullPageState
         title="Provjera inicijalnog postavljanja"
-        message="Sustav provjerava je li lokacija vec konfigurirana."
+        message="Sustav provjerava je li lokacija već konfigurirana."
         loading
       />
     )
@@ -108,9 +106,9 @@ export default function SetupPage() {
   if (statusError) {
     return (
       <FullPageState
-        title="Connection error"
+        title="Greška povezivanja"
         message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Try again"
+        actionLabel="Pokušaj ponovno"
         onAction={() => {
           setStatusError(false)
           setStatusLoading(true)
@@ -123,9 +121,9 @@ export default function SetupPage() {
   if (submitError) {
     return (
       <FullPageState
-        title="Connection error"
+        title="Greška povezivanja"
         message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Try again"
+        actionLabel="Pokušaj ponovno"
         onAction={() => {
           setSubmitError(false)
         }}

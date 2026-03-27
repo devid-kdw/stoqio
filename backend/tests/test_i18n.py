@@ -336,3 +336,33 @@ class TestLocalizedAuthAndValidation:
         data = resp.get_json()
         assert data["error"] == "VALIDATION_ERROR"
         assert data["message"] == "page mora biti cijeli broj."
+
+
+class TestLocalizedOrderLineErrors:
+    @pytest.mark.parametrize(
+        ("error_code", "language", "fallback_message", "expected_message"),
+        [
+            ("ORDER_LINE_REMOVED", "hr", "Order line has been removed.", "Stavka narudžbe je uklonjena."),
+            ("ORDER_LINE_REMOVED", "en", "Order line has been removed.", "Order line has been removed."),
+            ("ORDER_LINE_REMOVED", "de", "Order line has been removed.", "Bestellposition wurde entfernt."),
+            ("ORDER_LINE_REMOVED", "hu", "Order line has been removed.", "A rendelési sor el lett távolítva."),
+            ("ORDER_LINE_CLOSED", "hr", "Order line is already closed.", "Stavka narudžbe je već zatvorena."),
+            ("ORDER_LINE_CLOSED", "en", "Order line is already closed.", "Order line is already closed."),
+            ("ORDER_LINE_CLOSED", "de", "Order line is already closed.", "Bestellposition ist bereits geschlossen."),
+            ("ORDER_LINE_CLOSED", "hu", "Order line is already closed.", "A rendelési sor már le van zárva."),
+        ],
+    )
+    def test_order_line_errors_are_localized_in_supported_locales(
+        self,
+        app,
+        error_code: str,
+        language: str,
+        fallback_message: str,
+        expected_message: str,
+    ):
+        with app.test_request_context(headers={"Accept-Language": language}):
+            response, status = api_error(error_code, fallback_message, 409)
+        assert status == 409
+        data = response.get_json()
+        assert data["error"] == error_code
+        assert data["message"] == expected_message

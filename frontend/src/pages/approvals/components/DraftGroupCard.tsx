@@ -31,6 +31,7 @@ import type {
 } from '../../../api/approvals'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../../utils/toasts'
 import axios from 'axios'
+import { isNetworkOrServerError, runWithRetry } from '../../../utils/http'
 import { INTEGER_UOMS } from '../../../utils/uom'
 
 // ---------------------------------------------------------------------------
@@ -55,14 +56,6 @@ function formatTime(isoString: string | null): string {
   } catch {
     return '—'
   }
-}
-
-function isNetworkOrServerError(err: unknown): boolean {
-  if (axios.isAxiosError(err)) {
-    if (!err.response) return true
-    if (err.response.status >= 500) return true
-  }
-  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -105,18 +98,6 @@ export default function DraftGroupCard({
   // Inline Row Errors (e.g., Insufficient stock)
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({})
 
-  const runWithRetry = useCallback(async <T,>(request: () => Promise<T>): Promise<T> => {
-    try {
-      return await request()
-    } catch (error) {
-      if (!isNetworkOrServerError(error)) {
-        throw error
-      }
-
-      return request()
-    }
-  }, [])
-
   // -------------------------------------------------------------------------
   // Fetch Details
   // -------------------------------------------------------------------------
@@ -136,7 +117,7 @@ export default function DraftGroupCard({
       }
       return null
     }
-  }, [onFatalError, runWithRetry, summary.draft_group_id])
+  }, [onFatalError, summary.draft_group_id])
 
   const toggleExpand = () => {
     const next = !expanded

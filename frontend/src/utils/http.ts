@@ -7,7 +7,7 @@ export interface ApiErrorBody {
 }
 
 export const CONNECTION_ERROR_MESSAGE =
-  'Connection error. Please check that the server is running and try again.'
+  'Greška povezivanja. Provjeri je li server pokrenut i pokušaj ponovno.'
 
 export function isNetworkOrServerError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) {

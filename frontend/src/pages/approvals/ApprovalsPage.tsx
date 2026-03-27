@@ -12,19 +12,7 @@ import { approvalsApi } from '../../api/approvals'
 import type { ApprovalsDraftGroup } from '../../api/approvals'
 import FullPageState from '../../components/shared/FullPageState'
 import DraftGroupCard from './components/DraftGroupCard'
-
-import axios from 'axios'
-
-const CONNECTION_ERROR_MESSAGE =
-  'Connection error. Please check that the server is running and try again.'
-
-function isNetworkOrServerError(err: unknown): boolean {
-  if (axios.isAxiosError(err)) {
-    if (!err.response) return true
-    if (err.response.status >= 500) return true
-  }
-  return false
-}
+import { CONNECTION_ERROR_MESSAGE, isNetworkOrServerError } from '../../utils/http'
 
 export default function ApprovalsPage() {
   const [activeTab, setActiveTab] = useState<string | null>('pending')
@@ -71,9 +59,9 @@ export default function ApprovalsPage() {
   if (error) {
     return (
       <FullPageState
-        title="Connection error"
+        title="Greška povezivanja"
         message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Try again"
+        actionLabel="Pokušaj ponovno"
         onAction={() => window.location.reload()}
       />
     )

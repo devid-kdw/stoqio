@@ -601,8 +601,39 @@ class TestReceivingCreate:
         assert response.status_code == 400
         assert response.get_json()["message"] == "A note is required for ad-hoc receipts."
 
-    def test_receiving_rejects_removed_line_and_closed_order(
-        self, client, app, receiving_data
+    @pytest.mark.parametrize(
+        ("accept_language", "removed_message", "closed_message"),
+        [
+            (
+                "hr",
+                "Stavka narudžbe je uklonjena.",
+                "Stavka narudžbe je već zatvorena.",
+            ),
+            (
+                "en",
+                "Order line has been removed.",
+                "Order line is already closed.",
+            ),
+            (
+                "de",
+                "Bestellposition wurde entfernt.",
+                "Bestellposition ist bereits geschlossen.",
+            ),
+            (
+                "hu",
+                "A rendelési sor el lett távolítva.",
+                "A rendelési sor már le van zárva.",
+            ),
+        ],
+    )
+    def test_receiving_rejects_removed_and_closed_order_lines_with_localized_messages(
+        self,
+        client,
+        app,
+        receiving_data,
+        accept_language: str,
+        removed_message: str,
+        closed_message: str,
     ):
         removed_order = _create_order(
             app,
@@ -618,17 +649,17 @@ class TestReceivingCreate:
                 }
             ],
         )
-        closed_order = _create_order(
+        closed_line_order = _create_order(
             app,
             supplier_id=receiving_data["supplier_id"],
             created_by_id=receiving_data["admin_id"],
-            status=OrderStatus.CLOSED,
             lines=[
                 {
                     "article_id": receiving_data["plain_article_id"],
                     "ordered_qty": 2,
                     "uom": receiving_data["plain_uom"],
                     "unit_price": Decimal("1.0000"),
+                    "status": OrderLineStatus.CLOSED,
                 }
             ],
         )
@@ -648,10 +679,11 @@ class TestReceivingCreate:
                     }
                 ],
             },
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": accept_language},
         )
         assert removed_response.status_code == 409
         assert removed_response.get_json()["error"] == "ORDER_LINE_REMOVED"
+        assert removed_response.get_json()["message"] == removed_message
 
         closed_response = client.post(
             "/api/v1/receiving",
@@ -659,17 +691,18 @@ class TestReceivingCreate:
                 "delivery_note_number": "LS12606206",
                 "lines": [
                     {
-                        "order_line_id": closed_order["lines"][0]["id"],
+                        "order_line_id": closed_line_order["lines"][0]["id"],
                         "article_id": receiving_data["plain_article_id"],
                         "quantity": 1,
                         "uom": receiving_data["plain_uom"],
                     }
                 ],
             },
-            headers=_auth_header(token),
+            headers={**_auth_header(token), "Accept-Language": accept_language},
         )
         assert closed_response.status_code == 409
-        assert closed_response.get_json()["error"] == "ORDER_CLOSED"
+        assert closed_response.get_json()["error"] == "ORDER_LINE_CLOSED"
+        assert closed_response.get_json()["message"] == closed_message
 
     def test_receiving_existing_batch_same_expiry_increases_stock(
         self, client, app, receiving_data

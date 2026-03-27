@@ -27,29 +27,14 @@ import { articlesApi, type ArticleLookupResult } from '../../api/articles'
 import { ordersApi, type OrdersListItem, type ReceivingOrderDetail, type ReceivingOrderLine, type ReceivingOrderSummary } from '../../api/orders'
 import { receivingApi, type CreateReceiptPayload, type ReceivingHistoryItem } from '../../api/receiving'
 import FullPageState from '../../components/shared/FullPageState'
+import { CONNECTION_ERROR_MESSAGE, getApiErrorBody, isNetworkOrServerError, runWithRetry } from '../../utils/http'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../utils/toasts'
 import { INTEGER_UOMS } from '../../utils/uom'
-
-const CONNECTION_ERROR_MESSAGE =
-  'Greška povezivanja. Provjeri je li server pokrenut i pokušaj ponovno.'
 
 const BATCH_CODE_PATTERN = /^\d{4,5}$|^\d{9,12}$/
 
 type PageTab = 'new' | 'history'
 type ReceiptMode = 'linked' | 'adhoc'
-
-interface ApiErrorDetails {
-  line_index?: number
-  order_line_id?: number
-  batch_code?: string
-  [key: string]: unknown
-}
-
-interface ApiErrorBody {
-  error?: string
-  message?: string
-  details?: ApiErrorDetails
-}
 
 interface LinkedHeaderState {
   deliveryNoteNumber: string
@@ -103,23 +88,6 @@ const EMPTY_ADHOC_FORM: AdhocFormState = {
   expiryDate: '',
   deliveryNoteNumber: '',
   note: '',
-}
-
-function isNetworkOrServerError(err: unknown): boolean {
-  if (axios.isAxiosError(err)) {
-    if (!err.response) return true
-    if (err.response.status >= 500) return true
-  }
-
-  return false
-}
-
-function getApiErrorBody(err: unknown): ApiErrorBody | null {
-  if (!axios.isAxiosError<ApiErrorBody>(err)) {
-    return null
-  }
-
-  return err.response?.data ?? null
 }
 
 function formatQuantity(quantity: number, uom: string): string {
@@ -226,17 +194,6 @@ export default function ReceivingPage() {
     setFatalError(true)
   }, [])
 
-  const runWithRetry = useCallback(async <T,>(request: () => Promise<T>): Promise<T> => {
-    try {
-      return await request()
-    } catch (error) {
-      if (!isNetworkOrServerError(error)) {
-        throw error
-      }
-
-      return request()
-    }
-  }, [])
 
   const loadOpenOrders = useCallback(async () => {
     setOpenOrdersLoading(true)
@@ -257,7 +214,7 @@ export default function ReceivingPage() {
     } finally {
       setOpenOrdersLoading(false)
     }
-  }, [handleFatalError, runWithRetry])
+  }, [handleFatalError])
 
   const clearLinkedReceiptForm = useCallback((lines: ReceivingOrderLine[]) => {
     setLinkedHeader(EMPTY_LINKED_HEADER)
@@ -319,7 +276,7 @@ export default function ReceivingPage() {
         setLinkedOrderLoading(false)
       }
     },
-    [clearLinkedOrderData, handleFatalError, runWithRetry, setLinkedOrderData]
+    [clearLinkedOrderData, handleFatalError, setLinkedOrderData]
   )
 
   const loadHistory = useCallback(async () => {
@@ -341,7 +298,7 @@ export default function ReceivingPage() {
     } finally {
       setHistoryLoading(false)
     }
-  }, [handleFatalError, runWithRetry])
+  }, [handleFatalError])
 
   useEffect(() => {
     if (activeTab === 'history' && !historyLoaded) {
@@ -392,7 +349,7 @@ export default function ReceivingPage() {
     } finally {
       setLinkedOrderLoading(false)
     }
-  }, [handleFatalError, linkedOrderSummary, runWithRetry, setLinkedOrderData])
+  }, [handleFatalError, linkedOrderSummary, setLinkedOrderData])
 
   const resolveArticle = useCallback(
     async (query: string) => {
@@ -455,7 +412,7 @@ export default function ReceivingPage() {
         showErrorToast(apiError?.message ?? 'Dohvat artikla nije uspio.')
       }
     },
-    [handleFatalError, runWithRetry]
+    [handleFatalError]
   )
 
   const handleArticleQueryChange = (value: string) => {

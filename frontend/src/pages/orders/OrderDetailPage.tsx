@@ -28,7 +28,7 @@ import {
 } from '../../api/orders'
 import FullPageState from '../../components/shared/FullPageState'
 import { useAuthStore } from '../../store/authStore'
-import { CONNECTION_ERROR_MESSAGE, getApiErrorBody, isNetworkOrServerError, runWithRetry } from '../../utils/http'
+import { CONNECTION_ERROR_MESSAGE, getApiErrorBody, getApiErrorBodyAsync, isNetworkOrServerError, runWithRetry } from '../../utils/http'
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
 import {
   createEmptyOrderLineDraft,
@@ -487,7 +487,7 @@ export default function OrderDetailPage() {
         return
       }
 
-      showErrorToast(getApiErrorBody(error)?.message ?? 'Preuzimanje PDF-a nije uspjelo.')
+      showErrorToast((await getApiErrorBodyAsync(error))?.message ?? 'Preuzimanje PDF-a nije uspjelo.')
     } finally {
       setDownloadingPdf(false)
     }
@@ -496,9 +496,9 @@ export default function OrderDetailPage() {
   if (fatalError) {
     return (
       <FullPageState
-        title="Connection error"
+        title="Greška povezivanja"
         message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Try again"
+        actionLabel="Pokušaj ponovno"
         onAction={() => window.location.reload()}
       />
     )

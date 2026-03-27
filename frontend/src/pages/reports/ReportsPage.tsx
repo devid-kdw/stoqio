@@ -59,7 +59,7 @@ import {
 } from '../../api/reports'
 import FullPageState from '../../components/shared/FullPageState'
 import { useAuthStore } from '../../store/authStore'
-import { getApiErrorBody, isNetworkOrServerError, runWithRetry } from '../../utils/http'
+import { getApiErrorBody, getApiErrorBodyAsync, isNetworkOrServerError, runWithRetry } from '../../utils/http'
 import { showErrorToast } from '../../utils/toasts'
 import {
   buildUomMap,
@@ -859,7 +859,7 @@ export default function ReportsPage() {
           return
         }
 
-        showErrorToast(getApiErrorBody(error)?.message ?? 'Izvoz pregleda zaliha nije uspio.')
+        showErrorToast((await getApiErrorBodyAsync(error))?.message ?? 'Izvoz pregleda zaliha nije uspio.')
       } finally {
         setStockExportFormat(null)
       }
@@ -878,7 +878,7 @@ export default function ReportsPage() {
         return
       }
 
-      showErrorToast(getApiErrorBody(error)?.message ?? 'Izvoz viškova nije uspio.')
+      showErrorToast((await getApiErrorBodyAsync(error))?.message ?? 'Izvoz viškova nije uspio.')
     } finally {
       setSurplusExportFormat(null)
     }
@@ -948,7 +948,7 @@ export default function ReportsPage() {
           return
         }
 
-        showErrorToast(getApiErrorBody(error)?.message ?? 'Izvoz transakcija nije uspio.')
+        showErrorToast((await getApiErrorBodyAsync(error))?.message ?? 'Izvoz transakcija nije uspio.')
       } finally {
         setTransactionsExportFormat(null)
       }

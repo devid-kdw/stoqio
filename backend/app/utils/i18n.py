@@ -179,6 +179,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "de": "Bestellung ist geschlossen.",
         "hu": "A rendelés le van zárva.",
     },
+    "ORDER_LINE_REMOVED": {
+        "hr": "Stavka narudžbe je uklonjena.",
+        "en": "Order line has been removed.",
+        "de": "Bestellposition wurde entfernt.",
+        "hu": "A rendelési sor el lett távolítva.",
+    },
+    "ORDER_LINE_CLOSED": {
+        "hr": "Stavka narudžbe je već zatvorena.",
+        "en": "Order line is already closed.",
+        "de": "Bestellposition ist bereits geschlossen.",
+        "hu": "A rendelési sor már le van zárva.",
+    },
     "BATCH_REQUIRED": {
         "hr": "Za ovaj artikl potrebna je serija.",
         "en": "A batch is required for this article.",
