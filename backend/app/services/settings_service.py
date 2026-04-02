@@ -587,6 +587,24 @@ def _prepare_quota_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_shell_settings() -> dict[str, Any]:
+    """Return the minimal installation-wide shell branding payload.
+
+    Accessible to all authenticated roles (ADMIN, MANAGER, WAREHOUSE_STAFF,
+    VIEWER, OPERATOR).  Exposes only the fields consumed by AppShell/Sidebar:
+    location_name, default_language, and role_display_names.
+    """
+    location = _settings_location_or_404()
+    role_names = _role_display_name_map()
+    return {
+        "location_name": location.name,
+        "default_language": _system_config_value("default_language"),
+        "role_display_names": [
+            _serialize_role_row(role, role_names[role]) for role in _ROLE_ORDER
+        ],
+    }
+
+
 def get_general_settings() -> dict[str, Any]:
     location = _settings_location_or_404()
     return {

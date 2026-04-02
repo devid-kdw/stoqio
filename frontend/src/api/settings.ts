@@ -163,7 +163,18 @@ export interface UpdateSettingsUserPayload {
   password?: string
 }
 
+export interface ShellSettings {
+  location_name: string
+  default_language: SettingsLanguage
+  role_display_names: SettingsRoleDisplayName[]
+}
+
 export const settingsApi = {
+  getShellSettings: async (): Promise<ShellSettings> => {
+    const response = await client.get<ShellSettings>('/settings/shell')
+    return response.data
+  },
+
   getGeneral: async (): Promise<SettingsGeneral> => {
     const response = await client.get<SettingsGeneral>('/settings/general')
     return response.data

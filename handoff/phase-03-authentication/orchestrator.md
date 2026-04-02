@@ -31,13 +31,13 @@ Acceptance Criteria
 
 Validation Notes
 - Backend auth implementation reviewed and accepted after follow-up fixes to logout/refresh semantics.
-- Seed/bootstrap reliability was fixed by loading `.env` in `backend/seed.py`, `backend/diagnostic.py`, and `backend/seed_location.py`.
+- Seed/bootstrap reliability was fixed by loading `.env` in `backend/seed.py` and `backend/diagnostic.py`; the temporary `backend/seed_location.py` helper used during closure has since been retired in Wave 2 Phase 6.
 - Frontend follow-up fixes added notification mounting, auth API/store alignment, and explicit redirect-to-login handling after refresh failure.
 - Verified:
   - `backend/venv/bin/pytest backend/tests -q` → `32 passed`
   - `cd frontend && npm run lint -- --max-warnings=0` → success
   - `cd frontend && npm run build` → success
-  - temporary SQLite verification DB can be migrated, seeded, location-seeded, and authenticated with `admin / admin123`
+  - temporary SQLite verification DB can be migrated, seeded, diagnosed, and authenticated with `admin / admin123`
 - Browser-level verification was not run inside the sandbox, so a manual smoke check remains recommended but no open functional blockers remain in code review or automated verification.
 
 Next Action
@@ -47,5 +47,5 @@ Next Action
 ## Live Environment Note
 
 - A post-closure browser login failure on `localhost:5173/login` was traced to the user's real `wms_dev` database being empty, not to a remaining auth implementation defect.
-- Running `backend/seed.py` and `backend/seed_location.py` against the actual Postgres database restored the expected Phase 3 initialized-installation state.
+- Running `backend/seed.py` and the then-current `backend/seed_location.py` helper against the actual Postgres database restored the expected Phase 3 initialized-installation state. That helper is now retired; fresh installs use `/setup` for the first location.
 - After that fix, login with `admin / admin123` succeeded both against the live backend endpoint and through the Vite proxy path used by the browser.

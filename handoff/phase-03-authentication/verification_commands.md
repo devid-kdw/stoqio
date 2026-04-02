@@ -1,6 +1,7 @@
 # Phase 03 Verification Commands
 
 Use these commands from the repo root if a local manual smoke check is needed after Phase 03.
+The older `seed_location.py` helper has been retired in Wave 2 Phase 6. The supported fresh-install path is migrations, `seed.py` for admin/reference data, then authenticated `/setup` for the first location.
 
 ## Backend - existing installation via SQLite
 
@@ -12,13 +13,12 @@ export JWT_SECRET_KEY=test-secret
 
 python -m alembic upgrade head
 python seed.py
-python seed_location.py
 python diagnostic.py
 ```
 
 Expected:
 - `seed.py` reports admin/reference data created or skipped
-- `seed_location.py` reports location created or skipped
+- initial location is created through the authenticated `/setup` flow, not a seed helper
 - `diagnostic.py` shows user `admin` exists and `Password 'admin123' match: True`
 
 ## Backend - run dev server

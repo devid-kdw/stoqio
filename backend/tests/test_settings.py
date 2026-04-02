@@ -443,12 +443,47 @@ def reset_settings_state(app, settings_data):
     _restore()
 
 
-def test_general_endpoint_forbidden_for_manager(client, settings_data):
+_MUTABLE_ENDPOINTS = [
+    ("GET", "/api/v1/settings/general"),
+    ("PUT", "/api/v1/settings/general"),
+    ("GET", "/api/v1/settings/roles"),
+    ("PUT", "/api/v1/settings/roles"),
+    ("GET", "/api/v1/settings/uom"),
+    ("POST", "/api/v1/settings/uom"),
+    ("GET", "/api/v1/settings/categories"),
+    ("PUT", "/api/v1/settings/categories/1"),
+    ("GET", "/api/v1/settings/quotas"),
+    ("POST", "/api/v1/settings/quotas"),
+    ("PUT", "/api/v1/settings/quotas/1"),
+    ("DELETE", "/api/v1/settings/quotas/1"),
+    ("GET", "/api/v1/settings/barcode"),
+    ("PUT", "/api/v1/settings/barcode"),
+    ("GET", "/api/v1/settings/export"),
+    ("PUT", "/api/v1/settings/export"),
+    ("GET", "/api/v1/settings/suppliers"),
+    ("POST", "/api/v1/settings/suppliers"),
+    ("PUT", "/api/v1/settings/suppliers/1"),
+    ("PATCH", "/api/v1/settings/suppliers/1/deactivate"),
+    ("GET", "/api/v1/settings/users"),
+    ("POST", "/api/v1/settings/users"),
+    ("PUT", "/api/v1/settings/users/1"),
+    ("PATCH", "/api/v1/settings/users/1/deactivate"),
+]
+
+
+@pytest.mark.parametrize("method, url", _MUTABLE_ENDPOINTS)
+def test_mutable_settings_endpoints_forbidden_for_non_admin(client, settings_data, method, url):
     token = _login(client, settings_data["manager_username"])
-    response = client.get("/api/v1/settings/general", headers=_auth(token))
+    response = client.open(url, method=method, headers=_auth(token))
 
     assert response.status_code == 403
     _assert_error_shape(response.get_json())
+
+    token_viewer = _login(client, settings_data["target_username"])
+    response_viewer = client.open(url, method=method, headers=_auth(token_viewer))
+
+    assert response_viewer.status_code == 403
+    _assert_error_shape(response_viewer.get_json())
 
 
 def test_get_general_settings_returns_current_values(client, settings_data):
@@ -878,6 +913,78 @@ def test_create_user_duplicate_username_update_password_and_deactivate(client, s
     inactive_login = _raw_login(client, "settings_new_user", "pass1")
     assert inactive_login.status_code == 401
     assert inactive_login.get_json()["error"] == "ACCOUNT_INACTIVE"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/settings/shell — Wave 2 Phase 7
+# ---------------------------------------------------------------------------
+
+_SHELL_ROLES = ["settings_admin", "settings_manager", "settings_target"]
+
+
+def test_shell_endpoint_accessible_to_admin(client, settings_data):
+    token = _login(client, settings_data["admin_username"])
+    response = client.get("/api/v1/settings/shell", headers=_auth(token))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["location_name"] == "Settings Main"
+    assert payload["default_language"] == "hr"
+    assert isinstance(payload["role_display_names"], list)
+    roles_in_payload = [r["role"] for r in payload["role_display_names"]]
+    assert set(roles_in_payload) == {"ADMIN", "MANAGER", "WAREHOUSE_STAFF", "VIEWER", "OPERATOR"}
+
+
+def test_shell_endpoint_accessible_to_manager(client, settings_data):
+    token = _login(client, settings_data["manager_username"])
+    response = client.get("/api/v1/settings/shell", headers=_auth(token))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "location_name" in payload
+    assert "default_language" in payload
+    assert "role_display_names" in payload
+
+
+def test_shell_endpoint_accessible_to_viewer(client, settings_data):
+    token = _login(client, settings_data["target_username"])
+    response = client.get("/api/v1/settings/shell", headers=_auth(token))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "location_name" in payload
+    assert "default_language" in payload
+    assert "role_display_names" in payload
+
+
+def test_shell_endpoint_anonymous_rejected(client, settings_data):
+    response = client.get("/api/v1/settings/shell")
+
+    assert response.status_code == 401
+
+
+def test_shell_endpoint_does_not_expose_admin_only_fields(client, settings_data):
+    token = _login(client, settings_data["manager_username"])
+    response = client.get("/api/v1/settings/shell", headers=_auth(token))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    # Ensure admin-only settings are not leaked
+    for forbidden_key in ("timezone", "barcode_format", "barcode_printer", "export_format"):
+        assert forbidden_key not in payload
+
+
+def test_shell_role_display_names_match_defaults(client, settings_data):
+    token = _login(client, settings_data["admin_username"])
+    response = client.get("/api/v1/settings/shell", headers=_auth(token))
+
+    assert response.status_code == 200
+    role_map = {r["role"]: r["display_name"] for r in response.get_json()["role_display_names"]}
+    assert role_map["ADMIN"] == "Admin"
+    assert role_map["MANAGER"] == "Menadžment"
+    assert role_map["WAREHOUSE_STAFF"] == "Administracija"
+    assert role_map["VIEWER"] == "Kontrola"
+    assert role_map["OPERATOR"] == "Operater"
 
 
 def test_admin_cannot_deactivate_self(client, settings_data):

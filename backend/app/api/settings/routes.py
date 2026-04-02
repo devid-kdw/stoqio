@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
+from flask_jwt_extended import verify_jwt_in_request
+
 from app.extensions import db
 from app.services import settings_service
 from app.services.settings_service import SettingsServiceError
@@ -16,6 +18,16 @@ from app.utils.validators import (
 )
 
 settings_bp = Blueprint("settings", __name__)
+
+
+@settings_bp.route("/settings/shell", methods=["GET"])
+def get_shell_settings():
+    """Read-only shell branding payload available to every authenticated role."""
+    verify_jwt_in_request()
+    try:
+        return jsonify(settings_service.get_shell_settings()), 200
+    except SettingsServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
 @settings_bp.route("/settings/general", methods=["GET"])

@@ -29,6 +29,9 @@ Files Changed
 - `backend/tests/conftest.py` [MODIFIED] — added `sqlalchemy.pool.StaticPool` to `_TestConfig.SQLALCHEMY_ENGINE_OPTIONS` so Flask test-client HTTP requests share the same in-memory SQLite database as fixture code; added session-scoped `auth_users` fixture that creates admin / manager / operator / inactive test users once per session.
 - `backend/tests/test_auth.py` [NEW] — 26 pytest tests across 6 classes: `TestLogin` (9 tests), `TestRefresh` (3), `TestLogout` (3), `TestMe` (4), `TestAdminOnly` (5), `TestRateLimit` (2).
 
+Supersession note
+- `backend/seed_location.py` was later retired in Wave 2 Phase 6. The commands below are preserved as historical Phase 3 closure evidence, not current bootstrap instructions for new installs.
+
 Commands Run
 ```bash
 # From backend/ directory

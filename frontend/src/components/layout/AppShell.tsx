@@ -15,8 +15,10 @@ export default function AppShell() {
   const loadShellSettings = useSettingsStore((state) => state.loadShellSettings)
   const preloadedRoleRef = useRef<string | null>(null)
 
+  // Load shell settings for every authenticated role, not only ADMIN.
+  // The underlying endpoint (GET /settings/shell) is accessible to all roles.
   useEffect(() => {
-    if (user?.role === 'ADMIN' && shellStatus === 'idle') {
+    if (user?.role && shellStatus === 'idle') {
       void loadShellSettings()
     }
   }, [loadShellSettings, shellStatus, user?.role])
@@ -36,7 +38,9 @@ export default function AppShell() {
     }
   }, [user?.role])
 
-  if (user?.role === 'ADMIN' && (shellStatus === 'idle' || shellStatus === 'loading')) {
+  // Show a brief loading screen while shell settings are in flight.
+  // For non-ADMIN roles we still show this briefly — it resolves quickly.
+  if (shellStatus === 'idle' || shellStatus === 'loading') {
     return (
       <FullPageState
         title="Učitavanje postavki sustava"
@@ -46,7 +50,10 @@ export default function AppShell() {
     )
   }
 
-  if (user?.role === 'ADMIN' && shellStatus === 'error') {
+  // On error: ADMIN gets a hard retry screen (they need settings for admin
+  // operations). Non-ADMIN roles fall through to render with safe defaults —
+  // they do not need write access to settings and must not be hard-blocked.
+  if (shellStatus === 'error' && user?.role === 'ADMIN') {
     return (
       <FullPageState
         title="Greška pri povezivanju"

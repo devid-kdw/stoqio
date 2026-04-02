@@ -1,4 +1,8 @@
 
+Supersession note (2026-04-02):
+- `backend/seed_location.py` was a temporary Phase 3 bootstrap helper, but it has since been retired in Wave 2 Phase 6.
+- The supported fresh-install path is now `alembic upgrade head`, `python seed.py` for admin/reference data, then authenticated `/setup` for the first location.
+
 ## 2026-03-10 19:50 Testing Agent
 
 Status
@@ -50,7 +54,7 @@ cd frontend && npm run lint -- --max-warnings=0
 cd frontend && npm run build
 cd backend && DATABASE_URL=sqlite:////tmp/phase3_closure.db FLASK_ENV=development JWT_SECRET_KEY=test-secret ./venv/bin/python -m alembic upgrade head
 cd backend && DATABASE_URL=sqlite:////tmp/phase3_closure.db FLASK_ENV=development JWT_SECRET_KEY=test-secret ./venv/bin/python seed.py
-cd backend && DATABASE_URL=sqlite:////tmp/phase3_closure.db FLASK_ENV=development JWT_SECRET_KEY=test-secret ./venv/bin/python seed_location.py
+# Initial location creation now happens through the authenticated /setup flow
 cd backend && DATABASE_URL=sqlite:////tmp/phase3_closure.db FLASK_ENV=development JWT_SECRET_KEY=test-secret ./venv/bin/python diagnostic.py
 cd backend && DATABASE_URL=sqlite:////tmp/phase3_closure.db FLASK_ENV=development JWT_SECRET_KEY=test-secret ./venv/bin/python - <<'PY'
 from app import create_app
@@ -70,7 +74,7 @@ Tests
 - Passed: backend auth + regression suite (`32 passed`)
 - Passed: frontend lint
 - Passed: frontend production build
-- Passed: temp SQLite install can be migrated, seeded, location-seeded, diagnosed, and authenticated with `admin / admin123`
+- Passed: temp SQLite install can be migrated, seeded, diagnosed, and authenticated with `admin / admin123`
 - Failed: None
 - Not run: browser-interactive UI test inside sandbox
 
@@ -93,7 +97,7 @@ Commands Run
 ```bash
 cd backend && ./venv/bin/python diagnostic.py
 cd backend && ./venv/bin/python seed.py
-cd backend && ./venv/bin/python seed_location.py
+# Historical helper removed in Wave 2 Phase 6; current installs use /setup for the first location
 cd backend && ./venv/bin/python diagnostic.py
 lsof -iTCP -sTCP:LISTEN -nP
 ps -fp 37967 37973 38140
@@ -104,7 +108,7 @@ curl -s -X POST http://localhost:5173/api/v1/auth/login -H 'Content-Type: applic
 Observed Results
 - `backend/diagnostic.py` initially showed `DATABASE_URI: postgresql://grzzi@localhost/wms_dev`, `User 'admin' not found in database.`, `Total users in DB: 0`.
 - `backend/seed.py` on the real `wms_dev` DB created the admin user and required reference data.
-- `backend/seed_location.py` added a `Location` record for the Phase 3 initialized-installation redirect path.
+- `backend/seed_location.py` added a `Location` record for the Phase 3 initialized-installation redirect path. This is historical only; the helper has since been retired and new installs use `/setup`.
 - Follow-up `backend/diagnostic.py` confirmed `admin` exists, is active, has role `ADMIN`, and `Password 'admin123' match: True`.
 - Live backend login on `http://127.0.0.1:5000/api/v1/auth/login` returned `200` with access and refresh tokens.
 - Live browser-facing login path through Vite proxy on `http://localhost:5173/api/v1/auth/login` also returned `200` with access and refresh tokens.

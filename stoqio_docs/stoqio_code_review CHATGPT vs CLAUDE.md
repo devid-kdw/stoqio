@@ -110,12 +110,12 @@ Part 2 should inspect:
 
 ### Findings
 
-#### F-024 — `backend/seed_location.py` is now an obsolete bootstrap helper that conflicts with the Phase 4 single-location setup model
+#### F-024 — `backend/seed_location.py` was an obsolete bootstrap helper that conflicted with the Phase 4 single-location setup model
 - **Classification:** Incomplete migration / stale operational artifact
 - **Severity:** Medium
-- **Why it matters:** The project moved to a strict first-run setup flow where **no location is pre-seeded** and the initial location must be created through `/setup`, with `Location.id = 1` reserved for the single supported v1 location. But the repo still contains `seed_location.py`, and older handoff/testing docs still instruct people to run it. That script seeds by **name** (`"Main Warehouse"`) instead of by the reserved ID/invariant, so it can quietly create or preserve a location state that no longer matches the current setup contract.
+- **Why it matters:** The project moved to a strict first-run setup flow where **no location is pre-seeded** and the initial location must be created through `/setup`, with `Location.id = 1` reserved for the single supported v1 location. At the time of this review, the repo still contained `seed_location.py`, and older handoff/testing docs still instructed people to run it. That script seeded by **name** (`"Main Warehouse"`) instead of by the reserved ID/invariant, so it could quietly create or preserve a location state that no longer matched the current setup contract.
 - **Evidence:**
-  - `backend/seed_location.py:14-24` still inserts `Location(name='Main Warehouse', is_active=True)` and only checks whether that name already exists.
+  - `backend/seed_location.py:14-24` previously inserted `Location(name='Main Warehouse', is_active=True)` and only checked whether that name already existed. The helper has since been retired in Wave 2 Phase 6.
   - `stoqio_docs/08_SETUP_AND_GLOBALS.md:85-96` now says **no location is seeded** and the first ADMIN must create it via first-run setup.
   - `handoff/decisions/decision-log.md:85-86` locks in the newer rule that backend setup reserves `Location.id = 1` for the installation's single supported v1 location.
   - Older verification docs still tell operators/agents to run the obsolete helper:

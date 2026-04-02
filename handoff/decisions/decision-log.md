@@ -624,3 +624,14 @@
 - Decision: `DraftGroup.status` is authoritative for resolved approval-group state and now formally supports persisted `PARTIAL`. A group must be stored as `PARTIAL` only when it has no remaining `Draft.status = DRAFT` rows and contains a mix of approved and rejected lines. Pending/history segmentation remains based on whether unresolved draft lines still exist, not on a naive `DraftGroup.status` filter alone. The upgrade path must also correct existing persisted `PENDING` groups that are already effectively mixed-and-resolved.
 - Impact: Backend agents must extend the enum/model + migration path, persist `PARTIAL` in the shared status-update helper, and backfill inconsistent historical rows. Frontend agents must treat `PARTIAL` as a first-class approval-group status in badge/type/display logic without re-showing resolved groups in Pending. Testing must assert both API output and persisted database state for mixed approval groups.
 - Docs update required: yes
+
+---
+
+## DEC-BE-017
+
+- Date: 2026-04-02
+- Phase: phase-06-wave-02-location-seed-retirement
+- Source: Backend cleanup completed against the Wave 2 Phase 6 retirement prompt and the Phase 4 setup baseline
+- Decision: The supported first-run location bootstrap path is now exclusively authenticated `POST /api/v1/setup` after migrations and `backend/seed.py` reference-data seeding. `backend/seed_location.py` is retired and must be treated as historical only in old Phase 3 handoff records.
+- Impact: Future agents should not reintroduce a second location-seeding path or treat `seed_location.py` as a supported install step. Historical handoff artifacts may mention it, but only with explicit supersession language.
+- Docs update required: yes
