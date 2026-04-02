@@ -435,6 +435,25 @@ MESSAGES: dict[str, dict[str, str]] = {
         "de": "Konto ist inaktiv.",
         "hu": "A fiók inaktív.",
     },
+    # ── Printer errors (Phase 8 Wave 2) ──────────────────────────────────────
+    "PRINTER_NOT_CONFIGURED": {
+        "hr": "Pisač nije konfiguriran. Postavite IP adresu pisača u postavkama.",
+        "en": "Printer is not configured. Set the printer IP address in settings.",
+        "de": "Drucker ist nicht konfiguriert. Stellen Sie die Drucker-IP-Adresse in den Einstellungen ein.",
+        "hu": "A nyomtató nincs konfigurálva. Állítsa be a nyomtató IP-címét a beállításokban.",
+    },
+    "PRINTER_UNREACHABLE": {
+        "hr": "Pisač nije dostupan na adresi {printer_ip}.",
+        "en": "Printer is not reachable at {printer_ip}.",
+        "de": "Drucker ist nicht erreichbar unter {printer_ip}.",
+        "hu": "A nyomtató nem érhető el a következő címen: {printer_ip}.",
+    },
+    "PRINTER_MODEL_UNKNOWN": {
+        "hr": "Nepoznat model pisača: {model}.",
+        "en": "Unknown printer model: {model}.",
+        "de": "Unbekanntes Druckermodell: {model}.",
+        "hu": "Ismeretlen nyomtatómodell: {model}.",
+    },
 }
 
 

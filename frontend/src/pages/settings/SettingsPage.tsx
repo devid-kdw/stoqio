@@ -57,6 +57,7 @@ import {
   type SystemRole,
   type UpdateSettingsSupplierPayload,
   type UpdateSettingsUserPayload,
+  type SettingsPrinterModel,
 } from '../../api/settings'
 import FullPageState from '../../components/shared/FullPageState'
 import { useAuthStore } from '../../store/authStore'
@@ -117,6 +118,10 @@ const ENFORCEMENT_OPTIONS: Array<{
 const BARCODE_OPTIONS = [
   { value: 'Code128', label: 'Code128' },
   { value: 'EAN-13', label: 'EAN-13' },
+]
+
+const LABEL_PRINTER_MODEL_OPTIONS: Array<{ value: SettingsPrinterModel; label: string }> = [
+  { value: 'zebra_zpl', label: 'Zebra (ZPL)' },
 ]
 
 const EXPORT_OPTIONS = [
@@ -489,8 +494,12 @@ export default function SettingsPage() {
   const [barcodeForm, setBarcodeForm] = useState<SettingsBarcode>({
     barcode_format: 'Code128',
     barcode_printer: '',
+    label_printer_ip: '',
+    label_printer_port: 9100,
+    label_printer_model: 'zebra_zpl',
   })
   const [barcodeSaving, setBarcodeSaving] = useState(false)
+  const [barcodeIpError, setBarcodeIpError] = useState<string | null>(null)
 
   const [exportForm, setExportForm] = useState<SettingsExport>({
     export_format: 'generic',
@@ -1096,8 +1105,25 @@ export default function SettingsPage() {
     }
   }
 
+  const validateBarcodeIp = (ip: string): string | null => {
+    const trimmed = ip.trim()
+    if (trimmed === '') return null // allow clearing
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/
+    if (!ipv4Regex.test(trimmed)) {
+      return 'Unesite ispravnu IPv4 adresu ili ostavite prazno.'
+    }
+    return null
+  }
+
   const handleBarcodeSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    const ipValidationError = validateBarcodeIp(barcodeForm.label_printer_ip)
+    if (ipValidationError) {
+      setBarcodeIpError(ipValidationError)
+      return
+    }
+    setBarcodeIpError(null)
     setBarcodeSaving(true)
 
     try {
@@ -1797,7 +1823,7 @@ export default function SettingsPage() {
 
       <SettingsSection
         title="6. Barcode"
-        description="Format barkoda i naziv printera za barkod ispis."
+        description="Format barkoda, naziv printera (PDF ispis) i konfiguracija direktnog label printera."
       >
         <form onSubmit={handleBarcodeSave}>
           <Stack gap="md">
@@ -1815,7 +1841,8 @@ export default function SettingsPage() {
                 allowDeselect={false}
               />
               <TextInput
-                label="Naziv printera"
+                label="Naziv printera (PDF)"
+                description="Naziv printera u OS-u Pi-ja za PDF ispis barkoda."
                 value={barcodeForm.barcode_printer}
                 onChange={(event) =>
                   setBarcodeForm((current) => ({
@@ -1823,6 +1850,52 @@ export default function SettingsPage() {
                     barcode_printer: event.currentTarget.value,
                   }))
                 }
+              />
+            </SimpleGrid>
+
+            <Divider label="Direktni label printer (ZPL)" labelPosition="left" />
+
+            <SimpleGrid cols={{ base: 1, md: 3 }}>
+              <TextInput
+                label="IP adresa printera"
+                description="IPv4 adresa label printera. Ostavite prazno ako printer nije konfiguriran."
+                placeholder="npr. 192.168.1.100"
+                value={barcodeForm.label_printer_ip}
+                error={barcodeIpError}
+                onChange={(event) => {
+                  setBarcodeIpError(null)
+                  setBarcodeForm((current) => ({
+                    ...current,
+                    label_printer_ip: event.currentTarget.value,
+                  }))
+                }}
+              />
+              <TextInput
+                label="Port printera"
+                description="Zadano: 9100"
+                placeholder="9100"
+                value={String(barcodeForm.label_printer_port)}
+                onChange={(event) => {
+                  const raw = event.currentTarget.value
+                  const parsed = parseInt(raw, 10)
+                  setBarcodeForm((current) => ({
+                    ...current,
+                    label_printer_port: Number.isNaN(parsed) ? current.label_printer_port : parsed,
+                  }))
+                }}
+              />
+              <Select
+                label="Model printera"
+                description="Protokol za slanje naljepnica."
+                data={LABEL_PRINTER_MODEL_OPTIONS}
+                value={barcodeForm.label_printer_model}
+                onChange={(value) =>
+                  setBarcodeForm((current) => ({
+                    ...current,
+                    label_printer_model: (value as SettingsPrinterModel) ?? current.label_printer_model,
+                  }))
+                }
+                allowDeselect={false}
               />
             </SimpleGrid>
 

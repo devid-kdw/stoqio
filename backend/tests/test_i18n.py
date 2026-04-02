@@ -407,3 +407,31 @@ class TestLocalizedOrderLineErrors:
         data = response.get_json()
         assert data["error"] == error_code
         assert data["message"] == expected_message
+
+
+class TestLocalizedPrinterErrors:
+    @pytest.mark.parametrize(
+        ("error_code", "details", "language", "expected_message"),
+        [
+            ("PRINTER_NOT_CONFIGURED", {}, "hr", "Pisač nije konfiguriran. Postavite IP adresu pisača u postavkama."),
+            ("PRINTER_NOT_CONFIGURED", {}, "en", "Printer is not configured. Set the printer IP address in settings."),
+            ("PRINTER_UNREACHABLE", {"printer_ip": "10.0.0.1"}, "hr", "Pisač nije dostupan na adresi 10.0.0.1."),
+            ("PRINTER_UNREACHABLE", {"printer_ip": "10.0.0.1"}, "en", "Printer is not reachable at 10.0.0.1."),
+            ("PRINTER_MODEL_UNKNOWN", {"model": "hp"}, "hr", "Nepoznat model pisača: hp."),
+            ("PRINTER_MODEL_UNKNOWN", {"model": "hp"}, "en", "Unknown printer model: hp."),
+        ],
+    )
+    def test_printer_errors_are_localized(
+        self,
+        app,
+        error_code: str,
+        details: dict,
+        language: str,
+        expected_message: str,
+    ):
+        with app.test_request_context(headers={"Accept-Language": language}):
+            response, status = api_error(error_code, "fallback", 400, details)
+        assert status == 400
+        data = response.get_json()
+        assert data["error"] == error_code
+        assert data["message"] == expected_message

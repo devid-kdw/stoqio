@@ -1,8 +1,9 @@
-"""Barcode PDF generation for Phase 15."""
+"""Barcode PDF generation and direct label-printer support for Phase 15 / Wave 2 Phase 8."""
 
 from __future__ import annotations
 
 import re
+import socket
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
@@ -183,6 +184,27 @@ def _resolve_barcode_value(
     return normalized, changed
 
 
+def _resolve_direct_print_barcode_value(
+    *,
+    entity: Article | Batch,
+    existing_value: str | None,
+    generated_value: str,
+) -> tuple[str, bool]:
+    """Return a direct-print barcode value without PDF-format coupling.
+
+    The direct printer path always emits Code128 in ZPL, so it must not inherit
+    the stricter PDF/EAN-13 validation rules from the PDF download flow. The
+    stored barcode value is reused as-is when present; otherwise the generated
+    fallback is persisted and returned.
+    """
+    normalized = _normalize_optional_text(existing_value)
+    if normalized is not None:
+        return normalized, False
+
+    entity.barcode = generated_value
+    return generated_value, True
+
+
 def _build_barcode_drawing(barcode_format: str, barcode_value: str):
     drawing_name = "EAN13" if barcode_format == "EAN-13" else "Code128"
     try:
@@ -308,3 +330,181 @@ def generate_batch_barcode_pdf(batch_id: int) -> tuple[bytes, str, str]:
         f"{_safe_filename_part(batch.batch_code)}_barcode.pdf"
     )
     return content, filename, _PDF_MIMETYPE
+
+
+# ---------------------------------------------------------------------------
+# Direct label-printer support (Wave 2 Phase 8)
+# ---------------------------------------------------------------------------
+
+_ZPL_DESCRIPTION_MAX = 30
+_PRINTER_SOCKET_TIMEOUT = 5
+
+
+def _generate_zpl(
+    *,
+    article_no: str,
+    description: str,
+    barcode_value: str,
+    batch_code: str | None,
+) -> bytes:
+    """Build a ZPL II label for a Zebra printer.
+
+    Layout:
+    - Code128 barcode at top
+    - Description (truncated to 30 chars)
+    - Article number
+    - Batch line only when batch_code is present
+    """
+    desc_line = description[:_ZPL_DESCRIPTION_MAX]
+    lines = [
+        "^XA",
+        f"^FO50,30^BY2^BCN,100,Y,N,N^FD{barcode_value}^FS",
+        f"^FO50,150^A0N,25,25^FD{desc_line}^FS",
+        f"^FO50,185^A0N,20,20^FD{article_no}^FS",
+    ]
+    if batch_code:
+        lines.append(f"^FO50,215^A0N,20,20^FDBatch: {batch_code}^FS")
+    lines.append("^XZ")
+    return "\n".join(lines).encode("utf-8")
+
+
+# Dispatch map: model key → generator callable.
+# Add new models here; no changes to the API layer required.
+_LABEL_GENERATORS: dict[str, Any] = {
+    "zebra_zpl": _generate_zpl,
+}
+
+
+def generate_label(
+    model: str,
+    *,
+    article_no: str,
+    description: str,
+    barcode_value: str,
+    batch_code: str | None,
+) -> bytes:
+    """Return raw label bytes for the given printer model.
+
+    Raises ``BarcodeServiceError`` with ``PRINTER_MODEL_UNKNOWN`` (400)
+    when the model is not in the supported dispatch map.
+    """
+    generator = _LABEL_GENERATORS.get(model)
+    if generator is None:
+        raise BarcodeServiceError(
+            "PRINTER_MODEL_UNKNOWN",
+            f"Unknown printer model: {model}.",
+            400,
+            {"model": model},
+        )
+    return generator(
+        article_no=article_no,
+        description=description,
+        barcode_value=barcode_value,
+        batch_code=batch_code,
+    )
+
+
+def _send_to_printer(ip: str, port: int, data: bytes) -> None:
+    """Open a TCP socket to ``ip:port`` and send *data*.
+
+    Raises ``BarcodeServiceError`` with ``PRINTER_UNREACHABLE`` (502)
+    on any socket or OS-level failure.
+    """
+    try:
+        with socket.create_connection((ip, port), timeout=_PRINTER_SOCKET_TIMEOUT) as sock:
+            sock.sendall(data)
+    except OSError as exc:
+        raise BarcodeServiceError(
+            "PRINTER_UNREACHABLE",
+            f"Printer is not reachable at {ip}.",
+            502,
+            {"printer_ip": ip},
+        ) from exc
+
+
+def _get_validated_printer_config() -> tuple[str, int, str]:
+    """Load and validate printer settings.
+
+    Returns ``(ip, port, model)`` on success.
+
+    Raises ``BarcodeServiceError`` for:
+    - ``PRINTER_NOT_CONFIGURED`` (400) — IP is blank
+    - ``PRINTER_MODEL_UNKNOWN`` (400) — stored model not in supported set
+    """
+    cfg = settings_service.get_barcode_settings()
+    ip: str = (cfg.get("label_printer_ip") or "").strip()
+    port: int = cfg.get("label_printer_port") or 9100
+    model: str = (cfg.get("label_printer_model") or "").strip()
+
+    if not ip:
+        raise BarcodeServiceError(
+            "PRINTER_NOT_CONFIGURED",
+            "Printer is not configured. Set the printer IP address in settings.",
+            400,
+        )
+
+    if model not in _LABEL_GENERATORS:
+        raise BarcodeServiceError(
+            "PRINTER_MODEL_UNKNOWN",
+            f"Unknown printer model: {model}.",
+            400,
+            {"model": model},
+        )
+
+    return ip, int(port), model
+
+
+def print_article_label(article_id: int) -> dict[str, Any]:
+    """Resolve article barcode and send a ZPL label to the configured printer.
+
+    Returns ``{"status": "sent", "printer_ip": ..., "model": ...}`` on success.
+    """
+    ip, port, model = _get_validated_printer_config()
+    article = _get_article_or_404(article_id)
+    barcode_value, changed = _resolve_direct_print_barcode_value(
+        entity=article,
+        existing_value=article.barcode,
+        generated_value=_build_generated_barcode(_ARTICLE_PREFIX, article.id),
+    )
+    if changed:
+        db.session.commit()
+
+    label = generate_label(
+        model,
+        article_no=article.article_no,
+        description=article.description,
+        barcode_value=barcode_value,
+        batch_code=None,
+    )
+    _send_to_printer(ip, port, label)
+    return {"status": "sent", "printer_ip": ip, "model": model}
+
+
+def print_batch_label(batch_id: int) -> dict[str, Any]:
+    """Resolve batch barcode and send a ZPL label to the configured printer.
+
+    Returns ``{"status": "sent", "printer_ip": ..., "model": ...}`` on success.
+    """
+    ip, port, model = _get_validated_printer_config()
+    batch = _get_batch_or_404(batch_id)
+    barcode_value, changed = _resolve_direct_print_barcode_value(
+        entity=batch,
+        existing_value=batch.barcode,
+        generated_value=_build_generated_barcode(_BATCH_PREFIX, batch.id),
+    )
+    if changed:
+        db.session.commit()
+
+    article = batch.article
+    article_no = article.article_no if article is not None else f"article-{batch.article_id}"
+    description = article.description if article is not None else "Unknown article"
+
+    label = generate_label(
+        model,
+        article_no=article_no,
+        description=description,
+        barcode_value=barcode_value,
+        batch_code=batch.batch_code,
+    )
+    _send_to_printer(ip, port, label)
+    return {"status": "sent", "printer_ip": ip, "model": model}

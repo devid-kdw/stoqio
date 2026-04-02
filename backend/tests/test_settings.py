@@ -719,10 +719,13 @@ def test_barcode_settings_get_put_and_validate_format(client, app):
 
     get_response = client.get("/api/v1/settings/barcode", headers=_auth(token))
     assert get_response.status_code == 200
-    assert get_response.get_json() == {
-        "barcode_format": "Code128",
-        "barcode_printer": "",
-    }
+    payload = get_response.get_json()
+    assert payload["barcode_format"] == "Code128"
+    assert payload["barcode_printer"] == ""
+    # new Phase-8 fields are always present; values depend on module test order
+    assert "label_printer_ip" in payload
+    assert isinstance(payload["label_printer_port"], int)
+    assert "label_printer_model" in payload
 
     put_response = client.put(
         "/api/v1/settings/barcode",
@@ -745,6 +748,65 @@ def test_barcode_settings_get_put_and_validate_format(client, app):
         printer = SystemConfig.query.filter_by(key="barcode_printer").first()
         assert fmt.value == "EAN-13"
         assert printer.value == "Zebra GX430"
+
+
+def test_barcode_settings_label_printer_fields(client, app):
+    token = _login(client, "settings_admin")
+
+    put_response = client.put(
+        "/api/v1/settings/barcode",
+        json={
+            "barcode_format": "Code128",
+            "barcode_printer": "",
+            "label_printer_ip": "192.168.1.50",
+            "label_printer_port": 9100,
+            "label_printer_model": "zebra_zpl",
+        },
+        headers=_auth(token),
+    )
+    assert put_response.status_code == 200
+    result = put_response.get_json()
+    assert result["label_printer_ip"] == "192.168.1.50"
+    assert result["label_printer_port"] == 9100
+    assert result["label_printer_model"] == "zebra_zpl"
+
+    with app.app_context():
+        ip_row = SystemConfig.query.filter_by(key="label_printer_ip").first()
+        port_row = SystemConfig.query.filter_by(key="label_printer_port").first()
+        model_row = SystemConfig.query.filter_by(key="label_printer_model").first()
+        assert ip_row.value == "192.168.1.50"
+        assert port_row.value == "9100"
+        assert model_row.value == "zebra_zpl"
+
+
+def test_barcode_settings_rejects_unknown_printer_model(client):
+    token = _login(client, "settings_admin")
+
+    response = client.put(
+        "/api/v1/settings/barcode",
+        json={
+            "barcode_format": "Code128",
+            "label_printer_model": "hp_pcl",
+        },
+        headers=_auth(token),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+
+def test_barcode_settings_rejects_invalid_port(client):
+    token = _login(client, "settings_admin")
+
+    response = client.put(
+        "/api/v1/settings/barcode",
+        json={
+            "barcode_format": "Code128",
+            "label_printer_port": 0,
+        },
+        headers=_auth(token),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"
 
 
 def test_export_settings_use_machine_values(client, app):

@@ -43,6 +43,7 @@ import {
   type StatPeriod,
   type WarehouseArticleDetail,
 } from '../../api/articles'
+import { settingsApi, type SettingsBarcode } from '../../api/settings'
 import FullPageState from '../../components/shared/FullPageState'
 import { useAuthStore } from '../../store/authStore'
 import {
@@ -116,6 +117,11 @@ export default function ArticleDetailPage() {
   const [deactivateSubmitting, setDeactivateSubmitting] = useState(false)
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false)
   const [batchBarcodeSubmittingId, setBatchBarcodeSubmittingId] = useState<number | null>(null)
+  // Direct-print loading states (ADMIN only)
+  const [directPrintSubmitting, setDirectPrintSubmitting] = useState(false)
+  const [batchDirectPrintSubmittingId, setBatchDirectPrintSubmittingId] = useState<number | null>(null)
+  // Local barcode settings — ADMIN-only, loaded once on mount
+  const [barcodeSettings, setBarcodeSettings] = useState<SettingsBarcode | null>(null)
 
   const [aliasInput, setAliasInput] = useState('')
   const [aliasSubmitting, setAliasSubmitting] = useState(false)
@@ -174,6 +180,14 @@ export default function ArticleDetailPage() {
         setTransactionsTotal(transactionsResponse.total)
         setTransactionPage(page)
         initialLoadDoneRef.current = true
+
+        // Load barcode settings for ADMIN (fire-and-forget; does not block article render)
+        if (isAdmin) {
+          settingsApi.getBarcode().then(
+            (settings) => { setBarcodeSettings(settings) },
+            () => { /* silently ignore — printer config non-critical */ }
+          )
+        }
       } catch (error) {
         if (isNetworkOrServerError(error)) {
           setFatalError(true)
@@ -193,7 +207,7 @@ export default function ArticleDetailPage() {
         setPageLoading(false)
       }
     },
-    [applyArticleState, articleId]
+    [applyArticleState, articleId, isAdmin]
   )
 
   const loadTransactions = useCallback(
@@ -428,6 +442,36 @@ export default function ArticleDetailPage() {
     }
   }, [article])
 
+  const handleDirectPrint = useCallback(async () => {
+    if (!article) {
+      return
+    }
+
+    setDirectPrintSubmitting(true)
+
+    try {
+      // Printing is a side effect on real hardware, so this must stay single-shot.
+      await articlesApi.printArticleLabel(article.id)
+      showSuccessToast('Naljepnica poslana na printer.')
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        setFatalError(true)
+        return
+      }
+
+      const apiError = await getApiErrorBodyAsync(error)
+      const knownErrors: Record<string, string> = {
+        PRINTER_NOT_CONFIGURED: apiError?.message ?? 'Printer nije konfiguriran.',
+        PRINTER_UNREACHABLE: apiError?.message ?? 'Printer nije dostupan.',
+        PRINTER_MODEL_UNKNOWN: apiError?.message ?? 'Nepoznat model printera.',
+      }
+      const errorCode = apiError?.error ?? ''
+      showErrorToast(knownErrors[errorCode] ?? apiError?.message ?? 'Ispis naljepnice nije uspio.')
+    } finally {
+      setDirectPrintSubmitting(false)
+    }
+  }, [article])
+
   const handleBatchBarcodePrint = useCallback(
     async (batchId: number, batchCode: string) => {
       if (!article) {
@@ -455,6 +499,39 @@ export default function ArticleDetailPage() {
         )
       } finally {
         setBatchBarcodeSubmittingId(null)
+      }
+    },
+    [article]
+  )
+
+  const handleBatchDirectPrint = useCallback(
+    async (batchId: number) => {
+      if (!article) {
+        return
+      }
+
+      setBatchDirectPrintSubmittingId(batchId)
+
+      try {
+        // Printing is a side effect on real hardware, so this must stay single-shot.
+        await articlesApi.printBatchLabel(batchId)
+        showSuccessToast('Naljepnica poslana na printer.')
+      } catch (error) {
+        if (isNetworkOrServerError(error)) {
+          setFatalError(true)
+          return
+        }
+
+        const apiError = await getApiErrorBodyAsync(error)
+        const knownErrors: Record<string, string> = {
+          PRINTER_NOT_CONFIGURED: apiError?.message ?? 'Printer nije konfiguriran.',
+          PRINTER_UNREACHABLE: apiError?.message ?? 'Printer nije dostupan.',
+          PRINTER_MODEL_UNKNOWN: apiError?.message ?? 'Nepoznat model printera.',
+        }
+        const errorCode = apiError?.error ?? ''
+        showErrorToast(knownErrors[errorCode] ?? apiError?.message ?? 'Ispis naljepnice šarže nije uspio.')
+      } finally {
+        setBatchDirectPrintSubmittingId(null)
       }
     },
     [article]
@@ -644,26 +721,43 @@ export default function ArticleDetailPage() {
         </div>
 
         {isAdmin ? (
-          <Group>
-            <Button variant="default" onClick={() => void handleBarcodePrint()} loading={barcodeSubmitting}>
-              Ispis barkoda
-            </Button>
-            {!editMode ? (
-              <>
-                <Button variant="default" onClick={handleStartEdit}>
-                  Uredi
-                </Button>
-                <Button
-                  color="red"
-                  variant="light"
-                  onClick={() => void handleDeactivate()}
-                  loading={deactivateSubmitting}
-                >
-                  Deaktiviraj
-                </Button>
-              </>
+          <Stack gap={4} align="flex-end">
+            <Group>
+              <Button variant="default" onClick={() => void handleBarcodePrint()} loading={barcodeSubmitting}>
+                Ispis barkoda (PDF)
+              </Button>
+              <Button
+                variant="filled"
+                color="teal"
+                onClick={() => void handleDirectPrint()}
+                loading={directPrintSubmitting}
+                disabled={!barcodeSettings?.label_printer_ip}
+                title={!barcodeSettings?.label_printer_ip ? 'Printer nije konfiguriran' : undefined}
+              >
+                Pošalji na printer
+              </Button>
+              {!editMode ? (
+                <>
+                  <Button variant="default" onClick={handleStartEdit}>
+                    Uredi
+                  </Button>
+                  <Button
+                    color="red"
+                    variant="light"
+                    onClick={() => void handleDeactivate()}
+                    loading={deactivateSubmitting}
+                  >
+                    Deaktiviraj
+                  </Button>
+                </>
+              ) : null}
+            </Group>
+            {!barcodeSettings?.label_printer_ip ? (
+              <Text size="xs" c="dimmed">
+                Printer nije konfiguriran — postavite IP adresu u postavkama barkoda.
+              </Text>
             ) : null}
-          </Group>
+          </Stack>
         ) : null}
       </Group>
 
@@ -805,14 +899,27 @@ export default function ArticleDetailPage() {
                         </Table.Td>
                         {isAdmin ? (
                           <Table.Td>
-                            <Button
-                              size="xs"
-                              variant="default"
-                              onClick={() => void handleBatchBarcodePrint(batch.id, batch.batch_code)}
-                              loading={batchBarcodeSubmittingId === batch.id}
-                            >
-                              Ispis barkoda
-                            </Button>
+                            <Group gap="xs">
+                              <Button
+                                size="xs"
+                                variant="default"
+                                onClick={() => void handleBatchBarcodePrint(batch.id, batch.batch_code)}
+                                loading={batchBarcodeSubmittingId === batch.id}
+                              >
+                                PDF
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="filled"
+                                color="teal"
+                                onClick={() => void handleBatchDirectPrint(batch.id)}
+                                loading={batchDirectPrintSubmittingId === batch.id}
+                                disabled={!barcodeSettings?.label_printer_ip}
+                                title={!barcodeSettings?.label_printer_ip ? 'Printer nije konfiguriran' : undefined}
+                              >
+                                Printer
+                              </Button>
+                            </Group>
                           </Table.Td>
                         ) : null}
                       </Table.Tr>

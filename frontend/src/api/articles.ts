@@ -231,6 +231,15 @@ export interface ArticleStatsResponse {
   stock_history: ArticleStatStockPoint[]
 }
 
+// ---------------------------------------------------------------------------
+// Label print response (Phase 8 Wave 2 — direct printer support)
+// ---------------------------------------------------------------------------
+
+export interface LabelPrintResponse {
+  /** Server-side confirmation message */
+  message: string
+}
+
 export const articlesApi = {
   /**
    * Lookup an article by article_no or barcode.
@@ -376,6 +385,26 @@ export const articlesApi = {
     const response = await client.get<ArticleStatsResponse>(`/articles/${articleId}/stats`, {
       params: { period },
     })
+    return response.data
+  },
+
+  /**
+   * Send a direct-print request for an article label to the configured label printer.
+   * POST /api/v1/articles/{id}/barcode/print
+   * ADMIN only.
+   */
+  printArticleLabel: async (articleId: number): Promise<LabelPrintResponse> => {
+    const response = await client.post<LabelPrintResponse>(`/articles/${articleId}/barcode/print`)
+    return response.data
+  },
+
+  /**
+   * Send a direct-print request for a batch label to the configured label printer.
+   * POST /api/v1/batches/{id}/barcode/print
+   * ADMIN only.
+   */
+  printBatchLabel: async (batchId: number): Promise<LabelPrintResponse> => {
+    const response = await client.post<LabelPrintResponse>(`/batches/${batchId}/barcode/print`)
     return response.data
   },
 }

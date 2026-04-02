@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import re
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -1276,6 +1277,206 @@ class TestWarehouseArticles:
 
         with app.app_context():
             _set_system_config("barcode_format", "Code128")
+
+    def test_print_barcode_endpoints_are_admin_only(self, client, app, warehouse_data):
+        manager_token = _login(client, "warehouse_manager")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+
+        article_resp = client.post(
+            f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode/print",
+            headers=_auth_header(manager_token),
+        )
+        assert article_resp.status_code == 403
+
+        batch_resp = client.post(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/print",
+            headers=_auth_header(manager_token),
+        )
+        assert batch_resp.status_code == 403
+
+    def test_print_article_barcode_returns_400_when_printer_not_configured(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "")
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+        response = client.post(
+            f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode/print",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "PRINTER_NOT_CONFIGURED"
+
+    def test_print_batch_barcode_returns_400_when_printer_not_configured(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "")
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+        response = client.post(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/print",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "PRINTER_NOT_CONFIGURED"
+
+    def test_print_article_barcode_returns_400_for_unknown_model(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "192.168.1.50")
+            _set_system_config("label_printer_model", "hp_pcl")
+
+        response = client.post(
+            f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode/print",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "PRINTER_MODEL_UNKNOWN"
+
+        with app.app_context():
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+    def test_print_batch_barcode_returns_400_for_unknown_model(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "192.168.1.50")
+            _set_system_config("label_printer_model", "hp_pcl")
+
+        response = client.post(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/print",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "PRINTER_MODEL_UNKNOWN"
+
+        with app.app_context():
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+    def test_print_article_barcode_returns_502_when_printer_unreachable(
+        self, client, app, warehouse_data
+    ):
+        import socket as _socket
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "192.168.1.50")
+            _set_system_config("label_printer_port", "9100")
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+        with patch(
+            "app.services.barcode_service.socket.create_connection",
+            side_effect=_socket.error("Connection refused"),
+        ):
+            response = client.post(
+                f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode/print",
+                headers=_auth_header(token),
+        )
+        assert response.status_code == 502
+        assert response.get_json()["error"] == "PRINTER_UNREACHABLE"
+
+    def test_print_batch_barcode_returns_502_when_printer_unreachable(
+        self, client, app, warehouse_data
+    ):
+        import socket as _socket
+
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "192.168.1.50")
+            _set_system_config("label_printer_port", "9100")
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+        with patch(
+            "app.services.barcode_service.socket.create_connection",
+            side_effect=_socket.error("Connection refused"),
+        ):
+            response = client.post(
+                f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/print",
+                headers=_auth_header(token),
+            )
+        assert response.status_code == 502
+        assert response.get_json()["error"] == "PRINTER_UNREACHABLE"
+
+    def test_print_article_barcode_uses_code128_path_even_when_pdf_format_is_ean13(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            active_article = _db.session.get(Article, warehouse_data["active_article"].id)
+            active_article.barcode = "WHBAR001"
+            _db.session.commit()
+            _set_system_config("barcode_format", "EAN-13")
+            _set_system_config("label_printer_ip", "192.168.1.50")
+            _set_system_config("label_printer_port", "9100")
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+        with patch("app.services.barcode_service._send_to_printer") as mock_send:
+            response = client.post(
+                f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode/print",
+                headers=_auth_header(token),
+            )
+            mock_send.assert_called_once()
+
+        assert response.status_code == 200
+        assert response.get_json()["status"] == "sent"
+
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+
+    def test_print_article_barcode_success(self, client, app, warehouse_data):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "192.168.1.50")
+            _set_system_config("label_printer_port", "9100")
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+        with patch("app.services.barcode_service._send_to_printer") as mock_send:
+            response = client.post(
+                f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode/print",
+                headers=_auth_header(token),
+            )
+            mock_send.assert_called_once()
+
+        assert response.status_code == 200
+        result = response.get_json()
+        assert result["status"] == "sent"
+        assert result["printer_ip"] == "192.168.1.50"
+        assert result["model"] == "zebra_zpl"
+
+    def test_print_batch_barcode_success(self, client, app, warehouse_data):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            _set_system_config("barcode_format", "Code128")
+            _set_system_config("label_printer_ip", "192.168.1.50")
+            _set_system_config("label_printer_port", "9100")
+            _set_system_config("label_printer_model", "zebra_zpl")
+
+        with patch("app.services.barcode_service._send_to_printer") as mock_send:
+            response = client.post(
+                f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/print",
+                headers=_auth_header(token),
+            )
+            mock_send.assert_called_once()
+
+        assert response.status_code == 200
+        result = response.get_json()
+        assert result["status"] == "sent"
+        assert result["printer_ip"] == "192.168.1.50"
+        assert result["model"] == "zebra_zpl"
 
 
 class TestIdentifier:

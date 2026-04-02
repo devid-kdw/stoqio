@@ -28,11 +28,18 @@ _DEFAULT_LANGUAGE = "hr"
 _DEFAULT_BARCODE_FORMAT = "Code128"
 _DEFAULT_BARCODE_PRINTER = ""
 _DEFAULT_EXPORT_FORMAT = "generic"
+_DEFAULT_LABEL_PRINTER_IP = ""
+_DEFAULT_LABEL_PRINTER_PORT = "9100"
+_DEFAULT_LABEL_PRINTER_MODEL = "zebra_zpl"
+_ALLOWED_PRINTER_MODELS = {"zebra_zpl"}
 _DEFAULT_SYSTEM_CONFIG = {
     "default_language": _DEFAULT_LANGUAGE,
     "barcode_format": _DEFAULT_BARCODE_FORMAT,
     "barcode_printer": _DEFAULT_BARCODE_PRINTER,
     "export_format": _DEFAULT_EXPORT_FORMAT,
+    "label_printer_ip": _DEFAULT_LABEL_PRINTER_IP,
+    "label_printer_port": _DEFAULT_LABEL_PRINTER_PORT,
+    "label_printer_model": _DEFAULT_LABEL_PRINTER_MODEL,
 }
 _ROLE_ORDER = (
     UserRole.ADMIN,
@@ -814,16 +821,48 @@ def delete_quota(quota_id: int) -> dict[str, Any]:
 
 
 def get_barcode_settings() -> dict[str, Any]:
+    raw_port = _system_config_value("label_printer_port")
+    try:
+        port_int = int(raw_port)
+    except (TypeError, ValueError):
+        port_int = int(_DEFAULT_LABEL_PRINTER_PORT)
     return {
         "barcode_format": _system_config_value("barcode_format"),
         "barcode_printer": _system_config_value("barcode_printer"),
+        "label_printer_ip": _system_config_value("label_printer_ip"),
+        "label_printer_port": port_int,
+        "label_printer_model": _system_config_value("label_printer_model"),
     }
+
+
+def _parse_label_printer_port(value: Any) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise SettingsServiceError(
+            "VALIDATION_ERROR",
+            "label_printer_port must be a valid integer.",
+            400,
+        )
+    if port <= 0 or port > 65535:
+        raise SettingsServiceError(
+            "VALIDATION_ERROR",
+            "label_printer_port must be between 1 and 65535.",
+            400,
+        )
+    return port
 
 
 def update_barcode_settings(payload: dict[str, Any]) -> dict[str, Any]:
     _validate_allowed_fields(
         payload,
-        allowed_fields={"barcode_format", "barcode_printer"},
+        allowed_fields={
+            "barcode_format",
+            "barcode_printer",
+            "label_printer_ip",
+            "label_printer_port",
+            "label_printer_model",
+        },
     )
     barcode_format = _require_text(
         payload.get("barcode_format"),
@@ -837,8 +876,29 @@ def update_barcode_settings(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     barcode_printer = _normalize_optional_text(payload.get("barcode_printer")) or ""
+    label_printer_ip = _normalize_optional_text(payload.get("label_printer_ip")) or ""
+
+    raw_port = payload.get("label_printer_port")
+    if raw_port is None:
+        label_printer_port = int(_DEFAULT_LABEL_PRINTER_PORT)
+    else:
+        label_printer_port = _parse_label_printer_port(raw_port)
+
+    label_printer_model = (
+        _normalize_optional_text(payload.get("label_printer_model")) or _DEFAULT_LABEL_PRINTER_MODEL
+    )
+    if label_printer_model not in _ALLOWED_PRINTER_MODELS:
+        raise SettingsServiceError(
+            "VALIDATION_ERROR",
+            f"label_printer_model must be one of: {', '.join(sorted(_ALLOWED_PRINTER_MODELS))}.",
+            400,
+        )
+
     _set_system_config_value("barcode_format", barcode_format)
     _set_system_config_value("barcode_printer", barcode_printer)
+    _set_system_config_value("label_printer_ip", label_printer_ip)
+    _set_system_config_value("label_printer_port", str(label_printer_port))
+    _set_system_config_value("label_printer_model", label_printer_model)
     db.session.commit()
     return get_barcode_settings()
 

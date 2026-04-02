@@ -138,6 +138,9 @@ def _seed_system_config() -> None:
         ("barcode_format", "Code128"),
         ("barcode_printer", ""),
         ("export_format", "generic"),
+        ("label_printer_ip", ""),
+        ("label_printer_port", "9100"),
+        ("label_printer_model", "zebra_zpl"),
     ]
     created = 0
     for key, value in defaults:

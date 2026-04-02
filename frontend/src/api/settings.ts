@@ -15,6 +15,7 @@ export type SettingsQuotaScope =
 export type SettingsQuotaEnforcement = 'WARN' | 'BLOCK' | string
 export type SettingsBarcodeFormat = 'EAN-13' | 'Code128' | string
 export type SettingsExportFormat = 'generic' | 'sap' | string
+export type SettingsPrinterModel = 'zebra_zpl' | string
 
 export interface SettingsGeneral {
   location_name: string
@@ -93,6 +94,9 @@ export interface SettingsQuotaDeleteResponse {
 export interface SettingsBarcode {
   barcode_format: SettingsBarcodeFormat
   barcode_printer: string
+  label_printer_ip: string
+  label_printer_port: number
+  label_printer_model: SettingsPrinterModel
 }
 
 export interface SettingsExport {

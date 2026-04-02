@@ -294,3 +294,25 @@ def get_batch_barcode(batch_id: int):
     except BarcodeServiceError as exc:
         db.session.rollback()
         return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/articles/<int:article_id>/barcode/print", methods=["POST"])
+@require_role("ADMIN")
+def print_article_barcode(article_id: int):
+    try:
+        result = barcode_service.print_article_label(article_id)
+        return jsonify(result), 200
+    except BarcodeServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/batches/<int:batch_id>/barcode/print", methods=["POST"])
+@require_role("ADMIN")
+def print_batch_barcode(batch_id: int):
+    try:
+        result = barcode_service.print_batch_label(batch_id)
+        return jsonify(result), 200
+    except BarcodeServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
