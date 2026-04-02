@@ -34,6 +34,8 @@ handoff/
     phase-01-wave-02-draft-group-partial-status/
     ...
     phase-09-wave-02-docs-alignment-and-handoff-reorg/
+  wave-03/                 ← Wave 3 follow-up phases
+    phase-01-wave-03-*/
 ```
 
 Phase folders use lowercase kebab-case after the numeric prefix. Cycle folders group
@@ -43,6 +45,7 @@ phases by their delivery wave:
   any non-wave sub-phases such as `phase-06-1-*` and `phase-06-2-*`.
 - `wave-01/` — all Wave 1 follow-up phases (pattern: `phase-NN-wave-01-*`).
 - `wave-02/` — all Wave 2 follow-up phases (pattern: `phase-NN-wave-02-*`).
+- `wave-03/` — all Wave 3 follow-up phases (pattern: `phase-NN-wave-03-*`).
 - `decisions/` and `templates/` remain at the top level.
 
 ## Responsibilities

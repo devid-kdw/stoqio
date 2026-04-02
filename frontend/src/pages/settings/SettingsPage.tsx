@@ -60,6 +60,7 @@ import {
   type SettingsPrinterModel,
 } from '../../api/settings'
 import FullPageState from '../../components/shared/FullPageState'
+import { getActiveLocale } from '../../utils/locale'
 import { useAuthStore } from '../../store/authStore'
 import {
   DEFAULT_ROLE_DISPLAY_NAMES,
@@ -350,7 +351,7 @@ function formatDateTime(iso: string | null): string {
   }
 
   try {
-    return new Date(iso).toLocaleString('hr-HR', {
+    return new Date(iso).toLocaleString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

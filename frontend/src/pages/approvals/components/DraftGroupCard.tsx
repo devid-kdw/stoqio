@@ -33,6 +33,7 @@ import { showErrorToast, showSuccessToast, showWarningToast } from '../../../uti
 import axios from 'axios'
 import { isNetworkOrServerError, runWithRetry } from '../../../utils/http'
 import { INTEGER_UOMS } from '../../../utils/uom'
+import { getActiveLocale } from '../../../utils/locale'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,7 +49,7 @@ function formatQuantity(qty: number, uom: string): string {
 function formatTime(isoString: string | null): string {
   if (!isoString) return '—'
   try {
-    return new Date(isoString).toLocaleTimeString([], {
+    return new Date(isoString).toLocaleTimeString(getActiveLocale(), {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -315,7 +316,7 @@ export default function DraftGroupCard({
         <Group justify="space-between" align="center" wrap="nowrap">
           <Group>
             {expanded ? <IconChevronDown size={20} /> : <IconChevronRight size={20} />}
-            <Text fw={600}>{new Date(summary.operational_date).toLocaleDateString('hr-HR')}</Text>
+            <Text fw={600}>{new Date(summary.operational_date).toLocaleDateString(getActiveLocale())}</Text>
             {summary.status === 'PENDING' && <Badge color="yellow">PENDING</Badge>}
             {summary.status === 'APPROVED' && <Badge color="green">APPROVED</Badge>}
             {summary.status === 'REJECTED' && <Badge color="red">REJECTED</Badge>}

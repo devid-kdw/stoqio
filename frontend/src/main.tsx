@@ -10,8 +10,9 @@ import '@mantine/notifications/styles.css'
 import App from './App'
 import { authApi } from './api/auth'
 import FullPageState from './components/shared/FullPageState'
+import i18n from './i18n'
 import { getStoredRefreshToken, useAuthStore } from './store/authStore'
-import './i18n'
+import { useSettingsStore } from './store/settingsStore'
 
 const queryClient = new QueryClient()
 const root = ReactDOM.createRoot(document.getElementById('root')!)
@@ -39,8 +40,8 @@ function renderBootstrapLoading() {
     <React.StrictMode>
       <MantineProvider colorSchemeManager={colorSchemeManager} defaultColorScheme="light">
         <FullPageState
-          title="Obnavljanje sesije"
-          message="Sustav provjerava postoji li valjana prijava za ovu karticu."
+          title={i18n.t('auth.loading.title')}
+          message={i18n.t('auth.loading.message')}
           loading
         />
       </MantineProvider>
@@ -85,6 +86,11 @@ async function start() {
   }
 
   await bootstrapAuth()
+  
+  if (useAuthStore.getState().isAuthenticated) {
+    await useSettingsStore.getState().loadShellSettings()
+  }
+
   renderApp()
 }
 

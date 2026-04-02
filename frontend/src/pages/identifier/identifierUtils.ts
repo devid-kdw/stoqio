@@ -1,4 +1,5 @@
 import type { ApiErrorBody } from '../../utils/http'
+import { getActiveLocale } from '../../utils/locale'
 
 const IDENTIFIER_FIELD_LABELS: Record<string, string> = {
   q: 'Upit',
@@ -18,7 +19,7 @@ export function formatIdentifierQuantity(
   decimalDisplay: boolean | null | undefined
 ): string {
   const digits = decimalDisplay === false ? 0 : 2
-  const formatted = new Intl.NumberFormat('hr-HR', {
+  const formatted = new Intl.NumberFormat(getActiveLocale(), {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(quantity)
@@ -32,7 +33,7 @@ export function formatIdentifierDateTime(value: string | null): string {
   }
 
   try {
-    return new Date(value).toLocaleString('hr-HR', {
+    return new Date(value).toLocaleString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

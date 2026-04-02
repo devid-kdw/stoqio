@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ActionIcon, Button, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core'
 import { IconSun, IconMoon } from '@tabler/icons-react'
+import { useTranslation } from 'react-i18next'
 import { authApi } from '../../api/auth'
 import {
   DEFAULT_LOCATION_NAME,
@@ -9,6 +10,7 @@ import {
 } from '../../store/settingsStore'
 
 export default function Sidebar() {
+  const { t } = useTranslation()
   const { user, refreshToken, logout } = useAuthStore()
   const locationName = useSettingsStore((state) => state.locationName)
   const roleDisplayNames = useSettingsStore((state) => state.roleDisplayNames)
@@ -76,74 +78,74 @@ export default function Sidebar() {
         </Text>
         {locationName !== DEFAULT_LOCATION_NAME ? (
           <Text size="xs" c="dimmed">
-            STOQIO
+            {t('sidebar.location.default')}
           </Text>
         ) : null}
         <Text size="xs" c="dimmed">
-          Korisnik: {user.username} ({currentRoleLabel})
+          {t('sidebar.user')}: {user.username} ({currentRoleLabel})
         </Text>
       </div>
 
       <Stack gap={4} style={{ flex: 1 }}>
         {canSeeApprovals && (
           <NavLink to="/approvals" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Odobravanja
+            {t('nav.approvals')}
           </NavLink>
         )}
         {canSeeDrafts && (
           <NavLink to="/drafts" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Unos izlaza
+            {t('nav.drafts')}
           </NavLink>
         )}
         {canSeeWarehouse && (
           <NavLink to="/warehouse" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Skladište
+            {t('nav.warehouse')}
           </NavLink>
         )}
         {canSeeIdentifier && (
           <NavLink to="/identifier" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Identifikacija
+            {t('nav.identifier')}
           </NavLink>
         )}
         {canSeeOrders && (
           <NavLink to="/orders" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Narudžbenice
+            {t('nav.orders')}
           </NavLink>
         )}
         {canSeeReceiving && (
           <NavLink to="/receiving" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Zaprimanje
+            {t('nav.receiving')}
           </NavLink>
         )}
         {canSeeEmployees && (
           <NavLink to="/employees" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Zaposlenici
+            {t('nav.employees')}
           </NavLink>
         )}
         {canSeeInventory && (
           <NavLink to="/inventory" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Inventura
+            {t('nav.inventory')}
           </NavLink>
         )}
         {canSeeReports && (
           <NavLink to="/reports" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Izvještaji
+            {t('nav.reports')}
           </NavLink>
         )}
         {canSeeSettings && (
           <NavLink to="/settings" style={({ isActive }) => (isActive ? activeStyle : linkStyle)}>
-            Postavke
+            {t('nav.settings')}
           </NavLink>
         )}
       </Stack>
 
       <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: `1px solid ${isDark ? '#373a40' : '#ddd'}` }}>
-        <Tooltip label={isDark ? 'Svijetli način' : 'Tamni način'} position="right" withArrow>
+        <Tooltip label={isDark ? t('sidebar.theme.light') : t('sidebar.theme.dark')} position="right" withArrow>
           <ActionIcon
             id="sidebar-color-scheme-toggle"
             variant="subtle"
             size="lg"
-            aria-label={isDark ? 'Prebaci na svijetli način' : 'Prebaci na tamni način'}
+            aria-label={isDark ? t('sidebar.theme.switch_light') : t('sidebar.theme.switch_dark')}
             onClick={() => toggleColorScheme()}
             mb="xs"
           >
@@ -151,7 +153,7 @@ export default function Sidebar() {
           </ActionIcon>
         </Tooltip>
         <Button variant="outline" color="red" fullWidth onClick={handleLogout}>
-          Odjava
+          {t('sidebar.logout')}
         </Button>
       </div>
     </nav>

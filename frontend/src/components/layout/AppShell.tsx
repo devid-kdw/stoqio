@@ -6,10 +6,10 @@ import { useAuthStore } from '../../store/authStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { preloadRouteChunksForRole } from '../../routePreload'
 
-const CONNECTION_ERROR_MESSAGE =
-  'Greška pri povezivanju. Provjerite radi li server i pokušajte ponovno.'
+import { useTranslation } from 'react-i18next'
 
 export default function AppShell() {
+  const { t } = useTranslation()
   const user = useAuthStore((state) => state.user)
   const shellStatus = useSettingsStore((state) => state.shellStatus)
   const loadShellSettings = useSettingsStore((state) => state.loadShellSettings)
@@ -43,8 +43,8 @@ export default function AppShell() {
   if (shellStatus === 'idle' || shellStatus === 'loading') {
     return (
       <FullPageState
-        title="Učitavanje postavki sustava"
-        message="Sustav dohvaća naziv lokacije i nazive rola za trenutnu sesiju."
+        title={t('shell.loading.title')}
+        message={t('shell.loading.message')}
         loading
       />
     )
@@ -56,9 +56,9 @@ export default function AppShell() {
   if (shellStatus === 'error' && user?.role === 'ADMIN') {
     return (
       <FullPageState
-        title="Greška pri povezivanju"
-        message={CONNECTION_ERROR_MESSAGE}
-        actionLabel="Pokušaj ponovno"
+        title={t('shell.error.title')}
+        message={t('shell.error.message')}
+        actionLabel={t('shell.error.action')}
         onAction={() => {
           void loadShellSettings(true)
         }}

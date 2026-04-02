@@ -5,6 +5,7 @@ import type {
   OrderStatus,
 } from '../../api/orders'
 import { INTEGER_UOMS } from '../../utils/uom'
+import { getActiveLocale } from '../../utils/locale'
 
 export type LookupState = 'idle' | 'loading' | 'found' | 'not-found'
 
@@ -125,7 +126,7 @@ export function formatDate(value: string | null): string {
   }
 
   try {
-    return new Date(value).toLocaleDateString('hr-HR')
+    return new Date(value).toLocaleDateString(getActiveLocale())
   } catch {
     return '—'
   }
@@ -137,7 +138,7 @@ export function formatDateTime(value: string | null): string {
   }
 
   try {
-    return new Date(value).toLocaleString('hr-HR', {
+    return new Date(value).toLocaleString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -154,7 +155,7 @@ export function formatMoney(value: number | null): string {
     return '—'
   }
 
-  return new Intl.NumberFormat('hr-HR', {
+  return new Intl.NumberFormat(getActiveLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)

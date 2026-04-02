@@ -36,6 +36,7 @@ import {
   type QuotaRow,
 } from '../../api/employees'
 import FullPageState from '../../components/shared/FullPageState'
+import { getActiveLocale } from '../../utils/locale'
 import { useAuthStore } from '../../store/authStore'
 import { getApiErrorBody, runWithRetry } from '../../utils/http'
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
@@ -61,7 +62,7 @@ function formatQty(qty: number, uom: string): string {
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleDateString('hr-HR', {
+    return new Date(iso).toLocaleDateString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -74,7 +75,7 @@ function formatDate(iso: string | null): string {
 function formatDateTime(iso: string | null): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('hr-HR', {
+    return new Date(iso).toLocaleString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

@@ -1,6 +1,7 @@
 import type { ArticleUomLookupItem } from '../../api/articles'
 import type { ReportReorderStatus, ReportTransactionType } from '../../api/reports'
 import { INTEGER_UOMS } from '../../utils/uom'
+import { getActiveLocale } from '../../utils/locale'
 
 export function getTodayIsoDate(): string {
   return new Date().toISOString().slice(0, 10)
@@ -36,7 +37,7 @@ function usesDecimalDisplay(
 }
 
 function formatNumber(value: number, decimals: number): string {
-  return new Intl.NumberFormat('hr-HR', {
+  return new Intl.NumberFormat(getActiveLocale(), {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(value)
@@ -48,7 +49,7 @@ export function formatDate(value: string | null): string {
   }
 
   try {
-    return new Date(value).toLocaleDateString('hr-HR', {
+    return new Date(value).toLocaleDateString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -64,7 +65,7 @@ export function formatDateTime(value: string | null): string {
   }
 
   try {
-    return new Date(value).toLocaleString('hr-HR', {
+    return new Date(value).toLocaleString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

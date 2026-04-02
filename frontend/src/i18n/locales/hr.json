@@ -1,1 +1,44 @@
-{}
+{
+  "nav": {
+    "approvals": "Odobravanja",
+    "drafts": "Unos izlaza",
+    "warehouse": "Skladište",
+    "identifier": "Identifikacija",
+    "orders": "Narudžbenice",
+    "receiving": "Zaprimanje",
+    "employees": "Zaposlenici",
+    "inventory": "Inventura",
+    "reports": "Izvještaji",
+    "settings": "Postavke"
+  },
+  "shell": {
+    "loading": {
+      "title": "Učitavanje postavki sustava",
+      "message": "Sustav dohvaća naziv lokacije i nazive rola za trenutnu sesiju."
+    },
+    "error": {
+      "title": "Greška pri povezivanju",
+      "message": "Greška pri povezivanju. Provjerite radi li server i pokušajte ponovno.",
+      "action": "Pokušaj ponovno"
+    }
+  },
+  "auth": {
+    "loading": {
+      "title": "Obnavljanje sesije",
+      "message": "Sustav provjerava postoji li valjana prijava za ovu karticu."
+    }
+  },
+  "sidebar": {
+    "location": {
+      "default": "STOQIO"
+    },
+    "user": "Korisnik",
+    "theme": {
+      "light": "Svijetli način",
+      "dark": "Tamni način",
+      "switch_light": "Prebaci na svijetli način",
+      "switch_dark": "Prebaci na tamni način"
+    },
+    "logout": "Odjava"
+  }
+}

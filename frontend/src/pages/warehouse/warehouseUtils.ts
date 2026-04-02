@@ -6,6 +6,7 @@ import type {
 } from '../../api/articles'
 import type { ApiErrorBody } from '../../utils/http'
 import { INTEGER_UOMS } from '../../utils/uom'
+import { getActiveLocale } from '../../utils/locale'
 const ARTICLE_NO_RE = /^[A-Z0-9-]+$/
 let supplierRowKeyCounter = 0
 
@@ -150,7 +151,7 @@ export function formatDate(value: string | null): string {
   }
 
   try {
-    return new Date(value).toLocaleDateString('hr-HR')
+    return new Date(value).toLocaleDateString(getActiveLocale())
   } catch {
     return '—'
   }
@@ -162,7 +163,7 @@ export function formatDateTime(value: string | null): string {
   }
 
   try {
-    return new Date(value).toLocaleString('hr-HR', {
+    return new Date(value).toLocaleString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -179,7 +180,7 @@ export function formatDecimal(value: number | null): string {
     return '—'
   }
 
-  return new Intl.NumberFormat('hr-HR', {
+  return new Intl.NumberFormat(getActiveLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
@@ -190,7 +191,7 @@ export function formatQuantity(
   uom: string | null | undefined,
   uomMap?: Record<string, ArticleUomLookupItem>
 ): string {
-  const formatted = new Intl.NumberFormat('hr-HR', {
+  const formatted = new Intl.NumberFormat(getActiveLocale(), {
     minimumFractionDigits: usesDecimalDisplay(uom, uomMap) ? 2 : 0,
     maximumFractionDigits: usesDecimalDisplay(uom, uomMap) ? 2 : 0,
   }).format(quantity)

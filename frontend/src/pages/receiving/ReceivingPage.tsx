@@ -26,6 +26,7 @@ import axios from 'axios'
 import { articlesApi, type ArticleLookupResult } from '../../api/articles'
 import { ordersApi, type OrdersListItem, type ReceivingOrderDetail, type ReceivingOrderLine, type ReceivingOrderSummary } from '../../api/orders'
 import { receivingApi, type CreateReceiptPayload, type ReceivingHistoryItem } from '../../api/receiving'
+import { getActiveLocale } from '../../utils/locale'
 import FullPageState from '../../components/shared/FullPageState'
 import { CONNECTION_ERROR_MESSAGE, getApiErrorBody, isNetworkOrServerError, runWithRetry } from '../../utils/http'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../utils/toasts'
@@ -110,7 +111,7 @@ function formatDate(value: string | null): string {
   if (!value) return '—'
 
   try {
-    return new Date(value).toLocaleDateString('hr-HR')
+    return new Date(value).toLocaleDateString(getActiveLocale())
   } catch {
     return '—'
   }
@@ -120,7 +121,7 @@ function formatDateTime(value: string | null): string {
   if (!value) return '—'
 
   try {
-    return new Date(value).toLocaleString('hr-HR', {
+    return new Date(value).toLocaleString(getActiveLocale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

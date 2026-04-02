@@ -525,6 +525,31 @@ def test_update_general_settings_persists_location_and_language(client, settings
         assert language.value == "de"
 
 
+def test_default_language_canonical_round_trip(client, settings_data):
+    """PUT /settings/general -> GET /settings/general -> GET /settings/shell must all agree."""
+    token = _login(client, settings_data["admin_username"])
+
+    put_response = client.put(
+        "/api/v1/settings/general",
+        json={
+            "location_name": "Settings Main",
+            "timezone": "Europe/Berlin",
+            "default_language": "en",
+        },
+        headers=_auth(token),
+    )
+    assert put_response.status_code == 200
+    assert put_response.get_json()["default_language"] == "en"
+
+    general_response = client.get("/api/v1/settings/general", headers=_auth(token))
+    assert general_response.status_code == 200
+    assert general_response.get_json()["default_language"] == "en"
+
+    shell_response = client.get("/api/v1/settings/shell", headers=_auth(token))
+    assert shell_response.status_code == 200
+    assert shell_response.get_json()["default_language"] == "en"
+
+
 def test_update_general_settings_rejects_empty_location_name(client, settings_data):
     token = _login(client, settings_data["admin_username"])
     response = client.put(

@@ -1,1 +1,44 @@
-{}
+{
+  "nav": {
+    "approvals": "Approvals",
+    "drafts": "Draft Entry",
+    "warehouse": "Warehouse",
+    "identifier": "Identifier",
+    "orders": "Orders",
+    "receiving": "Receiving",
+    "employees": "Employees",
+    "inventory": "Inventory",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
+  "shell": {
+    "loading": {
+      "title": "Loading system settings",
+      "message": "The system is fetching the location name and role names for the current session."
+    },
+    "error": {
+      "title": "Connection error",
+      "message": "Connection error. Check if the server is running and try again.",
+      "action": "Try again"
+    }
+  },
+  "auth": {
+    "loading": {
+      "title": "Restoring session",
+      "message": "The system is checking if there is a valid login for this tab."
+    }
+  },
+  "sidebar": {
+    "location": {
+      "default": "STOQIO"
+    },
+    "user": "User",
+    "theme": {
+      "light": "Light mode",
+      "dark": "Dark mode",
+      "switch_light": "Switch to light mode",
+      "switch_dark": "Switch to dark mode"
+    },
+    "logout": "Log out"
+  }
+}
