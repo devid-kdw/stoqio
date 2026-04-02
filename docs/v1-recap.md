@@ -6,7 +6,7 @@
 
 ## 1. Kontekst projekta
 
-STOQIO je razvijen kao modularni **WMS za jednu lokaciju**, namijenjen radu preko browsera u lokalnoj mreži, s fokusom na Raspberry Pi deployment i male do srednje proizvodne / skladišne sustave. V1 je od početka vođen kao:
+STOQIO je razvijen kao modularni **WMS za jednu lokaciju**, namijenjen radu preko browsera u lokalnoj mreži za male do srednje proizvodne / skladišne sustave. Ciljna platforma je **lokalni server unutar mreže kupca** (mini PC, lokalni Linux/Windows server ili Raspberry Pi). Raspberry Pi je bio prvotni referentni hardware i ostaje validan deployment cilj, ali nije jedina podržana opcija. V1 je od početka vođen kao:
 
 - docs-first projekt
 - fazna isporuka u 15 koraka
@@ -20,7 +20,7 @@ To znači da V1 nije samo “skupljeni feature set”, nego i dokumentirani proc
 Projekt je tijekom implementacije imao tri izvora istine:
 
 1. `stoqio_docs/` kao produktna, domenska i arhitekturna baza.
-2. `handoff/phase-*` kao operativni dnevnik svake faze.
+2. `handoff/implementation/phase-*` kao operativni dnevnik svake V1 faze.
 3. `handoff/decisions/decision-log.md` kao zapis cross-phase odluka i pojašnjenja koja su mijenjala kontrakte ili pravila rada.
 
 Ovaj pristup se pokazao bitnim jer je više faza zatvoreno tek nakon dodatnih review passova, ne samo nakon prvog “done” handoffa. Time je V1 dobio stabilniju bazu bez skrivanja regresija ili spec drift-a.
@@ -184,7 +184,7 @@ Nakon stabilizacije workflowa, drugi val bi trebao ići na stvari koje V1 svjesn
 
 Fokus:
 
-- pravi Raspberry Pi deployment smoke test, backup/restore, recovery i operativni monitoring
+- pravi deployment smoke test na ciljnom lokalnom serveru (mini PC, Linux/Windows server, Raspberry Pi), backup/restore, recovery i operativni monitoring
 - settings hydration za login i non-ADMIN experience
 - definiranje i implementacija stvarnog SAP export kontrakta
 - napredniji barcode/print flow i eventualna printer integracija
@@ -207,6 +207,6 @@ Repo je danas u stanju koje ima smisla tretirati kao **V1-ready baseline za inte
 - ključni dokumenti u `stoqio_docs/`
 - `handoff/README.md`
 - `handoff/decisions/decision-log.md`
-- svi phase handoff folderi od `phase-01-project-setup` do `phase-15-barcodes-export`
-- `handoff/phase-16-v1-stabilization`
+- svi phase handoff folderi od `handoff/implementation/phase-01-project-setup` do `handoff/implementation/phase-15-barcodes-export`
+- `handoff/implementation/phase-16-v1-stabilization`
 - aktualni backend i frontend source kod

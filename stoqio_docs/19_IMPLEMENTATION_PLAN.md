@@ -37,7 +37,7 @@ Set up the complete project skeleton. No models, no routes, no UI pages yet — 
 Read the following sections before delegating:
 - 07_ARCHITECTURE.md § 1 (Folder structure) — full folder tree to create
 - 07_ARCHITECTURE.md § 6 (Development workflow) — local setup commands, Flask + Vite dev server
-- 07_ARCHITECTURE.md § 5 (Pi deployment) — .env structure, systemd (scaffold only, not deploy yet)
+- 07_ARCHITECTURE.md § 5 (Local server deployment) — .env structure, systemd (scaffold only, not deploy yet)
 
 ## Backend Agent Tasks
 1. Create the monorepo folder structure exactly as specified in 07_ARCHITECTURE.md § 1.
@@ -939,4 +939,4 @@ Before considering the project complete, verify:
 - [ ] All modules accessible by correct roles only
 - [ ] Frontend builds without errors (`npm run build`)
 - [ ] Flask serves React build correctly (production mode test)
-- [ ] `deploy.sh` script runs successfully on Pi
+- [ ] `deploy.sh` script runs successfully on target local server

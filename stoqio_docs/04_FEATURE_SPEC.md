@@ -114,7 +114,9 @@
 
 **Barkodovi** (ADMIN only):
 - Generiranje barkoda po artiklu (EAN-13 ili Code128)
-- Print barkoda (PDF ili direktno na printer)
+- **PDF preuzimanje**: `GET /api/v1/articles/{id}/barcode` / `GET /api/v1/batches/{id}/barcode` — PDF naljepnica preuzima se u pregledniku
+- **Direktni ispis**: `POST /api/v1/articles/{id}/barcode/print` / `POST /api/v1/batches/{id}/barcode/print` — ZPL naljepnica šalje se izravno na mrežni label printer; zahtijeva `label_printer_ip` u Settings
+- **Budući raw-label mod**: nije implementiran
 - Barkod field na artiklu — može biti uvezen ili generiran
 
 ---
@@ -230,6 +232,8 @@
 - Kvote za osobna izdavanja (default po kategoriji)
 - Datum godišnjeg reseta kvota
 - Barkod format (EAN-13 / Code128)
+- Direktni label printer: `label_printer_ip`, `label_printer_port`, `label_printer_model`
+- `barcode_printer` (OS-level printer name, hint za PDF workflow)
 - Export format za SAP
 
 ---

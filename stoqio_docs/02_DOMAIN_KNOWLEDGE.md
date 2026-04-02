@@ -73,10 +73,12 @@ accessories_small_machines    — pribor za strojeve
 - Dedupliciraju se po normaliziranom inputu
 
 ### 2.4 Barkodovi
+
 - Svaki artikl ima polje `barcode`
-- Sustav mora podržavati **generiranje barkoda** unutar aplikacije
-- Sustav mora podržavati **print barkoda** (PDF ili direktno na printer)
-- Format barkoda: EAN-13 ili Code128 (konfigurabilno)
+- **Sloj 1 — Generiranje**: Sustav podržava generiranje barkoda unutar aplikacije. Format: EAN-13 ili Code128 (konfigurabilno u Settings).
+- **Sloj 2 — PDF preuzimanje**: Admin može preuzeti PDF naljepnicu barkoda za artikl ili šaržu (`GET /api/v1/articles/{id}/barcode`, `GET /api/v1/batches/{id}/barcode`). PDF se preuzima izravno u pregledniku. ADMIN-only.
+- **Sloj 3 — Direktni ispis na host printer**: Admin može poslati ZPL naljepnicu izravno na mrežni label printer (`POST /api/v1/articles/{id}/barcode/print`, `POST /api/v1/batches/{id}/barcode/print`). Zahtijeva konfiguriranu `label_printer_ip` u Settings. ADMIN-only.
+- **Sloj 4 — Budući raw-label mod**: Nije implementiran. Ne dokumentirati i ne izlagati kao trenutnu funkcionalnost.
 - Barkod je alternativni input za pretraživanje/unos — ručni unos uvijek ostaje
 
 ---
@@ -276,7 +278,7 @@ Primjeri: `kg`, `l`, `kom`, `pak`, `m`, `m²`, `pár` ...
 
 Konfiguracijske postavke instalacije perzistiraju se na dva načina:
 
-- **`SystemConfig`** (key-value tablica): general language, barcode format, barcode printer, export format
+- **`SystemConfig`** (key-value tablica): `default_language`, `barcode_format`, `barcode_printer`, `label_printer_ip`, `label_printer_port`, `label_printer_model`, `export_format`
 - **`RoleDisplayName`** (5 fiksnih redova): prikaz naziva rola u UI-u
 - **`Location`**: name i timezone (dio "general" postavki)
 - **`Category`** i **`UomCatalog`**: labeli i flagovi koji se uređuju u Settingsima su direktno na tim entitetima

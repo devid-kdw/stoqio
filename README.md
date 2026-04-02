@@ -1,10 +1,10 @@
 # WMS
 
-Warehouse Management System monorepo for Raspberry Pi deployment.
+Warehouse Management System monorepo. Designed for local host/server deployment inside the customer network (mini PC, local Linux server, local Windows server, or similar local hardware).
 
 ## Structure
 
-- `backend/` - Flask API and future static asset serving
+- `backend/` - Flask API and React build serving
 - `frontend/` - React + Vite web application
 - `scripts/` - build and deployment helpers
 - `stoqio_docs/` - product, architecture, and implementation documentation

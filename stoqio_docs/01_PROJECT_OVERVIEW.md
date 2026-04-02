@@ -12,7 +12,7 @@ Univerzalni **Warehouse Management System (WMS)** građen na iskustvu iz stvarne
 
 ## Biznis model
 
-- **"Software + Hardware" paket**: kupac dobije Raspberry Pi s preinstaliranim softwareom + on-site postavljanje
+- **"Software + Hardware" paket**: kupac dobije lokalni server (mini PC, lokalni Linux ili Windows server, Raspberry Pi ili slično) s preinstaliranim softwareom + on-site postavljanje
 - **Target kupci**: mala i srednja poduzeća s fizičkim skladištem (proizvodnja, distribucija, servis)
 - **Prva implementacija**: interna implementacija u firmi vlasnika projekta — validacija u produkciji
 - **Dugoročno**: komercijalizacija kao konfigurabilan WMS za različite industrije
@@ -22,7 +22,7 @@ Univerzalni **Warehouse Management System (WMS)** građen na iskustvu iz stvarne
 ## Deployment arhitektura
 
 ```
-[Raspberry Pi — server]
+[Lokalni server — mini PC / Linux server / Windows server / Raspberry Pi]
          |
     Local network (WiFi/LAN)
          |
@@ -32,11 +32,13 @@ Univerzalni **Warehouse Management System (WMS)** građen na iskustvu iz stvarne
   tablet/PC    tablet/PC     tablet/PC
 ```
 
-- **Pi** pokreće Flask backend + PostgreSQL + React web app
+- **Lokalni server** pokreće Flask backend + PostgreSQL + React web app
 - **Terminali** su bilo koji uređaj s browserom — tablet, PC, touch screen
 - **Nema instalacije** na terminalima — sve preko browsera na lokalnoj mreži
-- **Update** = jednom na Pi-u, svi terminali odmah vide novu verziju
-- **Jedan Pi = jedno skladište / jedna lokacija**
+- **Update** = jednom na serveru, svi terminali odmah vide novu verziju
+- **Jedan server = jedno skladište / jedna lokacija**
+
+> Raspberry Pi je bio prvotni referentni hardware i ostaje validan deployment cilj, ali nije jedina podržana opcija.
 
 ---
 
@@ -52,7 +54,7 @@ Univerzalni **Warehouse Management System (WMS)** građen na iskustvu iz stvarne
 | State/Query | TanStack Query | Zadržano iz v1 |
 | Auth | JWT | Zadržano iz v1 |
 | i18n | i18next | Zadržano iz v1 |
-| Deployment | Raspberry Pi (Linux) | |
+| Deployment | Lokalni server (mini PC, Linux/Windows server, Raspberry Pi) | |
 | Barkod gen. | python-barcode / qrcode | Generiranje + print |
 | Excel export | openpyxl | SAP-kompatibilan export |
 

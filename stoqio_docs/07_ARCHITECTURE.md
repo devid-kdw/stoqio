@@ -267,9 +267,16 @@ Login vraća dva tokena:
 
 ### Token storage
 
-Oba tokena se pohranjuju u Zustand store (in-memory). Ne u localStorage — nema persisted storage u browser-u.
+Tokeni se pohranjuju na sljedeći način:
 
-Posljedica: zatvaranjem taba / refreshanjem stranice korisnik se mora ponovo prijaviti (osim ako postoji httpOnly cookie pristup — nije u v1 scope).
+- **Access token** — ostaje isključivo u Zustand storeu (memory-only). Ne smije se pisati u `localStorage`.
+- **Refresh token** — persistira se u browser `localStorage` pod ključem `stoqio_refresh_token`.
+
+Na pokretanju aplikacije (bootstrap), frontend provjerava postoji li pohranjen refresh token. Ako postoji, radi se tihi `POST /api/v1/auth/refresh`, potom `GET /api/v1/auth/me`, i Zustand store se hidrira s `{ user, accessToken, refreshToken, isAuthenticated }` **prije** nego što se zaštićene rute prikazuju. Ako bootstrap ne uspije, pohranjen refresh token se briše i korisnik se preusmjerava na `/login`.
+
+Posljedica za access token: zatvaranjem taba pristupni token se gubi, ali obnova sesije pri sljedećem otvaranju radi automatski sve dok refresh token nije istekao.
+
+> Ovo je uvedeno u Phase 16 Wave 1 stabilizacijskom radu. Vidjeti DEC-FE-006 u `handoff/decisions/decision-log.md`.
 
 ### Refresh flow
 
@@ -340,7 +347,7 @@ Svaka zaštićena ruta ima `ProtectedRoute` wrapper koji provjerava rolu iz Zust
 
 ### Code splitting
 
-Nema lazy loadanja — svi moduli učitavaju se odjednom pri prvom otvaranju. Opravdano jer je deployment na lokalnoj mreži (Pi → browser terminal).
+Nema lazy loadanja — svi moduli učitavaju se odjednom pri prvom otvaranju. Opravdano jer je deployment na lokalnoj mreži (lokalni server → browser terminal).
 
 ### State management
 
@@ -349,19 +356,21 @@ Zustand store (`src/store/authStore.ts`) drži:
 ```typescript
 {
   user: { id, username, role } | null,
-  accessToken: string | null,
-  refreshToken: string | null,
+  accessToken: string | null,   // memory-only, nikad u localStorage
+  refreshToken: string | null,  // zrcali localStorage key stoqio_refresh_token
   isAuthenticated: boolean
 }
 ```
 
 ---
 
-## 5. Pi deployment
+## 5. Local server deployment
+
+STOQIO se deployira kao lokalni server unutar mreže kupca. Podržani ciljevi uključuju mini PC, lokalni Linux server, lokalni Windows server i Raspberry Pi. Primjeri u nastavku koriste Linux/systemd koji vrijedi za sve Linux-based ciljeve.
 
 ### Systemd servis
 
-WMS se pokreće kao systemd servis koji automatski starta pri boot-u Pi-a.
+WMS se pokreće kao systemd servis koji automatski starta pri boot-u.
 
 ```
 /etc/systemd/system/wms.service
@@ -372,7 +381,7 @@ Servis pokreće Flask (Gunicorn) koji servira i API i React build s jednog porta
 ### Update proces
 
 ```bash
-# Na Pi-u (ili preko SSH):
+# Na serveru (ili preko SSH):
 cd /home/wms/wms
 git pull origin main
 ./scripts/deploy.sh
@@ -388,10 +397,10 @@ git pull origin main
 
 ### Konfiguracija
 
-Sve osjetljive vrijednosti (JWT secret, DB connection string) u `.env` fajlu na Pi-u — nikad u git repozitoriju.
+Sve osjetljive vrijednosti (JWT secret, DB connection string) u `.env` fajlu na serveru — nikad u git repozitoriju.
 
 ```
-# .env (samo na Pi-u, nikad u gitu)
+# .env (samo na serveru, nikad u gitu)
 FLASK_ENV=production
 DATABASE_URL=postgresql://wms:password@localhost/wms
 JWT_SECRET_KEY=<strong-random-key>
@@ -427,7 +436,7 @@ Frontend dev server (Vite, port 5173) proksira API pozive na Flask (port 5000) v
 
 ### Git workflow
 
-`main` branch je uvijek stabilan i deployabilan na Pi. Novi feature ili bugfix = novi branch.
+`main` branch je uvijek stabilan i deployabilan na lokalnom serveru. Novi feature ili bugfix = novi branch.
 
 ```bash
 git checkout -b feature/approvals-bulk-action
@@ -436,7 +445,7 @@ git push origin feature/approvals-bulk-action
 # merge u main kad gotovo
 ```
 
-Na Pi-u uvijek ide samo `main`:
+Na serveru uvijek ide samo `main`:
 ```bash
 git pull origin main
 ```
@@ -456,19 +465,19 @@ Integration testovi koriste zasebnu test bazu (konfigurabilna u `conftest.py`). 
 
 | Tema | Odluka | Razlog |
 |------|--------|--------|
-| Struktura projekta | Monorepo, Flask servira React build | Jedan proces, jedan port, jednostavan Pi deployment |
+| Struktura projekta | Monorepo, Flask servira React build | Jedan proces, jedan port, jednostavan lokalni deployment |
 | Services layer | Odvojen od ruta (`app/services/`) | Čišći kod, lakše testirati business logiku |
 | API versioning | `/api/v1/` od početka | Forward compatible, nema later refactoring |
 | Pagination | Od početka, standardni format | Sprema za tisuće artikala |
-| Auth model | Access (15 min) + Refresh token | Bolji UX, sesija traje bez vidljivog prekida |
-| Token storage | Zustand in-memory | Sigurnije od localStorage |
+| Auth model | Access (15 min) + Refresh token; bootstrap na app startu | Bolji UX, sesija preživljava reload |
+| Token storage | Access: Zustand memory-only; Refresh: localStorage (`stoqio_refresh_token`) | Access token nikad u localStorage; refresh token omogućuje silent reload |
 | UI library | Mantine | Komponente prilagođene tabletu, dobra dokumentacija |
 | Router | React Router v6 | Standard, odlična dokumentacija |
 | Route config | Centralna (`routes.tsx`) | Pregledno, RBAC na jednom mjestu |
-| Code splitting | Nema (sve odjednom) | Lokalna mreža, nema razloga za kompleksnost |
+| Code splitting | Nema (sve odjednom) | Lokalna mreža (lokalni server → browser terminal), nema razloga za kompleksnost |
 | State management | Zustand | Manje koda od Reduxa, vanjske ovisnosti minimalne |
 | Testovi | Integration tests sve backend rute | Pokrivaju i API kontrakt i business logiku |
 | DB (dev i prod) | PostgreSQL svugdje | Nema iznenađenja između okruženja |
-| Deployment | Git pull + systemd autostart | Jednostavno, pouzdano, Pi-friendly |
+| Deployment | Git pull + systemd autostart | Jednostavno, pouzdano; vrijedi za mini PC, Linux/Windows server, Raspberry Pi |
 | Dev workflow | Flask + Vite dev server (2 terminala) | HMR radi, brži razvoj frontenada |
 | Git branching | Feature branches, main uvijek stabilan | Siguran deploy, čista historija |

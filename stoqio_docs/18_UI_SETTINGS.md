@@ -141,12 +141,37 @@ The system applies quotas in this priority order (highest first):
 
 ## 8. Section: Barcode
 
+The Barcode section controls barcode format and the two distinct print workflows available in the system.
+
+### 8.1 Barcode format
+
 | Field | Type | Notes |
 |-------|------|-------|
-| Barcode format | Dropdown | EAN-13 / Code128. Default: Code128. |
-| Barcode printer | Text input | Printer name as configured in the operating system on the Raspberry Pi. Used when printing barcode PDFs. |
+| Barcode format | Dropdown | EAN-13 / Code128. Default: Code128. Applied when generating barcode images for articles and batches. |
 
-> Barcode printer field is free text — it must match the printer name exactly as it appears in the Pi's system printer list. No printer discovery UI in v1.
+### 8.2 PDF download printing (`barcode_printer`)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| Barcode printer | Text input | Optional. OS-level printer name configured on the host machine. Free-text field — must match the host OS printer name exactly. Used as a hint when the host OS triggers a print dialog after the PDF is downloaded. No printer discovery UI in v1. |
+
+> The PDF download workflow (`GET /api/v1/articles/{id}/barcode`, `GET /api/v1/batches/{id}/barcode`) generates a PDF barcode label and downloads it directly in the browser. The `barcode_printer` field is stored as a configuration reference; it does not drive the current direct ZPL network-print path.
+
+### 8.3 Direct host printing (`label_printer_ip`, `label_printer_port`, `label_printer_model`)
+
+These fields configure the direct network-print path (`POST /api/v1/articles/{id}/barcode/print`, `POST /api/v1/batches/{id}/barcode/print`). ADMIN-only. No PDF is produced — the label is sent directly to the printer over TCP.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| Label printer IP | Text input | IPv4 address of the network label printer. Leave empty if direct printing is not configured. |
+| Label printer port | Text input | TCP port. Default: 9100. |
+| Label printer model | Dropdown | Printer protocol. Current accepted value: `zebra_zpl` (Zebra ZPL). |
+
+> No printer discovery UI in v1. Admin must ensure the IP address and port are correct before using direct print actions.
+
+### 8.4 Future: raw-label printer mode
+
+A future raw-label printer mode (e.g., printing raw ZPL directly from the browser without server mediation) is **not implemented**. Do not document or surface this as a current feature.
 
 ---
 
@@ -252,6 +277,10 @@ User management for system accounts (not employees — these are login users).
 | Edit quota | PUT | `/api/v1/settings/quotas/{id}` |
 | Delete quota | DELETE | `/api/v1/settings/quotas/{id}` |
 | Save barcode settings | PUT | `/api/v1/settings/barcode` |
+| Download article barcode PDF | GET | `/api/v1/articles/{id}/barcode` |
+| Download batch barcode PDF | GET | `/api/v1/batches/{id}/barcode` |
+| Direct-print article label | POST | `/api/v1/articles/{id}/barcode/print` |
+| Direct-print batch label | POST | `/api/v1/batches/{id}/barcode/print` |
 | Save export settings | PUT | `/api/v1/settings/export` |
 | Get suppliers | GET | `/api/v1/settings/suppliers` |
 | Create supplier | POST | `/api/v1/settings/suppliers` |
@@ -274,5 +303,7 @@ User management for system accounts (not employees — these are login users).
 | Creating supplier with existing internal code | Inline error: `"Supplier code already exists."` |
 | Creating user with existing username | Inline error: `"Username already exists."` |
 | Admin tries to deactivate own account | Action blocked. Show inline error: `"You cannot deactivate your own account."` |
-| Barcode printer name does not match system printer | No validation in UI — admin must ensure the name is correct. Incorrect name will cause print errors at print time. |
+| Barcode printer name does not match host OS printer | No validation in UI — admin must ensure the name matches the host OS printer list exactly. Incorrect name will cause print errors at print time. |
+| Direct print: printer IP not reachable | Backend returns a `PRINTER_CONNECTION_ERROR`. UI shows the error toast returned by the API. |
+| Direct print: label_printer_ip is empty | Backend returns a `PRINTER_NOT_CONFIGURED` error. UI shows the error toast. |
 | Changing timezone | Takes effect immediately. Existing draft groupings are not retroactively recalculated. |

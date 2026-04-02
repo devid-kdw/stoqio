@@ -125,7 +125,8 @@ Paginated list of all inventory transactions for this article, newest first.
 - **"Uredi"** — enables inline editing of all article master data fields on this screen.
 - **"Deaktiviraj"** — deactivates the article. Shows confirmation: `"Deaktivirati ovaj artikl? Više se neće prikazivati na popisu aktivnih artikala."` Deactivated articles remain in the database and their history is preserved.
 - Detail payload must include `has_pending_drafts` and `pending_draft_count` so the UI can render the open-drafts deactivation warning without an extra API call.
-- **"Ispis barkoda"** — generates and downloads a PDF barcode label for this article.
+- **"Preuzmi PDF barkoda"** (ADMIN only) — calls `GET /api/v1/articles/{id}/barcode`; downloads a PDF barcode label directly in the browser.
+- **"Ispis barkoda"** (ADMIN only) — calls `POST /api/v1/articles/{id}/barcode/print`; sends a ZPL label directly to the configured network label printer. Requires `label_printer_ip` to be configured in Settings. Shows an error toast if the printer is not reachable or not configured.
 
 ---
 
@@ -142,11 +143,27 @@ Paginated list of all inventory transactions for this article, newest first.
 
 ## 7. Barcode Printing
 
-- "Ispis barkoda" button on the article detail screen.
-- Generates a PDF barcode label for the article.
-- PDF is downloaded directly in the browser.
-- Barcode format is configurable in Settings (EAN-13 or Code128).
-- For articles with `has_batch = true`, the admin can also print batch-level barcodes from the batch table (one label per batch).
+Barcode actions are **ADMIN-only**. MANAGER role has no print actions.
+
+### 7.1 PDF download
+
+- **"Preuzmi PDF barkoda"** button on the article detail screen.
+- Calls `GET /api/v1/articles/{id}/barcode`.
+- Generates a PDF barcode label and downloads it directly in the browser.
+- Barcode format (EAN-13 or Code128) is set in Settings → Barcode.
+- For articles with `has_batch = true`, the admin can download batch-level PDF barcodes from the batch table (`GET /api/v1/batches/{id}/barcode`), one label per batch.
+
+### 7.2 Direct host printing
+
+- **"Ispis barkoda"** button triggers a direct network print (`POST /api/v1/articles/{id}/barcode/print`).
+- No PDF is generated. The ZPL label is sent directly to the configured network label printer over TCP.
+- Requires `label_printer_ip` (and optionally `label_printer_port`, `label_printer_model`) to be configured in Settings → Barcode.
+- If the printer is not configured or not reachable, the backend returns an error and the UI shows an error toast.
+- For batch-level direct printing: `POST /api/v1/batches/{id}/barcode/print`.
+
+### 7.3 Future: raw-label printer mode
+
+A future raw-label printer mode (e.g., browser-direct, without server mediation) is **not implemented**. Do not surface this as a current feature.
 
 ---
 
@@ -168,8 +185,10 @@ Paginated list of all inventory transactions for this article, newest first.
 | Edit article | PUT | `/api/v1/articles/{id}` |
 | Deactivate article | PATCH | `/api/v1/articles/{id}/deactivate` |
 | Get article transactions | GET | `/api/v1/articles/{id}/transactions?page=1&per_page=50` |
-| Print barcode | GET | `/api/v1/articles/{id}/barcode` |
-| Print batch barcode | GET | `/api/v1/batches/{id}/barcode` |
+| Download article barcode PDF | GET | `/api/v1/articles/{id}/barcode` |
+| Download batch barcode PDF | GET | `/api/v1/batches/{id}/barcode` |
+| Direct-print article label | POST | `/api/v1/articles/{id}/barcode/print` |
+| Direct-print batch label | POST | `/api/v1/batches/{id}/barcode/print` |
 
 ---
 

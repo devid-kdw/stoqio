@@ -37,7 +37,7 @@ Wave 1 ended with **Phase 13 Wave 1 - Article Statistics + Dark Mode**:
 - Wave folders are follow-up phases on top of the original numbered phases; they are not replacements for the original phase folders.
 - Handoff + decision log take precedence over older docs when there is proven drift.
 - The final Wave 1 closeout for the last phase is recorded in:
-- `handoff/phase-13-wave-01-article-stats-dark-mode/orchestrator.md`
+- `handoff/wave-01/phase-13-wave-01-article-stats-dark-mode/orchestrator.md`
 
 ## 5. Final verification snapshot
 

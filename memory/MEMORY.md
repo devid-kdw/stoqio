@@ -1,7 +1,7 @@
 # STOQIO Project Memory
 
 ## Project Overview
-WMS (Warehouse Management System) — Flask backend + React frontend, deployed on Raspberry Pi.
+WMS (Warehouse Management System) — Flask backend + React frontend. Designed as a local host/server application running inside the customer network (mini PC, local Linux server, local Windows server, or similar local hardware). Raspberry Pi was the original reference target and remains a valid deployment option.
 Single PostgreSQL database; tests use SQLite in-memory with StaticPool.
 
 ## Key Architecture
@@ -10,7 +10,7 @@ Single PostgreSQL database; tests use SQLite in-memory with StaticPool.
 - All API endpoints: `/api/v1/`
 - Standard paginated response: `{items, total, page, per_page}`
 - Standard error: `{error, message, details}`
-- Auth: Access token (15 min) + Refresh token, in-memory Zustand (not localStorage)
+- Auth: Access token (15 min, memory-only in Zustand) + Refresh token (persisted in browser localStorage under key `stoqio_refresh_token`). On app bootstrap, stored refresh token → silent POST /auth/refresh → GET /auth/me → hydrate Zustand before protected routes render. Bootstrap failure clears persisted token and redirects to /login. Access token must never be written to localStorage. See DEC-FE-006.
 
 ## Phases Completed
 - Phase 1–10: Setup, DB models, Auth, Setup wizard, Drafts, Approvals, Receiving, Orders, Warehouse, Identifier

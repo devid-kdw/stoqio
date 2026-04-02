@@ -119,7 +119,7 @@ Part 2 should inspect:
   - `stoqio_docs/08_SETUP_AND_GLOBALS.md:85-96` now says **no location is seeded** and the first ADMIN must create it via first-run setup.
   - `handoff/decisions/decision-log.md:85-86` locks in the newer rule that backend setup reserves `Location.id = 1` for the installation's single supported v1 location.
   - Older verification docs still tell operators/agents to run the obsolete helper:
-    - `handoff/phase-03-authentication/testing.md:51-53`
+    - `handoff/implementation/phase-03-authentication/testing.md:51-53`
 - **Assessment:** This is not a runtime feature bug in the app flow, but it is a real repo-level risk because a new reviewer/operator can follow stale docs and bootstrap the database into a state that bypasses or muddies the intended setup lifecycle.
 - **Recommendation:** Retire `backend/seed_location.py` entirely, or at minimum mark it clearly as obsolete and unsafe for current installs. Also scrub remaining handoff/testing instructions that still tell people to run it.
 
@@ -130,7 +130,7 @@ Part 2 should inspect:
 - **Evidence:**
   - `backend/seed.py:3-5, 48-60` documents and creates `admin / admin123`.
   - `README.md:17-25` includes `venv/bin/python seed.py` in the standard backend bootstrap path.
-  - `handoff/phase-03-authentication/testing.md:60-73` explicitly verifies login with `admin / admin123`.
+  - `handoff/implementation/phase-03-authentication/testing.md:60-73` explicitly verifies login with `admin / admin123`.
   - `backend/diagnostic.py:28-34` prints the password hash and whether the known default password matches.
 - **Assessment:** This is more of an operational-security concern than an application bug, but it is meaningful because the repo is explicitly described as deployment-oriented, not just toy-local development.
 - **Recommendation:** Keep a dev bootstrap path if needed, but move it to a safer pattern such as:
@@ -146,8 +146,8 @@ Part 2 should inspect:
   - `backend/app/services/inventory_service.py:93-111` derives shortage summaries entirely from the deterministic `client_event_id` prefix pattern.
   - `backend/app/services/inventory_service.py:607-626` creates shortage drafts with `client_event_id = f"inv-count-{count_id}-line-{line.id}"`.
   - The handoff record explicitly acknowledges this as a deliberate compromise rather than a first-class schema relation:
-    - `handoff/phase-08-wave-01-inventory-shortage-approval-status/backend.md`
-    - `handoff/phase-08-wave-01-inventory-shortage-approval-status/orchestrator.md`
+    - `handoff/wave-01/phase-08-wave-01-inventory-shortage-approval-status/backend.md`
+    - `handoff/wave-01/phase-08-wave-01-inventory-shortage-approval-status/orchestrator.md`
 - **Assessment:** Not an immediate defect because the repo intentionally chose this approach. Still, it is exactly the kind of hidden contract that causes later regressions when new agents optimize or “clean up” IDs without realizing downstream logic depends on the naming pattern.
 - **Recommendation:** Long-term, prefer an explicit relational link (for example `inventory_count_id` on shortage drafts or a dedicated linkage table). If you keep the current pattern for v1, at minimum centralize the format into a named helper/constant and add regression tests that fail loudly if the pattern changes.
 

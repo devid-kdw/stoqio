@@ -18,19 +18,32 @@ handoff/
   templates/
     agent-handoff-template.md
     orchestrator-handoff-template.md
-  phase-01-project-setup/
-    orchestrator.md
-    backend.md
-    frontend.md
-    testing.md
+  implementation/          ← original V1 phases (phase-01 through phase-16)
+    phase-01-project-setup/
+      orchestrator.md
+      backend.md
+      frontend.md
+      testing.md
+    phase-06-1-setup-screen-layout/
+    phase-06-2-auth-setup-layout-cleanup/
+    ...
+  wave-01/                 ← Wave 1 follow-up phases
+    phase-03-wave-01-article-aliases/
+    ...
+  wave-02/                 ← Wave 2 follow-up phases
+    phase-01-wave-02-draft-group-partial-status/
+    ...
+    phase-09-wave-02-docs-alignment-and-handoff-reorg/
 ```
 
-New phase folders must follow this pattern:
-- `phase-01-project-setup`
-- `phase-02-database-models`
-- `phase-03-authentication`
+Phase folders use lowercase kebab-case after the numeric prefix. Cycle folders group
+phases by their delivery wave:
 
-Use lowercase kebab-case after the numeric prefix.
+- `implementation/` — the original numbered V1 phases (phase-01 through phase-16), plus
+  any non-wave sub-phases such as `phase-06-1-*` and `phase-06-2-*`.
+- `wave-01/` — all Wave 1 follow-up phases (pattern: `phase-NN-wave-01-*`).
+- `wave-02/` — all Wave 2 follow-up phases (pattern: `phase-NN-wave-02-*`).
+- `decisions/` and `templates/` remain at the top level.
 
 ## Responsibilities
 

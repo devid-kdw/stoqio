@@ -1842,7 +1842,7 @@ export default function SettingsPage() {
               />
               <TextInput
                 label="Naziv printera (PDF)"
-                description="Naziv printera u OS-u Pi-ja za PDF ispis barkoda."
+                description="Naziv printera u OS-u hosta za PDF ispis barkoda."
                 value={barcodeForm.barcode_printer}
                 onChange={(event) =>
                   setBarcodeForm((current) => ({
