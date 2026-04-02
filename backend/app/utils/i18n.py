@@ -239,6 +239,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "de": "Sie können Ihr eigenes Konto nicht deaktivieren.",
         "hu": "Nem deaktiválhatja a saját fiókját.",
     },
+    "INVALID_STATUS": {
+        "hr": "Stavka se može izmijeniti samo kad je u statusu DRAFT.",
+        "en": "This line can only be modified when it is in DRAFT status.",
+        "de": "Diese Position kann nur im Status DRAFT geändert werden.",
+        "hu": "A sor csak DRAFT státuszban módosítható.",
+    },
     # ── VALIDATION_ERROR sub-keys ────────────────────────────────────────────
     # These are selected via details["_msg_key"] for dynamic VALIDATION_ERROR messages.
     "FIELD_REQUIRED": {

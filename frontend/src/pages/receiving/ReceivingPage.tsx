@@ -231,7 +231,7 @@ export default function ReceivingPage() {
       setLinkedOrderDetail(detail)
       setLinkedOrderWarning(
         summary.status !== 'OPEN' || detail.status !== 'OPEN'
-          ? 'This order is already closed.'
+          ? 'Ova narudžbenica je već zatvorena.'
           : null
       )
       setOrderSearchError(null)
@@ -401,7 +401,7 @@ export default function ReceivingPage() {
           setArticleLookupState('not-found')
           setAdhocErrors((prev) => ({
             ...prev,
-            article: 'Article not found.',
+            article: 'Artikl nije pronađen.',
             batchCode: undefined,
             expiryDate: undefined,
           }))
@@ -475,11 +475,11 @@ export default function ReceivingPage() {
     if (!deliveryNoteNumber) {
       headerErrors.deliveryNoteNumber = 'Broj dostavnice je obavezan.'
     } else if (deliveryNoteNumber.length > 100) {
-      headerErrors.deliveryNoteNumber = 'Broj dostavnice smije imati najvise 100 znakova.'
+      headerErrors.deliveryNoteNumber = 'Broj dostavnice smije imati najviše 100 znakova.'
     }
 
     if (linkedHeader.note.trim().length > 1000) {
-      headerErrors.note = 'Napomena smije imati najvise 1000 znakova.'
+      headerErrors.note = 'Napomena smije imati najviše 1000 znakova.'
     }
 
     let receivedLineCount = 0
@@ -501,17 +501,17 @@ export default function ReceivingPage() {
       const quantity = typeof state.quantity === 'string' ? parseFloat(state.quantity) : state.quantity
 
       if (state.quantity === '' || state.quantity === null || state.quantity === undefined) {
-        errors.quantity = 'Kolicina je obavezna.'
+        errors.quantity = 'Količina je obavezna.'
       } else if (Number.isNaN(quantity) || quantity <= 0) {
-        errors.quantity = 'Kolicina mora biti veca od 0.'
+        errors.quantity = 'Količina mora biti veća od 0.'
       }
 
       if (line.has_batch) {
         const batchCode = state.batchCode.trim()
         if (!batchCode) {
-          errors.batchCode = 'Batch code je obavezan.'
+          errors.batchCode = 'Kod šarže je obavezan.'
         } else if (!BATCH_CODE_PATTERN.test(batchCode)) {
-          errors.batchCode = 'Batch code ima neispravan format.'
+          errors.batchCode = 'Kod šarže ima neispravan format.'
         }
 
         if (!state.expiryDate) {
@@ -545,9 +545,9 @@ export default function ReceivingPage() {
     if (!articleQuery.trim()) {
       errors.article = 'Broj artikla je obavezan.'
     } else if (articleLookupState === 'not-found') {
-      errors.article = 'Article not found.'
+      errors.article = 'Artikl nije pronađen.'
     } else if (articleLookupState !== 'found' || !resolvedArticle) {
-      errors.article = 'Artikl jos nije razrijesen. Pricekaj dovrsetak pretrage.'
+      errors.article = 'Artikl još nije razriješen. Pričekaj dovršetak pretrage.'
     }
 
     const quantity = typeof adhocForm.quantity === 'string'
@@ -555,29 +555,29 @@ export default function ReceivingPage() {
       : adhocForm.quantity
 
     if (adhocForm.quantity === '' || adhocForm.quantity === null || adhocForm.quantity === undefined) {
-      errors.quantity = 'Kolicina je obavezna.'
+      errors.quantity = 'Količina je obavezna.'
     } else if (Number.isNaN(quantity) || quantity <= 0) {
-      errors.quantity = 'Kolicina mora biti veca od 0.'
+      errors.quantity = 'Količina mora biti veća od 0.'
     }
 
     if (!adhocForm.deliveryNoteNumber.trim()) {
       errors.deliveryNoteNumber = 'Broj dostavnice je obavezan.'
     } else if (adhocForm.deliveryNoteNumber.trim().length > 100) {
-      errors.deliveryNoteNumber = 'Broj dostavnice smije imati najvise 100 znakova.'
+      errors.deliveryNoteNumber = 'Broj dostavnice smije imati najviše 100 znakova.'
     }
 
     if (!adhocForm.note.trim()) {
-      errors.note = 'A note is required for ad-hoc receipts.'
+      errors.note = 'Napomena je obavezna za ad-hoc zaprimanja.'
     } else if (adhocForm.note.trim().length > 1000) {
-      errors.note = 'Napomena smije imati najvise 1000 znakova.'
+      errors.note = 'Napomena smije imati najviše 1000 znakova.'
     }
 
     if (resolvedArticle?.has_batch) {
       const batchCode = adhocForm.batchCode.trim()
       if (!batchCode) {
-        errors.batchCode = 'Batch code je obavezan.'
+        errors.batchCode = 'Kod šarže je obavezan.'
       } else if (!BATCH_CODE_PATTERN.test(batchCode)) {
-        errors.batchCode = 'Batch code ima neispravan format.'
+        errors.batchCode = 'Kod šarže ima neispravan format.'
       }
 
       if (!adhocForm.expiryDate) {
@@ -643,7 +643,7 @@ export default function ReceivingPage() {
 
     try {
       await runWithRetry(() => receivingApi.submit(payload))
-      showSuccessToast('Receipt recorded.')
+      showSuccessToast('Zaprimanje evidentirano.')
       await refreshCurrentOrder()
       await refreshHistoryAfterSuccess()
     } catch (error) {
@@ -743,7 +743,7 @@ export default function ReceivingPage() {
 
     try {
       await runWithRetry(() => receivingApi.submit(payload))
-      showSuccessToast('Receipt recorded.')
+      showSuccessToast('Zaprimanje evidentirano.')
       clearAdhocForm()
       await refreshHistoryAfterSuccess()
     } catch (error) {
@@ -1009,8 +1009,8 @@ export default function ReceivingPage() {
                                         <Table.Th>Preostalo</Table.Th>
                                         <Table.Th>UOM</Table.Th>
                                         <Table.Th>Zaprimljena količina</Table.Th>
-                                        <Table.Th>Batch code</Table.Th>
-                                        <Table.Th>Expiry date</Table.Th>
+                                        <Table.Th>Kod šarže</Table.Th>
+                                        <Table.Th>Datum isteka</Table.Th>
                                         <Table.Th>Preskoči</Table.Th>
                                       </Table.Tr>
                                     </Table.Thead>
@@ -1174,7 +1174,7 @@ export default function ReceivingPage() {
                                   loading={linkedSubmitting}
                                   disabled={linkedSubmitting || Boolean(linkedOrderWarning)}
                                 >
-                                  Confirm Receipt
+                                  Potvrdi zaprimanje
                                 </Button>
                               </Group>
                             </Stack>
@@ -1224,7 +1224,7 @@ export default function ReceivingPage() {
                             <Text fw={600}>{resolvedArticle.article_no}</Text>
                             <Text size="sm">{resolvedArticle.description}</Text>
                             <Text c="dimmed" size="sm">
-                              Batch tracking: {resolvedArticle.has_batch ? 'Da' : 'Ne'}
+                              Praćenje šarže: {resolvedArticle.has_batch ? 'Da' : 'Ne'}
                             </Text>
                           </Stack>
                         </Paper>
@@ -1275,7 +1275,7 @@ export default function ReceivingPage() {
                       {resolvedArticle?.has_batch ? (
                         <Group grow align="flex-start">
                           <TextInput
-                            label="Batch code"
+                            label="Kod šarže"
                             value={adhocForm.batchCode}
                             onChange={(event) => {
                               setAdhocForm((prev) => ({
@@ -1292,7 +1292,7 @@ export default function ReceivingPage() {
                             disabled={adhocSubmitting}
                           />
                           <TextInput
-                            label="Expiry date"
+                            label="Datum isteka"
                             type="date"
                             value={adhocForm.expiryDate}
                             onChange={(event) => {
@@ -1334,7 +1334,7 @@ export default function ReceivingPage() {
 
                       <Group justify="flex-end">
                         <Button type="submit" loading={adhocSubmitting} disabled={adhocSubmitting}>
-                          Confirm Receipt
+                          Potvrdi zaprimanje
                         </Button>
                       </Group>
                     </Stack>
@@ -1373,7 +1373,7 @@ export default function ReceivingPage() {
                         <Table.Th>Artikl</Table.Th>
                         <Table.Th>Količina</Table.Th>
                         <Table.Th>UOM</Table.Th>
-                        <Table.Th>Batch</Table.Th>
+                        <Table.Th>Šarža</Table.Th>
                         <Table.Th>Broj dostavnice</Table.Th>
                         <Table.Th>Zaprimio</Table.Th>
                       </Table.Tr>

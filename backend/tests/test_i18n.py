@@ -409,6 +409,31 @@ class TestLocalizedOrderLineErrors:
         assert data["message"] == expected_message
 
 
+class TestLocalizedInvalidStatus:
+    """INVALID_STATUS is returned when a draft line that is no longer DRAFT is edited/deleted."""
+
+    @pytest.mark.parametrize(
+        ("language", "expected_message"),
+        [
+            ("hr", "Stavka se može izmijeniti samo kad je u statusu DRAFT."),
+            ("en", "This line can only be modified when it is in DRAFT status."),
+            ("de", "Diese Position kann nur im Status DRAFT geändert werden."),
+            ("hu", "A sor csak DRAFT státuszban módosítható."),
+        ],
+    )
+    def test_invalid_status_is_localized(self, app, language: str, expected_message: str):
+        with app.test_request_context(headers={"Accept-Language": language}):
+            response, status = api_error(
+                "INVALID_STATUS",
+                "Only draft lines with status DRAFT can be edited.",
+                400,
+            )
+        assert status == 400
+        data = response.get_json()
+        assert data["error"] == "INVALID_STATUS"
+        assert data["message"] == expected_message
+
+
 class TestLocalizedPrinterErrors:
     @pytest.mark.parametrize(
         ("error_code", "details", "language", "expected_message"),

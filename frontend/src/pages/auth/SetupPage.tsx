@@ -140,13 +140,13 @@ export default function SetupPage() {
     const trimmedName = name.trim()
 
     if (!trimmedName) {
-      nextErrors.name = 'Location name is required.'
+      nextErrors.name = 'Naziv lokacije je obavezan.'
     } else if (trimmedName.length > 100) {
-      nextErrors.name = 'Location name must be 100 characters or fewer.'
+      nextErrors.name = 'Naziv lokacije smije imati najviše 100 znakova.'
     }
 
     if (!timezone) {
-      nextErrors.timezone = 'Timezone is required.'
+      nextErrors.timezone = 'Vremenska zona je obavezna.'
     }
 
     return nextErrors
@@ -182,7 +182,7 @@ export default function SetupPage() {
       }
 
       setSetupStatus(false)
-      showSuccessToast('Initial setup completed successfully.')
+      showSuccessToast('Inicijalno postavljanje uspješno dovršeno.')
       navigate('/approvals', { replace: true })
     } catch (error) {
       if (isRetryableSetupRequestError(error)) {
@@ -191,8 +191,8 @@ export default function SetupPage() {
       }
 
       const message = axios.isAxiosError(error)
-        ? error.response?.data?.message || 'Setup failed. Please try again.'
-        : 'Setup failed. Please try again.'
+        ? error.response?.data?.message || 'Postavljanje nije uspjelo. Pokušajte ponovo.'
+        : 'Postavljanje nije uspjelo. Pokušajte ponovo.'
 
       if (axios.isAxiosError(error)) {
         const field = error.response?.data?.details?.field
@@ -246,7 +246,7 @@ export default function SetupPage() {
             <Stack gap="md">
               <TextInput
                 label="Naziv lokacije"
-                placeholder="npr. Skladiste Tvornica d.o.o."
+                placeholder="npr. Skladište Tvornica d.o.o."
                 required
                 maxLength={100}
                 value={name}

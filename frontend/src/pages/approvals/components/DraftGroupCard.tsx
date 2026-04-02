@@ -112,8 +112,8 @@ export default function DraftGroupCard({
         onFatalError?.()
       } else {
         const message = axios.isAxiosError(err)
-          ? err.response?.data?.message || 'Ucitavanje detalja drafta nije uspjelo.'
-          : 'Ucitavanje detalja drafta nije uspjelo.'
+          ? err.response?.data?.message || 'Učitavanje detalja drafta nije uspjelo.'
+          : 'Učitavanje detalja drafta nije uspjelo.'
         showErrorToast(message)
       }
       return null
@@ -151,7 +151,7 @@ export default function DraftGroupCard({
     if (!editingRow) return
     const qty = typeof editingRow.qty === 'string' ? parseFloat(editingRow.qty) : editingRow.qty
     if (isNaN(qty) || qty <= 0) {
-      showErrorToast('Kolicina mora biti veca od nule.')
+      showErrorToast('Količina mora biti veća od nule.')
       return
     }
 
@@ -171,8 +171,8 @@ export default function DraftGroupCard({
         return
       }
       const msg = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Azuriranje kolicine nije uspjelo.'
-        : 'Azuriranje kolicine nije uspjelo.'
+        ? err.response?.data?.message || 'Ažuriranje količine nije uspjelo.'
+        : 'Ažuriranje količine nije uspjelo.'
       showErrorToast(msg)
     } finally {
       setIsSavingEdit(false)
@@ -526,7 +526,7 @@ export default function DraftGroupCard({
               </Box>
             </Stack>
           ) : (
-            <Text ta="center" c="dimmed">Nema dostupnog sadrzaja.</Text>
+            <Text ta="center" c="dimmed">Nema dostupnog sadržaja.</Text>
           )}
         </Box>
       </Collapse>

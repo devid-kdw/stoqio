@@ -221,7 +221,7 @@ export default function DraftEntryPage() {
         if (result.has_batch && (!result.batches || result.batches.length === 0)) {
           setFormErrors((prev) => ({
             ...prev,
-            batch: 'No batches available for this article.',
+            batch: 'Nema dostupnih šarži za ovaj artikl.',
           }))
         }
       } catch (err) {
@@ -240,7 +240,7 @@ export default function DraftEntryPage() {
         setBatchId(null)
         setFormErrors((prev) => ({
           ...prev,
-          articleNo: 'Article not found.',
+          articleNo: 'Artikl nije pronađen.',
           batch: undefined,
         }))
       }
@@ -282,26 +282,26 @@ export default function DraftEntryPage() {
 
     if (!articleNo.trim() || articleLookupState !== 'found' || !resolvedArticle) {
       if (!articleNo.trim()) {
-        errors.articleNo = 'Article number is required.'
+        errors.articleNo = 'Broj artikla je obavezan.'
       } else if (articleLookupState === 'not-found') {
-        errors.articleNo = 'Article not found.'
+        errors.articleNo = 'Artikl nije pronađen.'
       } else if (articleLookupState !== 'found') {
-        errors.articleNo = 'Article not resolved. Please wait for lookup.'
+        errors.articleNo = 'Artikl još nije razriješen. Pričekaj dovršetak pretrage.'
       }
     }
 
     const qty = typeof quantity === 'string' ? parseFloat(quantity) : quantity
     if (quantity === '' || quantity === null || quantity === undefined) {
-      errors.quantity = 'Quantity is required.'
+      errors.quantity = 'Količina je obavezna.'
     } else if (isNaN(qty) || qty <= 0) {
-      errors.quantity = 'Quantity must be greater than 0.'
+      errors.quantity = 'Količina mora biti veća od 0.'
     }
 
     if (resolvedArticle?.has_batch) {
       if (!resolvedArticle.batches || resolvedArticle.batches.length === 0) {
-        errors.batch = 'No batches available for this article.'
+        errors.batch = 'Nema dostupnih šarži za ovaj artikl.'
       } else if (!batchId) {
-        errors.batch = 'Batch is required.'
+        errors.batch = 'Šarža je obavezna.'
       }
     }
 
@@ -383,8 +383,8 @@ export default function DraftEntryPage() {
         return
       }
       const message = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to add entry. Please try again.'
-        : 'Failed to add entry. Please try again.'
+        ? err.response?.data?.message || 'Dodavanje unosa nije uspjelo. Pokušajte ponovo.'
+        : 'Dodavanje unosa nije uspjelo. Pokušajte ponovo.'
       showErrorToast(message)
     } finally {
       setSubmitting(false)
@@ -428,8 +428,8 @@ export default function DraftEntryPage() {
       }
 
       const message = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to update draft note.'
-        : 'Failed to update draft note.'
+        ? err.response?.data?.message || 'Ažuriranje napomene nije uspjelo.'
+        : 'Ažuriranje napomene nije uspjelo.'
       showErrorToast(message)
     } finally {
       setSavingDraftNote(false)
@@ -458,7 +458,7 @@ export default function DraftEntryPage() {
     const qty =
       typeof action.editQty === 'string' ? parseFloat(action.editQty) : action.editQty
     if (isNaN(qty) || qty <= 0) {
-      showErrorToast('Quantity must be greater than 0.')
+      showErrorToast('Količina mora biti veća od 0.')
       return
     }
 
@@ -493,8 +493,8 @@ export default function DraftEntryPage() {
         return
       }
       const message = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to update entry.'
-        : 'Failed to update entry.'
+        ? err.response?.data?.message || 'Ažuriranje unosa nije uspjelo.'
+        : 'Ažuriranje unosa nije uspjelo.'
       showErrorToast(message)
       setRowActions((prev) => ({
         ...prev,
@@ -556,8 +556,8 @@ export default function DraftEntryPage() {
         return
       }
       const message = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Failed to delete entry.'
-        : 'Failed to delete entry.'
+        ? err.response?.data?.message || 'Brisanje unosa nije uspjelo.'
+        : 'Brisanje unosa nije uspjelo.'
       showErrorToast(message)
       setRowActions((prev) => ({
         ...prev,
