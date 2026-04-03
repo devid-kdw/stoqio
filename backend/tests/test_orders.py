@@ -392,6 +392,64 @@ class TestOrdersContracts:
         assert receiving_body["lines"][0]["article_no"] == orders_data["linked_article_no"]
         assert receiving_body["lines"][0]["remaining_qty"] == 6.0
 
+    def test_q_mode_exact_match_and_list_mode_remain_separate_contracts(
+        self, client, app, orders_data
+    ):
+        _create_order(
+            app,
+            supplier_id=orders_data["supplier_id"],
+            created_by_id=orders_data["admin_id"],
+            order_number="ORD-CODIFY-1",
+            status=OrderStatus.OPEN,
+            lines=[
+                {
+                    "article_id": orders_data["plain_article_id"],
+                    "ordered_qty": 1,
+                    "uom": orders_data["piece_uom"],
+                    "unit_price": 1,
+                }
+            ],
+        )
+        _create_order(
+            app,
+            supplier_id=orders_data["second_supplier_id"],
+            created_by_id=orders_data["admin_id"],
+            order_number="ORD-CODIFY-2",
+            status=OrderStatus.CLOSED,
+            lines=[
+                {
+                    "article_id": orders_data["plain_article_id"],
+                    "ordered_qty": 1,
+                    "uom": orders_data["piece_uom"],
+                    "unit_price": 1,
+                    "status": OrderLineStatus.CLOSED,
+                }
+            ],
+        )
+
+        token = _login(client, orders_data["manager_username"])
+
+        exact_match = client.get(
+            "/api/v1/orders?q=ORD-CODIFY-1&page=9&per_page=3&status=CLOSED",
+            headers=_auth_header(token),
+        )
+        assert exact_match.status_code == 200
+        exact_body = exact_match.get_json()
+        assert exact_body["order_number"] == "ORD-CODIFY-1"
+        assert "items" not in exact_body
+
+        list_mode = client.get(
+            "/api/v1/orders?page=1&per_page=50&status=OPEN",
+            headers=_auth_header(token),
+        )
+        assert list_mode.status_code == 200
+        list_body = list_mode.get_json()
+        assert list_body["page"] == 1
+        assert list_body["per_page"] == 50
+        assert isinstance(list_body["items"], list)
+        assert list_body["items"]
+        assert all(item["status"] == "OPEN" for item in list_body["items"])
+
     def test_lookup_not_found_and_invalid_view_are_reported(
         self, client, app, orders_data
     ):

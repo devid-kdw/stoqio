@@ -54,9 +54,12 @@ _VALID_ORDER_STATUSES = {"OPEN", "CLOSED"}
 @require_role("ADMIN", "MANAGER")
 def get_orders():
     try:
+        # q-mode is the Receiving compatibility path; keep it separate from
+        # the paginated Orders list contract below.
         if "q" in request.args:
             result = order_service.find_order_by_number(request.args.get("q"))
         else:
+            # Only list mode uses pagination and status filtering.
             page = parse_positive_int(request.args.get("page"), field_name="page", default=1)
             per_page = parse_positive_int(
                 request.args.get("per_page"),

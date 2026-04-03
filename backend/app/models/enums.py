@@ -15,6 +15,7 @@ class DraftType(str, enum.Enum):
 
 
 class DraftSource(str, enum.Enum):
+    """Lowercase wire contract: Draft Entry persists and serializes these exact values."""
     scale = "scale"
     manual = "manual"
 

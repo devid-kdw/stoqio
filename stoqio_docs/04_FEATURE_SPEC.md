@@ -29,6 +29,7 @@
 **Pravila**:
 - Ništa ne mijenja stock dok admin ne odobri
 - Source može biti: `scale` (vaga, default) ili `manual` (ručni unos)
+- Wire/API vrijednosti za source ostaju lowercase: `scale` i `manual`.
 - Vaga je default na prvom učitavanju ekrana
 - `client_event_id` se generira interno (hidden) — osigurava idempotency
 
@@ -92,6 +93,7 @@
 - Admin može editirati/brisati neispunjene linije
 - Status narudžbe recalculate se odmah nakon svake promjene linije
 - Receiving može biti linked na order line ili ad-hoc
+- `GET /api/v1/orders?q=...` ostaje exact-match compatibility mode za Receiving, a Orders UI koristi paginirani list mode.
 
 ---
 

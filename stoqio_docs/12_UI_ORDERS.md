@@ -185,7 +185,7 @@ Order status is recalculated automatically after every change to a line.
 | Remove order line | DELETE | `/api/v1/orders/{id}/lines/{line_id}` |
 | Generate PDF | GET | `/api/v1/orders/{id}/pdf` |
 
-> Compatibility note: `GET /api/v1/orders?q={order_number}` remains reserved for the Receiving module's exact-match lookup flow. The Orders module itself uses the paginated list mode and the full-detail mode documented here.
+> Compatibility note: `GET /api/v1/orders?q={order_number}` is intentionally reserved for the Receiving module's exact-match lookup flow. The Orders module itself uses the paginated list mode (`page` / `per_page`) and the full-detail mode documented here.
 
 ---
 

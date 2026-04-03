@@ -128,6 +128,7 @@ DRAFT → APPROVED
 ### 5.3 Draft tipovi
 - `OUTBOUND` — izlaz materijala (operator unosi)
 - `INVENTORY_SHORTAGE` — manjak otkriven inventurom
+- Draft Entry wire/API values za source su lowercase: `scale` i `manual`.
 
 ### 5.4 Hardware identity polja (za buduću integraciju)
 Svaki draft pamti izvor:
@@ -170,6 +171,8 @@ Auto-generirani: `ORD-0001`, `ORD-0002`, ...
 Može biti i manual (mora biti jedinstven)
 Auto-generirani `ORD-####` niz koristi persistentni counter po instalaciji.
 Ako admin ručno spremi broj koji također odgovara `ORD-####` formatu, sljedeći auto-generirani broj nastavlja iznad tog suffixa.
+- `GET /api/v1/orders?q={order_number}` je namjerni Receiving compatibility lookup i vraća jedan exact-match rezultat.
+- `GET /api/v1/orders?page=...&per_page=...` je zaseban paginirani Orders list contract za Orders UI.
 
 ### 7.3 Order line statusi
 `OPEN | CLOSED | REMOVED`

@@ -435,6 +435,8 @@ def create_draft():
         return _error("VALIDATION_ERROR", "source is required.", 400)
 
     # validate source enum
+    # DraftSource intentionally uses lowercase wire values ('scale' / 'manual');
+    # keep the validation aligned with that accepted API contract.
     try:
         source_enum = DraftSource(source_str)
     except ValueError:

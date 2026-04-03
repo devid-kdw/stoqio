@@ -227,6 +227,8 @@ Displays all draft lines for today's draft, newest first.
 }
 ```
 
+> `source` je namjerni lowercase wire contract: prihvaćene vrijednosti su `scale` i `manual`.
+
 ### PATCH `/api/v1/drafts/group` — Update today's draft note
 
 **Request:**

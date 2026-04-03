@@ -312,6 +312,27 @@ class TestCreateDraft:
         assert body["created_by"] == "draft_operator"
         assert "note" not in body
 
+    def test_source_contract_round_trips_lowercase_wire_values(
+        self, client, draft_data
+    ):
+        token = _login(client, "draft_operator")
+
+        for source in (DraftSource.scale, DraftSource.manual):
+            resp = client.post(
+                "/api/v1/drafts",
+                json={
+                    "article_id": draft_data["article"].id,
+                    "quantity": 1.0,
+                    "uom": draft_data["uom"].code,
+                    "source": source.value,
+                    "client_event_id": f"phase10-{source.value}-{uuid.uuid4()}",
+                },
+                headers=_auth_header(token),
+            )
+            assert resp.status_code == 201
+            body = resp.get_json()
+            assert body["source"] == source.value
+
     def test_idempotency(self, client, draft_data):
         """Same client_event_id returns existing record with 200."""
         token = _login(client, "draft_operator")
@@ -1677,4 +1698,3 @@ class TestPayloadStabilityLock:
             assert line["created_at"] is not None
             assert "article_no" in line
             assert "description" in line
-

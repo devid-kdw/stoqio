@@ -385,17 +385,38 @@ Servis pokreće Flask (Gunicorn) koji servira i API i React build s jednog porta
 ```bash
 # Na serveru (ili preko SSH):
 cd /home/wms/wms
-git pull origin main
 ./scripts/deploy.sh
 ```
 
 `deploy.sh` radi:
-1. `git pull`
-2. `pip install -r backend/requirements.txt`
-3. `npm ci && npm run build` (u frontend/)
-4. Kopira build u `backend/static/`
-5. `alembic upgrade head` (migracije)
-6. `sudo systemctl restart wms`
+1. `git pull --ff-only origin main`
+2. Provjera backend Python interpreter-a, default `backend/venv/bin/python`
+3. `"$BACKEND_PYTHON" -m pip install -r backend/requirements.txt`
+4. `scripts/build.sh` koji radi `npm ci --include=dev --no-audit --no-fund` i zatim frontend build
+5. Kopira build u `backend/static/`
+6. `"$BACKEND_PYTHON" -m alembic upgrade head` (migracije)
+7. `sudo systemctl restart wms`
+
+`GIT_REMOTE` i `GIT_BRANCH` se mogu overrideati po potrebi, a backend interpreter očekivanje se može prilagoditi preko:
+
+```bash
+GIT_REMOTE=origin
+GIT_BRANCH=main
+BACKEND_VENV_DIR=/path/to/backend/venv
+# ili
+BACKEND_PYTHON=/path/to/python
+```
+
+`scripts/build.sh` i `scripts/deploy.sh` sada failaju brzo s jasnim porukama kada nedostaju `npm`, `frontend/package-lock.json`, ili očekivani backend interpreter.
+
+### Sigurni dijagnostički helper
+
+```bash
+cd /home/wms/wms/backend
+venv/bin/python diagnostic.py
+```
+
+`backend/diagnostic.py` je read-only operator helper za sigurni status. Prikazuje samo visoko razinu informacija o konfiguraciji i bootstrap stanju. Ne ispisuje password hash, password check rezultat ni druge credential-sensitive podatke.
 
 ### Održavanje `revoked_token` retencije
 
