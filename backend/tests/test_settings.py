@@ -220,6 +220,26 @@ def settings_data(app):
             )
             _db.session.add(target)
 
+        staff = User.query.filter_by(username="settings_staff").first()
+        if staff is None:
+            staff = User(
+                username="settings_staff",
+                password_hash=generate_password_hash("pass", method="pbkdf2:sha256"),
+                role=UserRole.WAREHOUSE_STAFF,
+                is_active=True,
+            )
+            _db.session.add(staff)
+
+        operator = User.query.filter_by(username="settings_operator").first()
+        if operator is None:
+            operator = User(
+                username="settings_operator",
+                password_hash=generate_password_hash("pass", method="pbkdf2:sha256"),
+                role=UserRole.OPERATOR,
+                is_active=True,
+            )
+            _db.session.add(operator)
+
         active_supplier = Supplier.query.filter_by(internal_code="SET-SUP-ACTIVE").first()
         if active_supplier is None:
             active_supplier = Supplier(
@@ -312,6 +332,10 @@ def settings_data(app):
             "manager_id": manager.id,
             "target_username": target.username,
             "target_id": target.id,
+            "staff_username": staff.username,
+            "staff_id": staff.id,
+            "operator_username": operator.username,
+            "operator_id": operator.id,
             "piece_uom_code": piece_uom.code,
             "weight_uom_code": weight_uom.code,
             "personal_category_id": personal_category.id,
@@ -355,6 +379,8 @@ def reset_settings_state(app, settings_data):
                 "settings_admin": UserRole.ADMIN,
                 "settings_manager": UserRole.MANAGER,
                 "settings_target": UserRole.VIEWER,
+                "settings_staff": UserRole.WAREHOUSE_STAFF,
+                "settings_operator": UserRole.OPERATOR,
             }
             for username, role in seeded_users.items():
                 user = User.query.filter_by(username=username).first()
@@ -1072,6 +1098,81 @@ def test_shell_role_display_names_match_defaults(client, settings_data):
     assert role_map["WAREHOUSE_STAFF"] == "Administracija"
     assert role_map["VIEWER"] == "Kontrola"
     assert role_map["OPERATOR"] == "Operater"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/settings/shell — W3-003 auth-consistency additions
+# ---------------------------------------------------------------------------
+
+
+def test_shell_endpoint_accessible_to_warehouse_staff(client, settings_data):
+    token = _login(client, settings_data["staff_username"])
+    response = client.get("/api/v1/settings/shell", headers=_auth(token))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "location_name" in payload
+    assert "default_language" in payload
+    assert "role_display_names" in payload
+
+
+def test_shell_endpoint_accessible_to_operator(client, settings_data):
+    token = _login(client, settings_data["operator_username"])
+    response = client.get("/api/v1/settings/shell", headers=_auth(token))
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "location_name" in payload
+    assert "default_language" in payload
+    assert "role_display_names" in payload
+
+
+def test_shell_endpoint_inactive_user_rejected(client, settings_data):
+    """A valid token for a user that has since been deactivated must be rejected."""
+    # Get a valid token while the user is still active.
+    token = _login(client, settings_data["staff_username"])
+
+    # Deactivate the user directly in the shared session so the change is
+    # committed and visible to subsequent request handlers.
+    user = User.query.filter_by(username=settings_data["staff_username"]).first()
+    user.is_active = False
+    _db.session.commit()
+
+    try:
+        response = client.get("/api/v1/settings/shell", headers=_auth(token))
+        assert response.status_code == 401
+    finally:
+        user = User.query.filter_by(username=settings_data["staff_username"]).first()
+        user.is_active = True
+        _db.session.commit()
+
+
+def test_shell_endpoint_nonexistent_user_rejected(client, settings_data):
+    """A token for a user row that no longer exists must be rejected."""
+    # Create a temporary user and obtain a token.
+    ghost = User.query.filter_by(username="settings_new_ghost").first()
+    if ghost is None:
+        ghost = User(
+            username="settings_new_ghost",
+            password_hash=generate_password_hash("pass", method="pbkdf2:sha256"),
+            role=UserRole.VIEWER,
+            is_active=True,
+        )
+        _db.session.add(ghost)
+        _db.session.commit()
+
+    login_resp = _raw_login(client, "settings_new_ghost", "pass")
+    assert login_resp.status_code == 200, login_resp.get_json()
+    access_token = login_resp.get_json()["access_token"]
+
+    # Delete the user so the row no longer exists.
+    ghost = User.query.filter_by(username="settings_new_ghost").first()
+    if ghost:
+        _db.session.delete(ghost)
+        _db.session.commit()
+
+    response = client.get("/api/v1/settings/shell", headers=_auth(access_token))
+    assert response.status_code == 401
 
 
 def test_admin_cannot_deactivate_self(client, settings_data):
