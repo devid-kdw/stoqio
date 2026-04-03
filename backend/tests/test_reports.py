@@ -1470,3 +1470,54 @@ def test_personal_issuances_statistics_return_current_year_seeded_row(client, re
     assert seeded_row["remaining"] == 6.0
     assert seeded_row["uom"] == "rep13_kom"
     assert seeded_row["quota_uom"] == "rep13_kom"
+
+
+def test_stock_overview_blank_reorder_only_defaults_to_false(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}&reorder_only=",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["total"] == 3
+
+
+def test_stock_overview_invalid_reorder_only_returns_validation_error(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/stock-overview"
+        f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_GENERAL_CATEGORY}&reorder_only=invalid",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+
+def test_transaction_log_blank_pagination_defaults_to_first_page(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/transactions"
+        f"?article_id={reports_data['article_yellow_id']}&page=&per_page=",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["page"] == 1
+    assert payload["per_page"] == 50
+
+
+def test_transaction_log_invalid_pagination_returns_validation_error(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/transactions"
+        f"?article_id={reports_data['article_yellow_id']}&page=abc",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"
+    
+    response = client.get(
+        "/api/v1/reports/transactions"
+        f"?article_id={reports_data['article_yellow_id']}&per_page=-5",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"

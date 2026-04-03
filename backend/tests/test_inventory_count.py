@@ -613,6 +613,21 @@ def test_update_all_lines(client, inv_data, app):
 
 def test_complete_count(client, inv_data, app):
     headers = _admin_headers(client)
+
+    with app.app_context():
+        # Seed an existing IZL group to prove the shortage flow uses the shared sequence
+        DraftGroup.query.filter(DraftGroup.group_number.like("IZL-%")).delete()
+        _db.session.commit()
+        seeded_group = DraftGroup(
+            group_number="IZL-0100",
+            status=DraftGroupStatus.PENDING,
+            group_type=DraftGroupType.DAILY_OUTBOUND,
+            operational_date=date.today(),
+            created_by=inv_data["admin"].id,
+        )
+        _db.session.add(seeded_group)
+        _db.session.commit()
+
     active = client.get("/api/v1/inventory/active", headers=headers).get_json()
     count_id = active["id"]
 
@@ -670,7 +685,7 @@ def test_complete_count(client, inv_data, app):
 
         group = _db.session.get(DraftGroup, draft.draft_group_id)
         assert group is not None
-        assert group.group_number.startswith("IZL-")
+        assert group.group_number == "IZL-0101"
         assert group.group_type == DraftGroupType.INVENTORY_SHORTAGE
 
         # Resolutions on lines

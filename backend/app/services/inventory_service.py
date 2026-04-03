@@ -20,7 +20,6 @@ Batch snapshot rule:
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -47,6 +46,7 @@ from app.models.surplus import Surplus
 from app.models.transaction import Transaction
 from app.models.uom_catalog import UomCatalog
 from app.models.user import User
+from app.utils.draft_numbering import next_izl_group_number
 
 
 # ---------------------------------------------------------------------------
@@ -73,21 +73,6 @@ class InventoryServiceError(Exception):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-_GROUP_NUMBER_RE = re.compile(r"^IZL-(\d+)$")
-
-
-def _next_group_number() -> str:
-    """Return the next IZL-#### number based on the max existing suffix."""
-    max_suffix = 0
-    rows = db.session.query(DraftGroup.group_number).all()
-    for (gn,) in rows:
-        if not gn:
-            continue
-        m = _GROUP_NUMBER_RE.match(gn)
-        if m:
-            max_suffix = max(max_suffix, int(m.group(1)))
-    return f"IZL-{max_suffix + 1:04d}"
 
 
 def _get_shortage_drafts_summary(count_id: int) -> dict:
@@ -561,7 +546,7 @@ def complete_count(count_id: int, current_user: User) -> dict:
     draft_group: DraftGroup | None = None
     if shortage_lines and location:
         draft_group = DraftGroup(
-            group_number=_next_group_number(),
+            group_number=next_izl_group_number(),
             status=DraftGroupStatus.PENDING,
             group_type=DraftGroupType.INVENTORY_SHORTAGE,
             operational_date=_get_operational_date(location, at=now),

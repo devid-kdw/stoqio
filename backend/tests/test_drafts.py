@@ -543,6 +543,46 @@ class TestCreateDraft:
             assert today_group is not None
             assert today_group.group_number == "IZL-0002"
 
+    def test_group_number_ignores_non_matching_formats_when_computing_max(self, client, draft_data, app):
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            _db.session.commit()
+
+            legacy_group = DraftGroup(
+                group_number="IZL-LEGACY-0099",
+                status=DraftGroupStatus.PENDING,
+                operational_date=date(2026, 1, 1),
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(legacy_group)
+            _db.session.commit()
+
+        token = _login(client, "draft_operator")
+        resp = client.post(
+            "/api/v1/drafts",
+            json={
+                "article_id": draft_data["article"].id,
+                "quantity": 1,
+                "uom": draft_data["uom"].code,
+                "source": "manual",
+                "client_event_id": str(uuid.uuid4()),
+            },
+            headers=_auth_header(token),
+        )
+
+        assert resp.status_code == 201
+
+        with app.app_context():
+            today_group = (
+                DraftGroup.query
+                .filter(DraftGroup.operational_date != date(2026, 1, 1))
+                .order_by(DraftGroup.id.desc())
+                .first()
+            )
+            assert today_group is not None
+            assert today_group.group_number == "IZL-0001"
+
     def test_closed_same_day_group_is_not_reused_for_new_daily_outbound(
         self,
         client,

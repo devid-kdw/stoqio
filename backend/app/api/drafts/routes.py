@@ -21,7 +21,6 @@ Query strategy:
   with no list-iteration; the N+1 risk does not apply there.
 """
 
-import re
 from datetime import datetime, timezone
 from time import sleep
 
@@ -47,6 +46,7 @@ from app.models.location import Location
 from app.models.uom_catalog import UomCatalog
 from app.models.user import User
 from app.utils.auth import get_current_user, require_role
+from app.utils.draft_numbering import next_izl_group_number
 from app.utils.validators import validate_note, validate_quantity
 from app.utils.errors import api_error as _error
 
@@ -54,7 +54,6 @@ drafts_bp = Blueprint("drafts", __name__)
 
 # v1: single location, id = 1
 _V1_LOCATION_ID = 1
-_DRAFT_GROUP_NUMBER_RE = re.compile(r"^IZL-(\d+)$")
 
 
 # ---------------------------------------------------------------------------
@@ -80,20 +79,6 @@ def _get_operational_today():
     return datetime.now(tz).date()
 
 
-def _next_draft_group_number() -> str:
-    """Return the next `IZL-####` number based on the max existing suffix."""
-    max_suffix = 0
-    rows = db.session.query(DraftGroup.group_number).all()
-    for (group_number,) in rows:
-        if not group_number:
-            continue
-        match = _DRAFT_GROUP_NUMBER_RE.match(group_number)
-        if not match:
-            continue
-        max_suffix = max(max_suffix, int(match.group(1)))
-    return f"IZL-{max_suffix + 1:04d}"
-
-
 def _get_or_create_draft_group(user_id: int, op_date):
     """Find today's pending daily-outbound DraftGroup or create a new one.
 
@@ -112,7 +97,7 @@ def _get_or_create_draft_group(user_id: int, op_date):
         return group
 
     group = DraftGroup(
-        group_number=_next_draft_group_number(),
+        group_number=next_izl_group_number(),
         status=DraftGroupStatus.PENDING,
         group_type=DraftGroupType.DAILY_OUTBOUND,
         operational_date=op_date,

@@ -31,6 +31,11 @@ from app.models.supplier import Supplier
 from app.models.surplus import Surplus
 from app.models.transaction import Transaction
 from app.services import article_service, employee_service
+from app.utils.validators import (
+    QueryValidationError,
+    parse_bool_query,
+    parse_positive_int,
+)
 
 _QTY_QUANT = Decimal("0.001")
 _MONTHS_QUANT = Decimal("0.01")
@@ -133,41 +138,39 @@ def _parse_positive_int(
     field_name: str,
     default: int,
 ) -> int:
-    raw_value = default if value in (None, "") else value
+    """Service-layer adapter: normalise '' → None, delegate to shared validator.
+
+    Preserves blank-string/default behavior and converts QueryValidationError
+    to ReportServiceError so the route layer remains unaffected.
+    """
+    normalized = None if value == "" else value
     try:
-        parsed = int(raw_value)
-    except (TypeError, ValueError):
+        return parse_positive_int(normalized, field_name=field_name, default=default)
+    except QueryValidationError as exc:
         raise ReportServiceError(
             "VALIDATION_ERROR",
-            f"{field_name} must be a valid integer.",
+            exc.message,
             400,
             {"field": field_name, "value": value},
-        ) from None
-    if parsed <= 0:
-        raise ReportServiceError(
-            "VALIDATION_ERROR",
-            f"{field_name} must be greater than zero.",
-            400,
-            {"field": field_name, "value": value},
-        )
-    return parsed
+        ) from exc
 
 
 def _parse_bool(value: Any, *, field_name: str, default: bool = False) -> bool:
-    if value in (None, ""):
-        return default
+    """Service-layer adapter: normalise '' → None, delegate to shared validator.
 
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1"}:
-        return True
-    if normalized in {"false", "0"}:
-        return False
-    raise ReportServiceError(
-        "VALIDATION_ERROR",
-        f"{field_name} must be 'true' or 'false'.",
-        400,
-        {"field": field_name, "value": value},
-    )
+    Preserves blank-string/default behavior and converts QueryValidationError
+    to ReportServiceError so the route layer remains unaffected.
+    """
+    normalized = None if value == "" else value
+    try:
+        return parse_bool_query(normalized, field_name=field_name, default=default)
+    except QueryValidationError as exc:
+        raise ReportServiceError(
+            "VALIDATION_ERROR",
+            exc.message,
+            400,
+            {"field": field_name, "value": value},
+        ) from exc
 
 
 def _parse_export_format(value: Any) -> str:
