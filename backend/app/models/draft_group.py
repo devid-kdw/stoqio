@@ -49,4 +49,4 @@ class DraftGroup(db.Model):
 
     # Relationships
     creator = db.relationship("User", backref="draft_groups", lazy="select")
-    drafts = db.relationship("Draft", backref="draft_group", lazy="dynamic")
+    drafts = db.relationship("Draft", backref="draft_group", lazy="select")

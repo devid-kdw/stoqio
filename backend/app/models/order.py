@@ -37,5 +37,5 @@ class Order(db.Model):
     supplier = db.relationship("Supplier", backref="orders", lazy="select")
     creator = db.relationship("User", backref="orders", lazy="select")
     lines = db.relationship(
-        "OrderLine", backref="order", lazy="dynamic", cascade="all, delete-orphan"
+        "OrderLine", backref="order", lazy="select", cascade="all, delete-orphan"
     )

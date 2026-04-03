@@ -328,12 +328,19 @@ def list_counts(page: int, per_page: int) -> dict:
 
     items = []
     for count in counts:
-        total_lines = count.lines.count()
+        total_lines = (
+            db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .count()
+        )
         discrepancies = (
-            count.lines.filter(
+            db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .filter(
                 InventoryCountLine.counted_quantity.isnot(None),
                 InventoryCountLine.difference != 0,
-            ).count()
+            )
+            .count()
         )
         starter = count.starter
         items.append(
@@ -377,12 +384,23 @@ def get_active_count() -> dict | None:
     if count is None:
         return None
 
-    total_lines = count.lines.count()
+    total_lines = (
+        db.session.query(InventoryCountLine)
+        .filter_by(inventory_count_id=count.id)
+        .count()
+    )
     counted_lines = (
-        count.lines.filter(InventoryCountLine.counted_quantity.isnot(None)).count()
+        db.session.query(InventoryCountLine)
+        .filter_by(inventory_count_id=count.id)
+        .filter(InventoryCountLine.counted_quantity.isnot(None))
+        .count()
     )
 
-    all_lines = count.lines.all()
+    all_lines = (
+        db.session.query(InventoryCountLine)
+        .filter_by(inventory_count_id=count.id)
+        .all()
+    )
     starter = count.starter
 
     return {
@@ -407,7 +425,11 @@ def get_count_detail(count_id: int) -> dict:
     if count is None:
         raise InventoryServiceError("COUNT_NOT_FOUND", "Inventory count not found.", 404)
 
-    all_lines = count.lines.all()
+    all_lines = (
+        db.session.query(InventoryCountLine)
+        .filter_by(inventory_count_id=count_id)
+        .all()
+    )
     no_change = sum(
         1 for l in all_lines if l.resolution == InventoryCountLineResolution.NO_CHANGE
     )
@@ -511,7 +533,11 @@ def complete_count(count_id: int, current_user: User) -> dict:
             "COUNT_NOT_IN_PROGRESS", "Count is not in progress.", 400
         )
 
-    all_lines = count.lines.all()
+    all_lines = (
+        db.session.query(InventoryCountLine)
+        .filter_by(inventory_count_id=count_id)
+        .all()
+    )
 
     uncounted = [l for l in all_lines if l.counted_quantity is None]
     if uncounted:

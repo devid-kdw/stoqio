@@ -390,7 +390,11 @@ def test_start_count(client, inv_data, app):
         count = _db.session.get(InventoryCount, data["id"])
         assert count is not None
         assert count.status == InventoryCountStatus.IN_PROGRESS
-        assert count.lines.count() >= 3
+        assert (
+            _db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .count()
+        ) >= 3
 
 
 # ---------------------------------------------------------------------------
@@ -670,7 +674,11 @@ def test_complete_count(client, inv_data, app):
         assert group.group_type == DraftGroupType.INVENTORY_SHORTAGE
 
         # Resolutions on lines
-        lines = count.lines.all()
+        lines = (
+            _db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .all()
+        )
         resolutions = {l.article_id: l.resolution for l in lines}
         assert resolutions[inv_data["art_no_batch"].id] == InventoryCountLineResolution.SURPLUS_ADDED
         assert resolutions[inv_data["art_batch"].id] == InventoryCountLineResolution.SHORTAGE_DRAFT_CREATED
@@ -748,7 +756,11 @@ def test_update_line_completed_count_rejected(client, inv_data, app):
 
     with app.app_context():
         count = _db.session.get(InventoryCount, count_id)
-        line_id = count.lines.first().id
+        line_id = (
+            _db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .first()
+        ).id
 
     resp = client.patch(
         f"/api/v1/inventory/{count_id}/lines/{line_id}",

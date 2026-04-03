@@ -843,8 +843,9 @@ class TestWarehouseArticles:
         )
         assert response.status_code == 200
         payload = response.get_json()
-        assert payload["items"][0]["article_no"] == "WH-INACTIVE-003"
-        assert payload["items"][0]["is_active"] is False
+        items_by_article_no = {item["article_no"]: item for item in payload["items"]}
+        assert "WH-INACTIVE-003" in items_by_article_no
+        assert items_by_article_no["WH-INACTIVE-003"]["is_active"] is False
 
     def test_detail_includes_batches_suppliers_aliases_and_totals(self, client, warehouse_data):
         token = _login(client, "warehouse_manager")

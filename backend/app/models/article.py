@@ -46,12 +46,12 @@ class Article(db.Model):
     pack_uom_ref = db.relationship(
         "UomCatalog", foreign_keys=[pack_uom], lazy="select"
     )
-    batches = db.relationship("Batch", backref="article", lazy="dynamic")
+    batches = db.relationship("Batch", backref="article", lazy="select")
     aliases = db.relationship(
-        "ArticleAlias", backref="article", lazy="dynamic", cascade="all, delete-orphan"
+        "ArticleAlias", backref="article", lazy="select", cascade="all, delete-orphan"
     )
     suppliers = db.relationship(
-        "ArticleSupplier", backref="article", lazy="dynamic", cascade="all, delete-orphan"
+        "ArticleSupplier", backref="article", lazy="select", cascade="all, delete-orphan"
     )
 
     @validates("article_no")

@@ -46,7 +46,7 @@ class InventoryCount(db.Model):
     lines = db.relationship(
         "InventoryCountLine",
         backref="inventory_count",
-        lazy="dynamic",
+        lazy="select",
         cascade="all, delete-orphan",
     )
     shortage_drafts = db.relationship(

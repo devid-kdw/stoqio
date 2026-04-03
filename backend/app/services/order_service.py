@@ -906,7 +906,9 @@ def create_order(user_id: int, payload: dict[str, Any] | None) -> dict[str, Any]
         "supplier_id": order.supplier_id,
         "supplier_name": supplier.name,
         "status": order.status.value if hasattr(order.status, "value") else order.status,
-        "total_value": float(_compute_total_value(order.lines.order_by(OrderLine.id.asc()).all())),
+        "total_value": float(_compute_total_value(
+            db.session.query(OrderLine).filter_by(order_id=order.id).order_by(OrderLine.id.asc()).all()
+        )),
         "created_at": order.created_at.isoformat() if order.created_at else None,
     }
 
