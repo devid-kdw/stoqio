@@ -42,6 +42,11 @@ def create_app(config_override=None):
 
     register_blueprints(app)
 
+    # Register maintenance CLI commands
+    from .commands import register_commands
+
+    register_commands(app)
+
     # Catch-all: serve React's index.html for any non-API GET request so
     # that React Router can handle client-side routes (/drafts, /login …).
     @app.route("/", defaults={"path": ""})

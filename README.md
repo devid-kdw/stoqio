@@ -32,3 +32,17 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Local-host maintenance
+
+Expired revoked refresh-token rows can be cleaned up explicitly from the backend app:
+
+```bash
+cd backend
+venv/bin/flask purge-revoked-tokens --dry-run
+venv/bin/flask purge-revoked-tokens
+```
+
+The command deletes only `revoked_token` rows whose `expires_at` is already in the past. It does not remove active revocations, does not touch `expires_at IS NULL` rows, and is never run automatically on requests, startup, or logout.
+
+Run it after the deploy that introduces this phase and then on a periodic local-server schedule if the instance keeps long-lived refresh-token history. The standard `./scripts/deploy.sh` flow already applies backend migrations; if you deploy manually, apply backend migrations before the first cleanup run.

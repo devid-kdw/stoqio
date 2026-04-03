@@ -302,6 +302,8 @@ POST /api/v1/auth/logout     ← invalidacija refresh tokena (DB-backed revocati
 
 Logout zapisuje revoked refresh-token `jti` u persistentnu tablicu `revoked_token`, pa opoziv preživljava Flask/systemd restart procesa. Frontend i dalje lokalno odbacuje access token; short-lived access token se ne sprema u server-side blocklist.
 
+Cleanup isteklih opoziva nije automatski. Operator ga pokreće eksplicitno preko Flask CLI naredbe `purge-revoked-tokens`, koja briše samo redove gdje je `expires_at` strogo u prošlosti; budući / aktivni opozivi i `expires_at IS NULL` redovi ostaju netaknuti.
+
 ---
 
 ## 4. Frontend routing
@@ -394,6 +396,31 @@ git pull origin main
 4. Kopira build u `backend/static/`
 5. `alembic upgrade head` (migracije)
 6. `sudo systemctl restart wms`
+
+### Održavanje `revoked_token` retencije
+
+Standardni `./scripts/deploy.sh` već primjenjuje migracije, pa je cleanup naredba spremna odmah nakon normalnog deploya. Ako operator zaobiđe skriptu i deploy radi ručno, backend migracije moraju biti primijenjene prije prvog cleanup pokretanja.
+
+```bash
+cd /home/wms/wms/backend
+venv/bin/flask purge-revoked-tokens --dry-run
+venv/bin/flask purge-revoked-tokens
+```
+
+Pravila ove naredbe:
+- briše samo istekle redove (`expires_at < now`)
+- ne dira redove s budućim `expires_at`
+- ne dira redove gdje je `expires_at IS NULL`
+- ne slabi aktivnu logout / refresh-token revokaciju
+- ne izvršava se automatski pri requestu, startupu ni logoutu
+
+Za single-server Linux deployment praktičan izbor je dnevni cron tijekom mirnijeg perioda, npr.:
+
+```bash
+0 3 * * * cd /home/wms/wms/backend && venv/bin/flask purge-revoked-tokens >> /var/log/stoqio-cleanup.log 2>&1
+```
+
+Ovo je samo primjer lokalnog scheduler pristupa; repozitorij nema ugrađeni background scheduler za ovaj cleanup.
 
 ### Konfiguracija
 

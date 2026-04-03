@@ -478,6 +478,8 @@ Persisted server-side evidencija odjavljenih JWT refresh tokena.
 | `expires_at` | timestamp UTC nullable | Originalni expiry tokena, za kasniji cleanup |
 
 > V1 hardening after 2026-03-17: logout revocation više nije process-local. Restart procesa ne smije ponovno učiniti odjavljeni refresh token važećim.
+>
+> Wave 3 / 2026-04-03: retention cleanup je eksplicitan operator-only maintenance korak preko `flask purge-revoked-tokens`. Naredba briše samo redove s `expires_at < now`; ne briše buduće / aktivne opozive niti `expires_at IS NULL` redove.
 
 ---
 

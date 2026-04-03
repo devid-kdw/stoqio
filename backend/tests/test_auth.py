@@ -577,3 +577,204 @@ class TestNonexistentUserLoginPath:
         from app.utils.auth import get_dummy_hash
 
         assert get_dummy_hash() is get_dummy_hash()
+
+
+# ---------------------------------------------------------------------------
+# Wave 3 Phase 7 — Revoked-token retention cleanup (W3-008)
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupCommand:
+    """Regression coverage for the `flask purge-revoked-tokens` CLI command.
+
+    Tests are driven through Flask's CLI runner so they exercise the real
+    operator-invoked path (register_commands → app.cli) rather than calling
+    the helper function in isolation.
+
+    Cleanup contract:
+    - expired rows (expires_at < now, not null)  → deleted
+    - non-expired rows (expires_at >= now)        → preserved
+    - null-expiry rows (expires_at IS NULL)       → never touched
+    - --dry-run                                   → no writes, count reported
+    """
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _insert_revoked(app, jti, token_type, expires_at):
+        """Insert a RevokedToken row directly and return its id."""
+        from app.extensions import db
+        from app.models.revoked_token import RevokedToken
+
+        with app.app_context():
+            row = RevokedToken(
+                jti=jti,
+                token_type=token_type,
+                expires_at=expires_at,
+            )
+            db.session.add(row)
+            db.session.commit()
+            return row.id
+
+    @staticmethod
+    def _exists(app, row_id):
+        """Return True if a RevokedToken with the given id still exists in DB."""
+        from app.extensions import db
+        from app.models.revoked_token import RevokedToken
+
+        with app.app_context():
+            return db.session.get(RevokedToken, row_id) is not None
+
+    @staticmethod
+    def _run_purge(app, args=None):
+        """Invoke `flask purge-revoked-tokens` via the CLI runner and return result."""
+        from click.testing import CliRunner
+        from app.commands import purge_revoked_tokens
+
+        runner = CliRunner()
+        with app.app_context():
+            result = runner.invoke(purge_revoked_tokens, args or [], catch_exceptions=False)
+        return result
+
+    # ------------------------------------------------------------------
+    # Cleanup behaviour
+    # ------------------------------------------------------------------
+
+    def test_purge_deletes_expired_rows(self, app):
+        """Expired rows (expires_at < now) must be removed by the cleanup command."""
+        from datetime import datetime, timedelta, timezone
+
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+        row_id = self._insert_revoked(app, "purge-expired-jti-001", "refresh", past)
+
+        result = self._run_purge(app)
+        assert result.exit_code == 0, result.output
+        assert not self._exists(app, row_id), "Expired row was not deleted"
+
+    def test_purge_preserves_non_expired_rows(self, app):
+        """Non-expired rows (expires_at > now) must NOT be deleted."""
+        from datetime import datetime, timedelta, timezone
+
+        future = datetime.now(timezone.utc) + timedelta(days=30)
+        row_id = self._insert_revoked(app, "purge-future-jti-001", "refresh", future)
+
+        result = self._run_purge(app)
+        assert result.exit_code == 0, result.output
+        assert self._exists(app, row_id), "Non-expired row was incorrectly deleted"
+
+    def test_purge_preserves_null_expiry_rows(self, app):
+        """Rows with expires_at IS NULL must never be touched by the cleanup."""
+        row_id = self._insert_revoked(app, "purge-null-expiry-jti-001", "refresh", None)
+
+        result = self._run_purge(app)
+        assert result.exit_code == 0, result.output
+        assert self._exists(app, row_id), "NULL-expiry row was incorrectly deleted"
+
+    def test_purge_deletes_only_expired_in_mixed_set(self, app):
+        """Cleanup must selectively delete expired rows while leaving others intact."""
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        past = now - timedelta(hours=1)
+        future = now + timedelta(hours=1)
+
+        expired_id = self._insert_revoked(app, "purge-mixed-expired-001", "refresh", past)
+        future_id = self._insert_revoked(app, "purge-mixed-future-001", "refresh", future)
+        null_id = self._insert_revoked(app, "purge-mixed-null-001", "refresh", None)
+
+        result = self._run_purge(app)
+        assert result.exit_code == 0, result.output
+
+        assert not self._exists(app, expired_id), "Expired row should have been deleted"
+        assert self._exists(app, future_id), "Future row should have been preserved"
+        assert self._exists(app, null_id), "NULL-expiry row should have been preserved"
+
+    def test_purge_dry_run_makes_no_writes(self, app):
+        """--dry-run must report the count without deleting any rows."""
+        from datetime import datetime, timedelta, timezone
+
+        past = datetime.now(timezone.utc) - timedelta(days=2)
+        row_id = self._insert_revoked(app, "purge-dryrun-jti-001", "refresh", past)
+
+        result = self._run_purge(app, ["--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "[dry-run]" in result.output
+        assert self._exists(app, row_id), "dry-run must not delete rows"
+
+    def test_purge_dry_run_reports_correct_count(self, app):
+        """--dry-run output must mention the deleted count (even if 0 after prior purge)."""
+        from datetime import datetime, timedelta, timezone
+
+        past = datetime.now(timezone.utc) - timedelta(days=3)
+        self._insert_revoked(app, "purge-dryrun-count-jti-001", "refresh", past)
+
+        result = self._run_purge(app, ["--dry-run"])
+        assert result.exit_code == 0, result.output
+        # Output must contain a digit followed by the row-count noun phrase
+        assert "row(s)" in result.output
+
+    def test_purge_empty_table_succeeds_with_zero_count(self, app):
+        """Command must complete without error and print 0 when there is nothing to delete."""
+        # Run a real purge first to clear any leftover expired rows from other tests
+        self._run_purge(app)
+
+        result = self._run_purge(app)
+        assert result.exit_code == 0, result.output
+        # After a prior purge the expired count must be 0
+        assert "0" in result.output
+
+    # ------------------------------------------------------------------
+    # Auth / logout regression locks
+    # These must remain green after the cleanup mechanism is in place.
+    # ------------------------------------------------------------------
+
+    def test_revoked_refresh_token_still_rejected_after_purge(self, client, auth_users, app):
+        """Runtime revocation check must still reject a revoked refresh token
+        even after the cleanup command has been run (regression lock)."""
+        login_resp = _login(client, "auth_admin", "adminpass", remote_addr="127.0.7.1")
+        refresh_token = login_resp.get_json()["refresh_token"]
+
+        # Revoke via logout
+        logout_resp = client.post(
+            "/api/v1/auth/logout",
+            headers=_auth_header(refresh_token),
+        )
+        assert logout_resp.status_code == 200
+
+        # Run cleanup — should not touch this non-expired row
+        self._run_purge(app)
+
+        # Refresh must still be rejected
+        refresh_resp = client.post(
+            "/api/v1/auth/refresh",
+            headers=_auth_header(refresh_token),
+        )
+        assert refresh_resp.status_code == 401
+        assert refresh_resp.get_json()["error"] == "TOKEN_REVOKED"
+
+    def test_logout_still_persists_revoked_row_after_cleanup_lands(self, client, auth_users, app):
+        """Logout must still write a revoked_token row after the cleanup command is registered.
+
+        This is a direct regression lock on the add_to_blocklist / logout path
+        to confirm that introducing commands.py did not alter the logout flow.
+        """
+        from app.models.revoked_token import RevokedToken
+
+        with app.app_context():
+            before = RevokedToken.query.count()
+
+        login_resp = _login(client, "auth_manager", "managerpass", remote_addr="127.0.7.2")
+        refresh_token = login_resp.get_json()["refresh_token"]
+
+        logout_resp = client.post(
+            "/api/v1/auth/logout",
+            headers=_auth_header(refresh_token),
+        )
+        assert logout_resp.status_code == 200
+
+        with app.app_context():
+            after = RevokedToken.query.count()
+
+        assert after == before + 1, "Logout must persist exactly one new revoked_token row"
