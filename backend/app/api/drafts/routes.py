@@ -6,6 +6,19 @@ Provides:
   POST   /api/v1/drafts             — add a draft line
   PATCH  /api/v1/drafts/{id}        — update quantity
   DELETE /api/v1/drafts/{id}        — remove a draft line
+
+Query strategy:
+  List endpoints (GET /drafts and GET /drafts/my) use joinedload for the
+  article, batch, and creator relationships so that an entire batch of draft
+  rows resolves those foreign keys in a bounded number of queries rather than
+  N individual lookups.  Rejection reasons are fetched in one extra query
+  keyed by draft_id via _build_rejection_map().  Together, this keeps the
+  hot list-serialization path at O(1) extra queries regardless of how many
+  draft lines exist for the day.
+
+  Single-row mutation responses (POST idempotency return, PATCH update) still
+  use the plain _serialize_draft() helper because they touch exactly one row
+  with no list-iteration; the N+1 risk does not apply there.
 """
 
 import re
@@ -13,6 +26,7 @@ from datetime import datetime, timezone
 from time import sleep
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
@@ -136,31 +150,84 @@ def _serialize_draft_group(group: DraftGroup) -> dict:
     }
 
 
-def _get_rejection_reason(draft_id: int) -> str | None:
-    """Return the rejection note for a draft line, or None."""
-    action = (
+def _build_rejection_map(draft_ids: list[int]) -> dict[int, str | None]:
+    """Return a dict mapping draft_id → latest rejection note for REJECTED lines.
+
+    Fetches all matching ApprovalAction rows in a single query.  Only the
+    most-recent REJECTED action per draft is kept (same semantics as the old
+    per-row _get_rejection_reason call).
+
+    Callers that process a batch of drafts should use this helper instead of
+    calling the DB once per row.
+    """
+    if not draft_ids:
+        return {}
+
+    actions = (
         db.session.query(ApprovalAction)
-        .filter_by(draft_id=draft_id, action=ApprovalActionType.REJECTED)
-        .order_by(ApprovalAction.acted_at.desc())
-        .first()
+        .filter(
+            ApprovalAction.draft_id.in_(draft_ids),
+            ApprovalAction.action == ApprovalActionType.REJECTED,
+        )
+        .order_by(ApprovalAction.draft_id, ApprovalAction.acted_at.desc())
+        .all()
     )
-    return action.note if action else None
+
+    # Keep only the latest action per draft_id (results are already DESC by
+    # acted_at within each draft_id group because of the ORDER BY above).
+    rejection_map: dict[int, str | None] = {}
+    for action in actions:
+        if action.draft_id not in rejection_map:
+            rejection_map[action.draft_id] = action.note
+
+    return rejection_map
 
 
-def _serialize_draft(draft: Draft) -> dict:
+def _serialize_draft(
+    draft: Draft,
+    *,
+    rejection_map: dict[int, str | None] | None = None,
+) -> dict:
     """Build the response dict for a single draft line.
 
-    Eagerly resolves article, batch, UOM, and creator to avoid N+1 issues
-    since we typically serialise the full day's list.
+    When serialising a batch of drafts (e.g. the full day's list), callers
+    should:
+      1. Load drafts with joinedload(Draft.article), joinedload(Draft.batch),
+         and joinedload(Draft.creator) so SQLAlchemy resolves those
+         relationships in bounded queries rather than per-row lookups.
+      2. Build a rejection_map via _build_rejection_map([d.id for d in drafts])
+         and pass it in here so rejection reasons are resolved in one query
+         rather than one per rejected line.
+
+    For single-row mutation responses (POST idempotency, PATCH update) the
+    relationships are resolved by SQLAlchemy's lazy-select default without
+    list-level batching, which is fine because those paths touch exactly one
+    row.
     """
-    article = db.session.get(Article, draft.article_id)
-    batch = db.session.get(Batch, draft.batch_id) if draft.batch_id else None
-    creator = db.session.get(User, draft.created_by)
+    # Relationships resolved via SQLAlchemy (either pre-loaded via joinedload
+    # by the caller or lazy-loaded for single-row paths).
+    article = draft.article
+    batch = draft.batch
+    creator = draft.creator
 
     status_val = draft.status.value if hasattr(draft.status, "value") else draft.status
-    rejection_reason = (
-        _get_rejection_reason(draft.id) if status_val == DraftStatus.REJECTED.value else None
-    )
+
+    # Resolve rejection reason from the preloaded map when available; fall back
+    # to None for non-rejected lines (the map only contains REJECTED actions).
+    if status_val == DraftStatus.REJECTED.value:
+        if rejection_map is not None:
+            rejection_reason = rejection_map.get(draft.id)
+        else:
+            # Single-row fallback: query directly (acceptable for mutation responses).
+            action = (
+                db.session.query(ApprovalAction)
+                .filter_by(draft_id=draft.id, action=ApprovalActionType.REJECTED)
+                .order_by(ApprovalAction.acted_at.desc())
+                .first()
+            )
+            rejection_reason = action.note if action else None
+    else:
+        rejection_reason = None
 
     return {
         "id": draft.id,
@@ -208,14 +275,21 @@ def get_drafts():
     if group is None:
         items = []
         draft_group_data = None
+        pending_drafts = []
     else:
-        drafts = (
-            Draft.query
+        # Load pending group drafts with joinedload to avoid per-row
+        # Article / Batch / User lookups.
+        pending_drafts = (
+            db.session.query(Draft)
             .filter_by(draft_group_id=group.id)
+            .options(
+                joinedload(Draft.article),
+                joinedload(Draft.batch),
+                joinedload(Draft.creator),
+            )
             .order_by(Draft.created_at.desc())
             .all()
         )
-        items = [_serialize_draft(d) for d in drafts]
         draft_group_data = _serialize_draft_group(group)
 
     # Same-day lines: all DAILY_OUTBOUND groups for the operational day
@@ -229,21 +303,48 @@ def get_drafts():
     )
     same_day_group_ids = [g.id for g in same_day_groups]
     if same_day_group_ids:
+        # Load all same-day drafts with joinedload to resolve relationships in
+        # a bounded number of queries instead of one lookup per row.
         same_day_drafts = (
-            Draft.query
+            db.session.query(Draft)
             .filter(Draft.draft_group_id.in_(same_day_group_ids))
+            .options(
+                joinedload(Draft.article),
+                joinedload(Draft.batch),
+                joinedload(Draft.creator),
+            )
             .order_by(Draft.created_at.desc())
             .all()
         )
     else:
         same_day_drafts = []
 
+    # Build rejection maps for both collections in one query each so we never
+    # issue a per-row ApprovalAction lookup.
+    all_drafts_for_items = pending_drafts  # may be a subset of same_day_drafts
+    pending_ids = [d.id for d in all_drafts_for_items]
+    same_day_ids = [d.id for d in same_day_drafts]
+
+    # same_day_drafts is a superset of pending_drafts on a normal day, so one
+    # map covers both; build separate maps to keep the logic explicit and
+    # avoid assuming containment across all edge-case test fixtures.
+    items_rejection_map = _build_rejection_map(pending_ids)
+    same_day_rejection_map = _build_rejection_map(same_day_ids)
+
+    items = [
+        _serialize_draft(d, rejection_map=items_rejection_map)
+        for d in all_drafts_for_items
+    ]
+
     return (
         jsonify(
             {
                 "items": items,
                 "draft_group": draft_group_data,
-                "same_day_lines": [_serialize_draft(d) for d in same_day_drafts],
+                "same_day_lines": [
+                    _serialize_draft(d, rejection_map=same_day_rejection_map)
+                    for d in same_day_drafts
+                ],
             }
         ),
         200,
@@ -294,11 +395,18 @@ def get_my_drafts():
     same_day_group_ids = [g.id for g in same_day_groups]
 
     if same_day_group_ids:
+        # Load the user's own drafts with joinedload so article/batch/creator
+        # are resolved in bounded queries rather than per row.
         my_drafts = (
-            Draft.query
+            db.session.query(Draft)
             .filter(
                 Draft.draft_group_id.in_(same_day_group_ids),
                 Draft.created_by == user.id,
+            )
+            .options(
+                joinedload(Draft.article),
+                joinedload(Draft.batch),
+                joinedload(Draft.creator),
             )
             .order_by(Draft.created_at.desc())
             .all()
@@ -306,7 +414,13 @@ def get_my_drafts():
     else:
         my_drafts = []
 
-    return jsonify({"lines": [_serialize_draft(d) for d in my_drafts]}), 200
+    # Resolve rejection reasons for the whole batch in one query.
+    my_draft_ids = [d.id for d in my_drafts]
+    my_rejection_map = _build_rejection_map(my_draft_ids)
+
+    return jsonify(
+        {"lines": [_serialize_draft(d, rejection_map=my_rejection_map) for d in my_drafts]}
+    ), 200
 
 
 # ---------------------------------------------------------------------------

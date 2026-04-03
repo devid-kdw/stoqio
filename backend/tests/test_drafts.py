@@ -1496,3 +1496,145 @@ class TestMyDraftLines:
         data = resp.get_json()
         assert "same_day_lines" in data
         assert "items" in data
+class TestPayloadStabilityLock:
+    """Lock payload stability specifically for the Phase 4 serialization cleanup."""
+    
+    def test_payload_stability_all_fields_lock(self, client, draft_data, app):
+        from app.models.draft import Draft
+        from app.models.draft_group import DraftGroup
+        from app.models.approval_action import ApprovalAction
+        from app.models.batch import Batch
+        from app.models.enums import DraftGroupStatus, DraftGroupType, DraftStatus, DraftType, DraftSource, ApprovalActionType
+        from app.extensions import db as _db
+        import uuid
+        from datetime import date
+        
+        token = _login(client, "draft_operator")
+
+        with app.app_context():
+            Draft.query.delete()
+            DraftGroup.query.delete()
+            ApprovalAction.query.delete()
+            _db.session.commit()
+
+            op_date = date.today()
+            group = DraftGroup(
+                group_number="IZL-LOCK",
+                status=DraftGroupStatus.PENDING,
+                group_type=DraftGroupType.DAILY_OUTBOUND,
+                operational_date=op_date,
+                created_by=draft_data["operator"].id,
+            )
+            _db.session.add(group)
+            _db.session.flush()
+
+            # Normal line (no batch, no rejection)
+            draft1 = Draft(
+                draft_group_id=group.id,
+                location_id=1,
+                article_id=draft_data["article"].id,
+                batch_id=None,
+                quantity=1.0,
+                uom=draft_data["uom"].code,
+                status=DraftStatus.DRAFT,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=draft_data["operator"].id,
+            )
+            
+            # Batch line
+            batch = Batch.query.filter_by(article_id=draft_data["article_batch"].id).first()
+            draft2 = Draft(
+                draft_group_id=group.id,
+                location_id=1,
+                article_id=draft_data["article_batch"].id,
+                batch_id=batch.id,
+                quantity=2.0,
+                uom=draft_data["uom"].code,
+                status=DraftStatus.DRAFT,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=draft_data["operator"].id,
+            )
+
+            # Rejected line with reason
+            draft3 = Draft(
+                draft_group_id=group.id,
+                location_id=1,
+                article_id=draft_data["article"].id,
+                batch_id=None,
+                quantity=3.0,
+                uom=draft_data["uom"].code,
+                status=DraftStatus.REJECTED,
+                draft_type=DraftType.OUTBOUND,
+                source=DraftSource.manual,
+                client_event_id=str(uuid.uuid4()),
+                created_by=draft_data["operator"].id,
+            )
+            
+            _db.session.add_all([draft1, draft2, draft3])
+            _db.session.flush()
+
+            action = ApprovalAction(
+                draft_id=draft3.id,
+                actor_id=draft_data["admin"].id,
+                action=ApprovalActionType.REJECTED,
+                note="Locked rejection reason."
+            )
+            _db.session.add(action)
+            _db.session.commit()
+            
+            d1_id, d2_id, d3_id = draft1.id, draft2.id, draft3.id
+            b_code = batch.batch_code
+
+        # GET /api/v1/drafts?date=today
+        resp = client.get("/api/v1/drafts?date=today", headers=_auth_header(token))
+        assert resp.status_code == 200
+        data = resp.get_json()
+        
+        items = data["same_day_lines"]
+        for d_id, expected_qty, expected_batch, expected_status, expected_note in [
+            (d1_id, 1.0, None, "DRAFT", None),
+            (d2_id, 2.0, b_code, "DRAFT", None),
+            (d3_id, 3.0, None, "REJECTED", "Locked rejection reason.")
+        ]:
+            line = next(i for i in items if i["id"] == d_id)
+            assert line["quantity"] == expected_qty
+            assert line["batch_code"] == expected_batch
+            assert line["status"] == expected_status
+            assert line["rejection_reason"] == expected_note
+            
+            # Additional lock assertions
+            assert line["created_by"] == "draft_operator"
+            assert "created_at" in line
+            assert line["created_at"] is not None
+            assert "article_no" in line
+            assert "description" in line
+            assert "id" in line
+
+        # GET /api/v1/drafts/my
+        resp_my = client.get("/api/v1/drafts/my", headers=_auth_header(token))
+        assert resp_my.status_code == 200
+        data_my = resp_my.get_json()
+        
+        lines_my = data_my["lines"]
+        for d_id, expected_qty, expected_batch, expected_status, expected_note in [
+            (d1_id, 1.0, None, "DRAFT", None),
+            (d2_id, 2.0, b_code, "DRAFT", None),
+            (d3_id, 3.0, None, "REJECTED", "Locked rejection reason.")
+        ]:
+            line = next(i for i in lines_my if i["id"] == d_id)
+            assert line["quantity"] == expected_qty
+            assert line["batch_code"] == expected_batch
+            assert line["status"] == expected_status
+            assert line["rejection_reason"] == expected_note
+            
+            # Additional lock assertions
+            assert line["created_by"] == "draft_operator"
+            assert "created_at" in line
+            assert line["created_at"] is not None
+            assert "article_no" in line
+            assert "description" in line
+
