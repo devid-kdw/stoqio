@@ -1,5 +1,11 @@
 """Safe operator diagnostic helper for STOQIO backend.
 
+WARNING — LOCAL SUPPORT TOOL ONLY
+  - Run this script only on a local development or staging instance.
+  - Do NOT run this on a production instance.
+  - Do NOT commit this file with real credentials or a real DATABASE_URL in the
+    environment.  Always verify your .env is gitignored before running.
+
 This script is intentionally limited to non-sensitive operational checks.
 It reports only high-level environment and bootstrap status, never secrets,
 password hashes, or password verification results.

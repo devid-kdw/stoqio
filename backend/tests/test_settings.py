@@ -1103,6 +1103,15 @@ def test_shell_role_display_names_match_defaults(client, settings_data):
 # ---------------------------------------------------------------------------
 # GET /api/v1/settings/shell — W3-003 auth-consistency additions
 # ---------------------------------------------------------------------------
+# F-SEC-009 contract (Wave 4 Phase 4):
+#   /settings/shell is protected by the shared require_role() wrapper, which
+#   enforces active-user state on every request.  The two properties being
+#   locked are:
+#     1. All five authenticated active roles can read the shell payload.
+#     2. A still-valid JWT whose user has been deactivated is rejected (401).
+#   These tests verify the real route, not a mocked shortcut, so they remain
+#   valid even if the underlying auth decorator implementation changes.
+# ---------------------------------------------------------------------------
 
 
 def test_shell_endpoint_accessible_to_warehouse_staff(client, settings_data):
