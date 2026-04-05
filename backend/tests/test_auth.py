@@ -524,6 +524,46 @@ class TestProductionConfig:
         with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
             Production()
 
+    def test_production_rejects_developer_default_secret(self, monkeypatch):
+        """Production must explicitly reject the checked-in default/example secret."""
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/wms_prod")
+        # Use the known default from config._Base._DEV_DEFAULT_JWT_SECRET
+        monkeypatch.setenv("JWT_SECRET_KEY", "dev-local-jwt-secret-change-me-2026")
+
+        from app.config import Production
+
+        with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
+            Production()
+
+    def test_flask_env_absent_resolves_to_production(self, monkeypatch):
+        """When FLASK_ENV is absent, get_config() must return a Production instance."""
+        monkeypatch.delenv("FLASK_ENV", raising=False)
+        # Setup env so Production() doesn't raise during instantiation
+        monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/wms_prod")
+        monkeypatch.setenv("JWT_SECRET_KEY", "a-very-strong-secret-key-for-testing-2026")
+
+        from app.config import Production, get_config
+
+        cfg = get_config()
+        assert isinstance(cfg, Production)
+        assert cfg.DEBUG is False
+
+    def test_debug_gating(self, monkeypatch):
+        """Confirm DEBUG is True only for Development, False for Production."""
+        from app.config import Development, Production
+
+        # Development
+        monkeypatch.setenv("JWT_SECRET_KEY", "dev-secret")
+        # Development doesn't check JWT strength/database existence in __init__
+        dev = Development()
+        assert dev.DEBUG is True
+
+        # Production
+        monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/wms_prod")
+        monkeypatch.setenv("JWT_SECRET_KEY", "a-very-strong-secret-key-for-testing-2026")
+        prod = Production()
+        assert prod.DEBUG is False
+
 
 # ---------------------------------------------------------------------------
 # Wave 2 Phase 4 — Timing-safe dummy hash path (F-035)

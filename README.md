@@ -21,9 +21,20 @@ source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 venv/bin/alembic upgrade head
-venv/bin/python seed.py
+FLASK_ENV=development venv/bin/python seed.py
 flask run
 ```
+
+> **Local development only.** `backend/seed.py` is a local development
+> bootstrap tool. It generates a one-time random admin password and prints it
+> once after a successful seed run. **Never run `seed.py` on a production or
+> shared instance.** The authenticated first-run setup flow creates only the
+> initial `Location`; it does **not** create the first admin account. This repo
+> does not automate production/shared bootstrap of the initial admin user. On
+> those installs, provision the first `ADMIN` account through a separate
+> trusted operator process, then complete authenticated first-run setup and
+> supply a strong `JWT_SECRET_KEY` and a valid `DATABASE_URL` in the
+> environment.
 
 Frontend:
 

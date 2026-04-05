@@ -1,7 +1,12 @@
-"""Idempotent bootstrap seed script.
+"""Idempotent bootstrap seed script — LOCAL DEVELOPMENT ONLY.
+
+WARNING: This script is for local development use only. Never run it on a
+production or shared instance. It creates an admin user whose one-time
+password is printed once to the terminal at seed time and is not stored
+anywhere in this codebase.
 
 Run after ``alembic upgrade head`` to populate the initial reference data:
-  - Admin user (admin / admin123)
+  - Admin user (one-time random password printed at creation time)
   - UOM catalog (10 entries)
   - Article categories (12 entries)
   - SystemConfig defaults
@@ -10,16 +15,13 @@ Run after ``alembic upgrade head`` to populate the initial reference data:
 This script is intentionally NOT called from create_app(). Run it explicitly:
 
     cd backend
-    python seed.py
-
-Or with an explicit environment:
-
     FLASK_ENV=development DATABASE_URL=postgresql://localhost/wms_dev python seed.py
 
 Each seeder function is idempotent — re-running the script is safe.
 """
 
 import os
+import secrets
 import sys
 
 # Allow ``python seed.py`` from the backend/ directory
@@ -45,19 +47,24 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 
-def _seed_admin() -> None:
-    """Seed the default admin user if it does not already exist."""
+def _seed_admin() -> str | None:
+    """Seed the default admin user if it does not already exist.
+
+    Returns the one-time generated password only for a freshly created admin.
+    The caller is responsible for printing it after the overall seed
+    transaction commits successfully.
+    """
     if User.query.filter_by(username="admin").first():
-        print("  [skip] admin user already exists")
-        return
+        return None
+    password = secrets.token_urlsafe(16)
     admin = User(
         username="admin",
-        password_hash=generate_password_hash("admin123", method="pbkdf2:sha256"),
+        password_hash=generate_password_hash(password, method="pbkdf2:sha256"),
         role=UserRole.ADMIN,
         is_active=True,
     )
     db.session.add(admin)
-    print("  [seed] admin user created")
+    return password
 
 
 def _seed_uom_catalog() -> None:
@@ -184,12 +191,16 @@ def run_seed() -> None:
     app = create_app()
     with app.app_context():
         print("Running seed...")
-        _seed_admin()
+        admin_password = _seed_admin()
         _seed_uom_catalog()
         _seed_categories()
         _seed_system_config()
         _seed_role_display_names()
         db.session.commit()
+        if admin_password is None:
+            print("  [skip] admin user already exists")
+        else:
+            print(f"  [seed] admin user created — password: {admin_password}")
         print("Seed complete.")
 
 

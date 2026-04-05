@@ -1,7 +1,8 @@
 """Application configuration classes.
 
 Reads DATABASE_URL and JWT_SECRET_KEY from environment variables.
-Production refuses to start if JWT_SECRET_KEY is missing, default, or weak.
+Production (the default when FLASK_ENV is unset) refuses to start if
+JWT_SECRET_KEY is missing, weak, or equals the checked-in example value.
 """
 
 import os
@@ -11,10 +12,12 @@ class _Base:
     """Shared settings across all environments."""
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Kept as a constant so Production._WEAK_SECRETS can reject it explicitly.
+    # Not used as a runtime fallback.
     _DEV_DEFAULT_JWT_SECRET = "dev-local-jwt-secret-change-me-2026"
 
     def __init__(self) -> None:
-        self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", self._DEV_DEFAULT_JWT_SECRET)
+        self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
         self.SQLALCHEMY_DATABASE_URI = os.getenv(
             "DATABASE_URL", "postgresql://localhost/wms_dev"
         )
@@ -69,7 +72,12 @@ _configs = {
 
 
 def get_config():
-    """Return the config object matching FLASK_ENV (default: development)."""
-    env = os.getenv("FLASK_ENV", "development").lower()
-    cfg_cls = _configs.get(env, Development)
+    """Return the config object matching FLASK_ENV (default: production).
+
+    When FLASK_ENV is not set the app starts in production mode, which
+    requires both DATABASE_URL and a strong JWT_SECRET_KEY.  Set
+    FLASK_ENV=development explicitly for local development runs.
+    """
+    env = os.getenv("FLASK_ENV", "production").lower()
+    cfg_cls = _configs.get(env, Production)
     return cfg_cls()
