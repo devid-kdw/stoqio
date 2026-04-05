@@ -8,7 +8,7 @@ Provides:
   GET  /api/v1/auth/admin-only  — admin-only probe (401 / 403 test coverage)
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import (
@@ -40,6 +40,22 @@ auth_bp = Blueprint("auth", __name__)
 _ACCESS_EXPIRES = timedelta(minutes=15)
 _REFRESH_EXPIRES_OPERATOR = timedelta(days=30)
 _REFRESH_EXPIRES_DEFAULT = timedelta(hours=8)
+_PASSWORD_CHANGED_AT_CLAIM = "pwd_changed_at"
+
+
+def _normalize_utc(dt: datetime | None) -> datetime | None:
+    """Return a UTC-aware datetime for mixed SQLite/PostgreSQL values."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _serialize_password_changed_at(dt: datetime | None) -> str | None:
+    """Serialize password_changed_at deterministically for JWT refresh claims."""
+    normalized = _normalize_utc(dt)
+    if normalized is None:
+        return None
+    return normalized.isoformat(timespec="microseconds")
 
 
 # ---------------------------------------------------------------------------
@@ -127,9 +143,14 @@ def login():
         if user.role == UserRole.OPERATOR
         else _REFRESH_EXPIRES_DEFAULT
     )
+    refresh_claims = {
+        **extra,
+        _PASSWORD_CHANGED_AT_CLAIM: _serialize_password_changed_at(user.password_changed_at),
+    }
+
     refresh_token = create_refresh_token(
         identity=identity,
-        additional_claims=extra,
+        additional_claims=refresh_claims,
         expires_delta=refresh_delta,
     )
 
@@ -159,15 +180,39 @@ def login():
 def refresh():
     """Exchange a valid refresh token for a new access token.
 
-    Re-verifies the user record from the database on every call so that
-    deactivated users cannot keep minting access tokens, and so that the
-    new access token always reflects the current role and username.
+    Re-verifies the user record from the database on every call so that:
+    - deactivated users cannot keep minting access tokens
+    - the new access token always reflects the current role and username
+    - refresh tokens issued before the user's last password change are
+      rejected, ensuring that a credential reset terminates old sessions
+
+    Refresh tokens still carry the standard JWT ``iat`` (issued-at) claim,
+    and they also snapshot the user's current ``password_changed_at`` value.
+    That repo-level snapshot closes the same-second gap that ``iat`` alone
+    cannot distinguish. Legacy users whose ``password_changed_at`` is NULL
+    are not affected by this check.
     """
     identity = get_jwt_identity()
 
     user = db.session.get(User, int(identity))
     if not user or not user.is_active:
         return _error("UNAUTHORIZED", "User not found or account is inactive.", 401)
+
+    # Reject sessions that predate a password change/reset.
+    # Flask-JWT-Extended still carries the standard second-granularity iat
+    # claim on every refresh token, but the repo also snapshots the user's
+    # password_changed_at value into the refresh token so tokens minted
+    # before a same-second password change are still rejected deterministically.
+    if user.password_changed_at is not None:
+        claims = get_jwt()
+        current_password_changed_at = _serialize_password_changed_at(user.password_changed_at)
+        token_password_changed_at = claims.get(_PASSWORD_CHANGED_AT_CLAIM)
+        if token_password_changed_at != current_password_changed_at:
+            return _error(
+                "PASSWORD_CHANGED",
+                "Credentials have changed. Please log in again.",
+                401,
+            )
 
     extra = {"role": user.role.value, "username": user.username}
 

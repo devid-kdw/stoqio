@@ -972,7 +972,7 @@ def test_create_user_duplicate_username_update_password_and_deactivate(client, s
         "/api/v1/settings/users",
         json={
             "username": "settings_new_user",
-            "password": "pass1",
+            "password": "pass12345",
             "role": "OPERATOR",
             "is_active": True,
         },
@@ -986,7 +986,7 @@ def test_create_user_duplicate_username_update_password_and_deactivate(client, s
         "/api/v1/settings/users",
         json={
             "username": "settings_new_user",
-            "password": "pass1",
+            "password": "pass12345",
             "role": "OPERATOR",
             "is_active": True,
         },
@@ -1023,7 +1023,7 @@ def test_create_user_duplicate_username_update_password_and_deactivate(client, s
     assert deactivate_response.status_code == 200
     assert deactivate_response.get_json()["is_active"] is False
 
-    inactive_login = _raw_login(client, "settings_new_user", "pass1")
+    inactive_login = _raw_login(client, "settings_new_user", "pass12345")
     assert inactive_login.status_code == 401
     assert inactive_login.get_json()["error"] == "ACCOUNT_INACTIVE"
 
@@ -1193,3 +1193,115 @@ def test_admin_cannot_deactivate_self(client, settings_data):
     )
     assert patch_response.status_code == 400
     assert patch_response.get_json()["error"] == "SELF_DEACTIVATION_FORBIDDEN"
+
+
+# ---------------------------------------------------------------------------
+# Wave 4 Phase 2 — F-SEC-005: role-aware password minimum enforcement
+# ---------------------------------------------------------------------------
+
+
+class TestPasswordPolicyMinimumLength:
+    """Role-aware password minimums must be enforced consistently in create and
+    update/reset paths (F-SEC-005).
+
+    ADMIN → 12 characters minimum.
+    All other roles → 8 characters minimum.
+    """
+
+    # ------------------------------------------------------------------
+    # create_user — below minimum
+    # ------------------------------------------------------------------
+
+    def test_create_admin_below_12_chars_rejected(self, client, settings_data):
+        """ADMIN creation with an 11-char password must return 400."""
+        token = _login(client, settings_data["admin_username"])
+        resp = client.post(
+            "/api/v1/settings/users",
+            json={"username": "pol_admin_short", "password": "shortpw123!", "role": "ADMIN"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "VALIDATION_ERROR"
+        assert "12" in data["message"]
+
+    def test_create_operator_below_8_chars_rejected(self, client, settings_data):
+        """OPERATOR creation with a 7-char password must return 400."""
+        token = _login(client, settings_data["admin_username"])
+        resp = client.post(
+            "/api/v1/settings/users",
+            json={"username": "pol_op_short", "password": "short7!", "role": "OPERATOR"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "VALIDATION_ERROR"
+        assert "8" in data["message"]
+
+    def test_create_manager_below_8_chars_rejected(self, client, settings_data):
+        """MANAGER creation with a 5-char password must return 400."""
+        token = _login(client, settings_data["admin_username"])
+        resp = client.post(
+            "/api/v1/settings/users",
+            json={"username": "pol_mgr_short", "password": "bad01", "role": "MANAGER"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    # ------------------------------------------------------------------
+    # create_user — exactly at minimum (boundary)
+    # ------------------------------------------------------------------
+
+    def test_create_admin_at_12_chars_accepted(self, client, settings_data):
+        """ADMIN creation with exactly 12 characters must succeed."""
+        token = _login(client, settings_data["admin_username"])
+        resp = client.post(
+            "/api/v1/settings/users",
+            json={"username": "pol_admin_ok12", "password": "Adm1nPass!23", "role": "ADMIN"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201
+
+    def test_create_operator_at_8_chars_accepted(self, client, settings_data):
+        """OPERATOR creation with exactly 8 characters must succeed."""
+        token = _login(client, settings_data["admin_username"])
+        resp = client.post(
+            "/api/v1/settings/users",
+            json={"username": "pol_op_ok8", "password": "Op3r!456", "role": "OPERATOR"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201
+
+    # ------------------------------------------------------------------
+    # update_user (password reset) — below minimum
+    # ------------------------------------------------------------------
+
+    def test_reset_password_below_minimum_for_current_role_rejected(
+        self, client, settings_data
+    ):
+        """Admin-driven password reset must also enforce the role's minimum length."""
+        token = _login(client, settings_data["admin_username"])
+        # target is VIEWER (minimum 8); send a 5-char password
+        resp = client.put(
+            f"/api/v1/settings/users/{settings_data['target_id']}",
+            json={"password": "tiny!"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "VALIDATION_ERROR"
+        assert "8" in data["message"]
+
+    def test_reset_password_at_minimum_for_current_role_accepted(
+        self, client, settings_data
+    ):
+        """Password reset meeting the role's minimum must succeed."""
+        token = _login(client, settings_data["admin_username"])
+        # manager (minimum 8) — send exactly 8 chars
+        resp = client.put(
+            f"/api/v1/settings/users/{settings_data['manager_id']}",
+            json={"password": "R3set!89"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 200

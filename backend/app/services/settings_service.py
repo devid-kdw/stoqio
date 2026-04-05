@@ -1079,6 +1079,26 @@ def list_users() -> list[dict[str, Any]]:
     return [_serialize_user(row, role_names=role_names) for row in rows]
 
 
+def _min_password_length(role: UserRole) -> int:
+    """Return the minimum acceptable password length for the given role.
+
+    ADMIN accounts require 12 characters; all other roles require 8.
+    Centralised here so create and update paths share the same thresholds.
+    """
+    return 12 if role == UserRole.ADMIN else 8
+
+
+def _validate_password_length(password: Any, role: UserRole) -> None:
+    """Raise SettingsServiceError when the password is too short for the role."""
+    min_len = _min_password_length(role)
+    if not isinstance(password, str) or len(password) < min_len:
+        raise SettingsServiceError(
+            "VALIDATION_ERROR",
+            f"password must be at least {min_len} characters long for role {role.value}.",
+            400,
+        )
+
+
 def create_user(payload: dict[str, Any]) -> dict[str, Any]:
     _validate_allowed_fields(
         payload,
@@ -1089,12 +1109,7 @@ def create_user(payload: dict[str, Any]) -> dict[str, Any]:
     role = _parse_user_role(payload.get("role"))
     is_active = _parse_bool(payload.get("is_active"), field_name="is_active", default=True)
 
-    if not isinstance(password, str) or len(password) < 4:
-        raise SettingsServiceError(
-            "VALIDATION_ERROR",
-            "password must be at least 4 characters long.",
-            400,
-        )
+    _validate_password_length(password, role)
 
     if User.query.filter_by(username=username).first() is not None:
         raise SettingsServiceError(
@@ -1150,13 +1165,9 @@ def update_user(user_id: int, payload: dict[str, Any], *, acting_user_id: int) -
 
     if "password" in payload:
         password = payload.get("password")
-        if not isinstance(password, str) or len(password) < 4:
-            raise SettingsServiceError(
-                "VALIDATION_ERROR",
-                "password must be at least 4 characters long.",
-                400,
-            )
+        _validate_password_length(password, user.role)
         user.password_hash = generate_password_hash(password, method="pbkdf2:sha256")
+        user.password_changed_at = datetime.now(timezone.utc)
 
     db.session.commit()
     return _serialize_user(user, role_names=_role_display_name_map())

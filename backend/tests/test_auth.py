@@ -818,3 +818,247 @@ class TestCleanupCommand:
             after = RevokedToken.query.count()
 
         assert after == before + 1, "Logout must persist exactly one new revoked_token row"
+
+
+# ---------------------------------------------------------------------------
+# Wave 4 Phase 2 — F-SEC-004: refresh-token invalidation after password change
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshInvalidationAfterPasswordChange:
+    """Refresh tokens issued before an admin password change must be rejected.
+
+    The mechanism is layered on top of the existing revocation architecture:
+    - refresh tokens still carry the standard JWT ``iat`` (issued-at) claim
+    - refresh tokens also snapshot ``password_changed_at`` so same-second
+      stale sessions are rejected deterministically
+    - users with ``password_changed_at IS NULL`` (no admin-driven change yet)
+      are not affected
+    - a fresh login after the password change issues a new token that works
+    """
+
+    @staticmethod
+    def _admin_token(client):
+        """Return an access token for auth_admin (pre-existing fixture user)."""
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"username": "auth_admin", "password": "adminpass"},
+            environ_base={"REMOTE_ADDR": "127.0.8.1"},
+        )
+        assert resp.status_code == 200
+        return resp.get_json()["access_token"]
+
+    @staticmethod
+    def _jwt_payload(token):
+        import base64
+        import json as _json
+
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        return _json.loads(base64.b64decode(payload_b64))
+
+    @staticmethod
+    def _create_temp_user(app, *, username, password, role):
+        from werkzeug.security import generate_password_hash
+
+        from app.extensions import db as _db
+        from app.models.user import User
+
+        with app.app_context():
+            u = User(
+                username=username,
+                password_hash=generate_password_hash(password, method="pbkdf2:sha256"),
+                role=role,
+                is_active=True,
+            )
+            _db.session.add(u)
+            _db.session.commit()
+            return u.id
+
+    @staticmethod
+    def _delete_temp_user(app, user_id):
+        from app.extensions import db as _db
+        from app.models.user import User
+
+        with app.app_context():
+            u = _db.session.get(User, user_id)
+            if u:
+                _db.session.delete(u)
+                _db.session.commit()
+
+    @staticmethod
+    def _frozen_datetime(forced_now):
+        class FrozenDateTime:
+            @staticmethod
+            def now(tz=None):
+                if tz is None:
+                    return forced_now.replace(tzinfo=None)
+                return forced_now.astimezone(tz)
+
+        return FrozenDateTime
+
+    def test_settings_password_change_rejects_refresh_token_issued_earlier_in_same_second(
+        self, client, app, auth_users, monkeypatch
+    ):
+        """The active Settings password-reset flow must kill pre-change refresh tokens
+        even when the reset lands in the same second as the original login."""
+        from datetime import datetime, timezone
+
+        from app.models.enums import UserRole
+        from app.services import settings_service
+
+        uid = self._create_temp_user(
+            app,
+            username="pc_settings_same_second_reject",
+            password="OldPass12!",
+            role=UserRole.VIEWER,
+        )
+        try:
+            login_resp = _login(
+                client,
+                "pc_settings_same_second_reject",
+                "OldPass12!",
+                remote_addr="127.0.8.2",
+            )
+            assert login_resp.status_code == 200
+            old_refresh = login_resp.get_json()["refresh_token"]
+            token_iat = self._jwt_payload(old_refresh)["iat"]
+            forced_changed_at = datetime.fromtimestamp(token_iat, tz=timezone.utc).replace(
+                microsecond=900000
+            )
+
+            monkeypatch.setattr(
+                settings_service,
+                "datetime",
+                self._frozen_datetime(forced_changed_at),
+            )
+
+            update_resp = client.put(
+                f"/api/v1/settings/users/{uid}",
+                json={"password": "NewPass12!"},
+                headers=_auth_header(self._admin_token(client)),
+            )
+            assert update_resp.status_code == 200
+
+            refresh_resp = client.post(
+                "/api/v1/auth/refresh",
+                headers=_auth_header(old_refresh),
+            )
+            assert refresh_resp.status_code == 401
+            assert refresh_resp.get_json()["error"] == "PASSWORD_CHANGED"
+        finally:
+            self._delete_temp_user(app, uid)
+
+    def test_refresh_token_issued_after_settings_password_change_works(
+        self, client, app, auth_users, monkeypatch
+    ):
+        """A fresh login after the Settings password reset must yield a working
+        refresh token, including when the reset happened in the same second."""
+        from datetime import datetime, timezone
+
+        from app.models.enums import UserRole
+        from app.services import settings_service
+
+        uid = self._create_temp_user(
+            app,
+            username="pc_settings_same_second_accept",
+            password="OldPass12!",
+            role=UserRole.VIEWER,
+        )
+        try:
+            login_resp = _login(
+                client,
+                "pc_settings_same_second_accept",
+                "OldPass12!",
+                remote_addr="127.0.8.3",
+            )
+            assert login_resp.status_code == 200
+            old_refresh = login_resp.get_json()["refresh_token"]
+            token_iat = self._jwt_payload(old_refresh)["iat"]
+            forced_changed_at = datetime.fromtimestamp(token_iat, tz=timezone.utc).replace(
+                microsecond=900000
+            )
+
+            monkeypatch.setattr(
+                settings_service,
+                "datetime",
+                self._frozen_datetime(forced_changed_at),
+            )
+
+            update_resp = client.put(
+                f"/api/v1/settings/users/{uid}",
+                json={"password": "NewPass12!"},
+                headers=_auth_header(self._admin_token(client)),
+            )
+            assert update_resp.status_code == 200
+
+            new_login_resp = _login(
+                client,
+                "pc_settings_same_second_accept",
+                "NewPass12!",
+                remote_addr="127.0.8.5",
+            )
+            assert new_login_resp.status_code == 200
+            new_refresh = new_login_resp.get_json()["refresh_token"]
+            new_payload = self._jwt_payload(new_refresh)
+            assert "iat" in new_payload
+            assert new_payload["pwd_changed_at"] == forced_changed_at.isoformat(
+                timespec="microseconds"
+            )
+
+            refresh_resp = client.post(
+                "/api/v1/auth/refresh",
+                headers=_auth_header(new_refresh),
+            )
+            assert refresh_resp.status_code == 200
+            assert "access_token" in refresh_resp.get_json()
+        finally:
+            self._delete_temp_user(app, uid)
+
+    def test_null_password_changed_at_does_not_block_refresh(
+        self, client, app, auth_users
+    ):
+        """Users with password_changed_at IS NULL (no admin-driven change) must
+        not be affected by the invalidation check — legacy sessions pass through."""
+        from werkzeug.security import generate_password_hash
+
+        from app.extensions import db as _db
+        from app.models.enums import UserRole
+        from app.models.user import User
+
+        with app.app_context():
+            u = User(
+                username="pc_null_changed_at",
+                password_hash=generate_password_hash(
+                    "StablePass1!", method="pbkdf2:sha256"
+                ),
+                role=UserRole.VIEWER,
+                is_active=True,
+                # password_changed_at deliberately omitted — column is NULL
+            )
+            _db.session.add(u)
+            _db.session.commit()
+            # Confirm it really is NULL after insertion
+            assert u.password_changed_at is None
+            uid = u.id
+
+        login_resp = _login(
+            client, "pc_null_changed_at", "StablePass1!", remote_addr="127.0.8.4"
+        )
+        assert login_resp.status_code == 200
+        refresh_token = login_resp.get_json()["refresh_token"]
+
+        # Refresh must succeed — no password_changed_at means no invalidation check.
+        refresh_resp = client.post(
+            "/api/v1/auth/refresh",
+            headers=_auth_header(refresh_token),
+        )
+        assert refresh_resp.status_code == 200
+        assert "access_token" in refresh_resp.get_json()
+
+        # Cleanup
+        with app.app_context():
+            u = _db.session.get(User, uid)
+            if u:
+                _db.session.delete(u)
+                _db.session.commit()

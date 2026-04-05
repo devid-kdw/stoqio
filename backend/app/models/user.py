@@ -27,6 +27,10 @@ class User(db.Model):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    # Stamped whenever an admin resets or changes this user's password via the
+    # Settings flow.  Nullable so pre-existing rows are unaffected.  Used by
+    # /auth/refresh to reject sessions that predate the most recent change.
+    password_changed_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Relationships
     employee = db.relationship("Employee", backref="user_account", lazy="select")
