@@ -1305,3 +1305,147 @@ class TestPasswordPolicyMinimumLength:
             headers=_auth(token),
         )
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# F-SEC-007 — Label-printer target restriction (Wave 4 Phase 3)
+# ---------------------------------------------------------------------------
+# Contract being locked:
+#   - Non-empty label_printer_ip must be a valid RFC 1918 private IPv4 literal.
+#   - Public IPs, hostnames, IPv6, and CIDR notation are rejected.
+#   - Blank label_printer_ip remains valid as the "not configured" state.
+#   - label_printer_port is restricted to the named allowlist (currently {9100}).
+#   - Previously valid ports like 0 or 80 are now rejected by the allowlist.
+# ---------------------------------------------------------------------------
+
+
+class TestLabelPrinterTargetRestriction:
+    """F-SEC-007: printer IP and port validation prevents SSRF-style TCP misuse."""
+
+    _login_counter = 0
+
+    def _admin_token(self, client) -> str:
+        """Use a fresh admin token for this block so auth assertions do not
+        depend on the module-level token cache or on earlier test mutations.
+        """
+        type(self)._login_counter += 1
+        octet = (type(self)._login_counter % 200) + 20
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"username": "settings_admin", "password": "pass"},
+            environ_base={"REMOTE_ADDR": f"127.0.16.{octet}"},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        return resp.get_json()["access_token"]
+
+    def _put_barcode(self, client, token, *, ip, port=9100):
+        return client.put(
+            "/api/v1/settings/barcode",
+            json={
+                "barcode_format": "Code128",
+                "label_printer_ip": ip,
+                "label_printer_port": port,
+            },
+            headers=_auth(token),
+        )
+
+    def test_printer_ip_rejects_public_ipv4(self, client):
+        """A public routable IP must be rejected — only private space is allowed."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="8.8.8.8")
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["error"] == "VALIDATION_ERROR"
+        assert "label_printer_ip" in body["message"] or "private" in body["message"].lower()
+
+    def test_printer_ip_rejects_loopback_address(self, client):
+        """Loopback is not RFC 1918 and must not be accepted as a printer target."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="127.0.0.1")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_printer_ip_rejects_link_local_address(self, client):
+        """Link-local space is not RFC 1918 and must also be rejected."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="169.254.1.1")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_printer_ip_rejects_hostname(self, client):
+        """A hostname string must be rejected — only literal IPs are valid."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="printer.local")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_printer_ip_rejects_cidr_notation(self, client):
+        """CIDR notation is not a valid single IP and must be rejected."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="192.168.1.0/24")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_printer_ip_rejects_ipv6(self, client):
+        """IPv6 literals must be rejected — only IPv4 private addresses are accepted."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="::1")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"
+
+    def test_printer_ip_accepts_rfc1918_class_c(self, client):
+        """192.168.x.x is a valid RFC 1918 private address."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="192.168.10.200")
+        assert resp.status_code == 200
+        assert resp.get_json()["label_printer_ip"] == "192.168.10.200"
+
+    def test_printer_ip_accepts_rfc1918_class_a(self, client):
+        """10.x.x.x is a valid RFC 1918 private address."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="10.0.0.1")
+        assert resp.status_code == 200
+        assert resp.get_json()["label_printer_ip"] == "10.0.0.1"
+
+    def test_printer_ip_accepts_rfc1918_class_b(self, client):
+        """172.16–31.x.x is a valid RFC 1918 private address."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="172.20.5.50")
+        assert resp.status_code == 200
+        assert resp.get_json()["label_printer_ip"] == "172.20.5.50"
+
+    def test_printer_ip_accepts_blank_as_unconfigured(self, client):
+        """Blank IP must remain valid — it represents the unconfigured state."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="")
+        assert resp.status_code == 200
+        assert resp.get_json()["label_printer_ip"] == ""
+
+    def test_printer_port_accepts_9100(self, client):
+        """Port 9100 is on the allowlist and must be accepted."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="192.168.1.1", port=9100)
+        assert resp.status_code == 200
+        assert resp.get_json()["label_printer_port"] == 9100
+
+    def test_printer_port_rejects_port_not_in_allowlist(self, client):
+        """A valid TCP port that is not on the explicit allowlist must be rejected.
+
+        Port 80 is a valid integer in the old 1-65535 range but is not a
+        supported label-printer protocol port.  The allowlist ensures the
+        backend can never be repurposed as an HTTP pivot.
+        """
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="192.168.1.1", port=80)
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["error"] == "VALIDATION_ERROR"
+        # Error message must state the allowed set so it is actionable.
+        assert "9100" in body["message"]
+
+    def test_printer_port_rejects_arbitrary_high_port(self, client):
+        """An arbitrary high port outside the allowlist must also be rejected."""
+        token = self._admin_token(client)
+        resp = self._put_barcode(client, token, ip="192.168.1.1", port=12345)
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "VALIDATION_ERROR"

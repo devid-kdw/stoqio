@@ -7,6 +7,25 @@ multiple API modules.
 import re
 from decimal import Decimal, InvalidOperation
 
+# Characters that trigger formula execution in spreadsheet applications.
+_FORMULA_INJECTION_PREFIXES = ("=", "+", "-", "@")
+
+
+def sanitize_cell(value: str) -> str:
+    """Prefix user-controlled string cell values to prevent formula injection.
+
+    If *value* begins with a spreadsheet formula trigger character (``=``,
+    ``+``, ``-``, ``@``), a leading single quote is prepended so that
+    spreadsheet applications such as Excel treat the content as literal text
+    rather than a formula expression.
+
+    Only call this on user-controlled string fields.  Do not apply it to
+    numeric cells, date cells, or machine-generated display values.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_INJECTION_PREFIXES):
+        return "'" + value
+    return value
+
 _BATCH_CODE_RE = re.compile(r"^\d{4,5}$|^\d{9,12}$")
 
 

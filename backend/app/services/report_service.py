@@ -20,6 +20,7 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import joinedload
 
 from app.extensions import db
+from app.utils.validators import sanitize_cell
 from app.models.article import Article
 from app.models.article_supplier import ArticleSupplier
 from app.models.category import Category
@@ -1061,9 +1062,9 @@ def export_stock_overview(
     ]
     rows = [
         [
-            item["article_no"],
-            item["description"],
-            item["supplier_name"] or "-",
+            sanitize_cell(item["article_no"]),
+            sanitize_cell(item["description"]),
+            sanitize_cell(item["supplier_name"]) if item["supplier_name"] else "-",
             _format_export_quantity(item["stock"], item["uom"]),
             _format_export_quantity(item["surplus"], item["uom"]),
             _format_export_quantity(item["total_available"], item["uom"]),
@@ -1117,9 +1118,9 @@ def export_surplus_report(*, export_format: Any) -> tuple[bytes, str, str]:
     ]
     rows = [
         [
-            item["article_no"],
-            item["description"],
-            item["batch_code"] or "-",
+            sanitize_cell(item["article_no"]),
+            sanitize_cell(item["description"]),
+            sanitize_cell(item["batch_code"]) if item["batch_code"] else "-",
             item["expiry_date"] or "-",
             _format_export_quantity(item["surplus_qty"], item["uom"]),
             item["discovered"],
@@ -1176,13 +1177,13 @@ def export_transaction_log(
     export_rows = [
         [
             item["occurred_at"],
-            item["article_no"],
-            item["description"],
+            sanitize_cell(item["article_no"]),
+            sanitize_cell(item["description"]),
             item["type"],
             _format_export_quantity(item["quantity"], item["uom"]),
-            item["batch_code"] or "-",
-            item["reference"] or "-",
-            item["user"] or "-",
+            sanitize_cell(item["batch_code"]) if item["batch_code"] else "-",
+            sanitize_cell(item["reference"]) if item["reference"] else "-",
+            sanitize_cell(item["user"]) if item["user"] else "-",
         ]
         for item in items
     ]

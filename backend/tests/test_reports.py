@@ -1513,7 +1513,7 @@ def test_transaction_log_invalid_pagination_returns_validation_error(client, rep
     )
     assert response.status_code == 400
     assert response.get_json()["error"] == "VALIDATION_ERROR"
-    
+
     response = client.get(
         "/api/v1/reports/transactions"
         f"?article_id={reports_data['article_yellow_id']}&per_page=-5",
@@ -1521,3 +1521,213 @@ def test_transaction_log_invalid_pagination_returns_validation_error(client, rep
     )
     assert response.status_code == 400
     assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+
+# ---------------------------------------------------------------------------
+# F-SEC-006 — Excel formula injection hardening (Wave 4 Phase 3)
+# ---------------------------------------------------------------------------
+# Contract being locked:
+#   - sanitize_cell() prefixes '=', '+', '-', '@' leading characters.
+#   - Normal strings and non-string values pass through unchanged.
+#   - The full XLSX export pipeline writes safe literal text for user-controlled
+#     string cells that would otherwise be interpreted as spreadsheet formulas.
+#   - Machine-generated display strings (quantity, status, dates) are NOT
+#     affected even if they begin with a minus sign (e.g. negative adjustments).
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeCellHelper:
+    """Unit contract for the sanitize_cell helper (app/utils/validators.py).
+
+    These tests prove the helper's behavior in isolation so the contract is
+    obvious without running a full export pipeline.
+    """
+
+    def test_equals_sign_prefix_is_quoted(self):
+        """'=' is the most common formula injection trigger."""
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell("=SUM(A1:A10)") == "'=SUM(A1:A10)"
+
+    def test_plus_sign_prefix_is_quoted(self):
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell("+1+2") == "'+1+2"
+
+    def test_minus_sign_prefix_is_quoted(self):
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell("-1+2") == "'-1+2"
+
+    def test_at_sign_prefix_is_quoted(self):
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell("@SUM(A1)") == "'@SUM(A1)"
+
+    def test_normal_string_is_unchanged(self):
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell("Normal description") == "Normal description"
+
+    def test_empty_string_is_unchanged(self):
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell("") == ""
+
+    def test_non_string_integer_is_returned_as_is(self):
+        """Non-string values must pass through without modification."""
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell(42) == 42  # type: ignore[arg-type]
+
+    def test_non_string_none_is_returned_as_is(self):
+        from app.utils.validators import sanitize_cell
+        assert sanitize_cell(None) is None  # type: ignore[arg-type]
+
+    def test_all_four_trigger_characters_are_covered(self):
+        """Exhaustive check that none of the four triggers slip through."""
+        from app.utils.validators import sanitize_cell
+        for trigger in ("=", "+", "-", "@"):
+            result = sanitize_cell(f"{trigger}payload")
+            assert result.startswith("'"), (
+                f"Expected leading quote for trigger '{trigger}', got: {result!r}"
+            )
+
+
+@pytest.fixture(scope="module")
+def formula_injection_data(app):
+    """Seed a single surplus article whose description starts with '=' to prove
+    that the XLSX export sanitizes the value before writing it to the workbook.
+
+    Uses a unique article_no prefix (REP13-INJ-*) to avoid collisions with the
+    main reports_data fixture.
+    """
+    with app.app_context():
+        location = _db.session.get(Location, 1)
+        if location is None:
+            location = Location(id=1, name="Injection Test WH", timezone="UTC", is_active=True)
+            _db.session.add(location)
+            _db.session.flush()
+
+        kg = UomCatalog.query.filter_by(code="rep13_kg").first()
+        if kg is None:
+            kg = UomCatalog(code="rep13_kg", label_hr="kilogram", decimal_display=True)
+            _db.session.add(kg)
+            _db.session.flush()
+
+        general_cat = Category.query.filter_by(key=REPORT_GENERAL_CATEGORY).first()
+        if general_cat is None:
+            general_cat = Category(
+                key=REPORT_GENERAL_CATEGORY,
+                label_hr="Reports General",
+                is_active=True,
+            )
+            _db.session.add(general_cat)
+            _db.session.flush()
+
+        # Article whose description starts with '=' — the injection trigger.
+        article = Article.query.filter_by(article_no="REP13-INJ-001").first()
+        if article is None:
+            article = Article(
+                article_no="REP13-INJ-001",
+                description="=DANGEROUS(\"formula\")",
+                category_id=general_cat.id,
+                base_uom=kg.id,
+                has_batch=False,
+                is_active=True,
+            )
+            _db.session.add(article)
+            _db.session.flush()
+
+        surplus = Surplus.query.filter_by(
+            location_id=location.id,
+            article_id=article.id,
+            batch_id=None,
+        ).first()
+        if surplus is None:
+            _db.session.add(
+                Surplus(
+                    location_id=location.id,
+                    article_id=article.id,
+                    batch_id=None,
+                    quantity=Decimal("1.000"),
+                    uom=kg.code,
+                    created_at=datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc),
+                )
+            )
+
+        _db.session.commit()
+        return {"article_no": "REP13-INJ-001"}
+
+
+def test_xlsx_export_sanitizes_formula_injection_in_description(
+    app, formula_injection_data
+):
+    """F-SEC-006 integration: the surplus XLSX export must not write a live formula.
+
+    The article description '=DANGEROUS(...)' starts with '=', which Excel
+    would interpret as a formula.  After sanitization, the cell value must be
+    stored as the literal string \"'=DANGEROUS(...)\" (single-quote prefix),
+    which spreadsheet applications display as text rather than executing.
+
+    This test proves the contract end-to-end: from DB row → service layer →
+    openpyxl workbook bytes → cell value inspection.  It deliberately does NOT
+    go through the HTTP layer to keep it focused on the injection contract
+    rather than on route authorization.
+    """
+    with app.app_context():
+        xlsx_bytes, _filename, _mime = report_service.export_surplus_report(
+            export_format="xlsx"
+        )
+
+    workbook = load_workbook(BytesIO(xlsx_bytes))
+    sheet = workbook.active
+
+    rows = list(sheet.iter_rows(values_only=True))
+    # Locate our injected article row by the (sanitized) article_no column.
+    target_row = next(
+        (row for row in rows[1:] if row[0] == "REP13-INJ-001"),
+        None,
+    )
+    assert target_row is not None, (
+        "Expected surplus row for REP13-INJ-001 was not found in XLSX output."
+    )
+
+    description_cell = target_row[1]
+    # The cell must start with a single quote prefix — this is the canonical
+    # CSV/spreadsheet escaping for literal text that begins with a formula char.
+    assert isinstance(description_cell, str), (
+        f"Description cell should be a string, got {type(description_cell)}"
+    )
+    assert description_cell.startswith("'"), (
+        f"Expected formula injection to be neutralised with a leading quote, "
+        f"got: {description_cell!r}"
+    )
+    # Also confirm the original content is preserved after the prefix.
+    assert "=DANGEROUS" in description_cell
+
+
+def test_xlsx_export_does_not_sanitize_machine_generated_quantity_strings(
+    app, formula_injection_data
+):
+    """F-SEC-006 boundary: quantity display strings from _format_export_quantity
+    must not be mutated by sanitization even if they begin with a minus sign
+    (e.g. inventory adjustments with negative deltas).
+
+    This test guards the contract that only user-controlled fields are
+    sanitized, not machine-generated display values.
+    """
+    with app.app_context():
+        xlsx_bytes, _filename, _mime = report_service.export_surplus_report(
+            export_format="xlsx"
+        )
+
+    workbook = load_workbook(BytesIO(xlsx_bytes))
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+
+    target_row = next(
+        (row for row in rows[1:] if row[0] == "REP13-INJ-001"),
+        None,
+    )
+    assert target_row is not None
+
+    surplus_qty_cell = target_row[4]  # "Surplus qty" column
+    # Quantity strings like "1.0 rep13_kg" must not be prefixed.
+    assert isinstance(surplus_qty_cell, str)
+    assert not surplus_qty_cell.startswith("'"), (
+        f"Machine-generated quantity string must not be sanitized: {surplus_qty_cell!r}"
+    )

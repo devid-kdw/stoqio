@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -58,6 +59,14 @@ _ROLE_DEFAULTS = {
 _ALLOWED_LANGUAGES = {"hr", "en", "de", "hu"}
 _ALLOWED_BARCODE_FORMATS = {"EAN-13", "Code128"}
 _ALLOWED_EXPORT_FORMATS = {"generic", "sap"}
+# Ports permitted for label-printer raw socket connections.
+# Extend this set if a future supported printer model requires a different port.
+_ALLOWED_LABEL_PRINTER_PORTS: frozenset[int] = frozenset({9100})
+_ALLOWED_LABEL_PRINTER_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+)
 _QUOTA_SCOPE_GLOBAL_ARTICLE = "GLOBAL_ARTICLE_OVERRIDE"
 _QUOTA_SCOPE_JOB_TITLE_CATEGORY = "JOB_TITLE_CATEGORY_DEFAULT"
 
@@ -844,13 +853,39 @@ def _parse_label_printer_port(value: Any) -> int:
             "label_printer_port must be a valid integer.",
             400,
         )
-    if port <= 0 or port > 65535:
+    allowed = sorted(_ALLOWED_LABEL_PRINTER_PORTS)
+    if port not in _ALLOWED_LABEL_PRINTER_PORTS:
         raise SettingsServiceError(
             "VALIDATION_ERROR",
-            "label_printer_port must be between 1 and 65535.",
+            f"label_printer_port must be one of: {', '.join(str(p) for p in allowed)}.",
             400,
         )
     return port
+
+
+def _validate_label_printer_ip(ip: str) -> None:
+    """Raise SettingsServiceError if *ip* is not a literal RFC 1918 IPv4 address.
+
+    A blank *ip* string is accepted as "not configured" and passes validation.
+    Rejects hostnames, public IPs, IPv6 values, CIDR notation, and any
+    input outside the explicitly supported RFC 1918 ranges.
+    """
+    if not ip:
+        return
+    try:
+        addr = ipaddress.IPv4Address(ip)
+    except ValueError:
+        raise SettingsServiceError(
+            "VALIDATION_ERROR",
+            "label_printer_ip must be a valid private IPv4 address (RFC 1918).",
+            400,
+        )
+    if not any(addr in network for network in _ALLOWED_LABEL_PRINTER_NETWORKS):
+        raise SettingsServiceError(
+            "VALIDATION_ERROR",
+            "label_printer_ip must be a private IPv4 address (10.x.x.x, 172.16–31.x.x, or 192.168.x.x).",
+            400,
+        )
 
 
 def update_barcode_settings(payload: dict[str, Any]) -> dict[str, Any]:
@@ -877,6 +912,7 @@ def update_barcode_settings(payload: dict[str, Any]) -> dict[str, Any]:
 
     barcode_printer = _normalize_optional_text(payload.get("barcode_printer")) or ""
     label_printer_ip = _normalize_optional_text(payload.get("label_printer_ip")) or ""
+    _validate_label_printer_ip(label_printer_ip)
 
     raw_port = payload.get("label_printer_port")
     if raw_port is None:
