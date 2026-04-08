@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.services import receiving_service
@@ -26,6 +27,13 @@ def create_receipt():
     except ReceivingServiceError as exc:
         db.session.rollback()
         return _error(exc.error, exc.message, exc.status_code, exc.details)
+    except IntegrityError:
+        db.session.rollback()
+        return _error(
+            "CONFLICT",
+            "Receiving update conflicted with another request. Please retry.",
+            409,
+        )
 
 
 @receiving_bp.route("/receiving", methods=["GET"])

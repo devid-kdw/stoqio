@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
+
 from app.extensions import db
 from app.models.article import Article
 from app.models.draft import Draft
@@ -207,8 +209,16 @@ def start_count(current_user: User, count_type: InventoryCountType = InventoryCo
         started_by=current_user.id,
         started_at=now,
     )
-    db.session.add(count)
-    db.session.flush()  # get count.id
+    try:
+        db.session.add(count)
+        db.session.flush()  # get count.id
+    except IntegrityError as exc:
+        db.session.rollback()
+        raise InventoryServiceError(
+            "COUNT_IN_PROGRESS",
+            "An inventory count is already in progress.",
+            400,
+        ) from exc
 
     active_articles = (
         db.session.query(Article).filter_by(is_active=True).order_by(Article.article_no).all()

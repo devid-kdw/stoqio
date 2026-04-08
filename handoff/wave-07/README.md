@@ -31,6 +31,13 @@ source documents. Scope creep is not permitted.
 
 All five phases touch non-overlapping files and can run simultaneously.
 
+## Closeout Follow-Up
+
+- `wave-07-closeout-codex.md` records the final Codex follow-up after the Phase 1-5
+  review. It closes residual approval, inventory-count, report-export, receiving
+  conflict-handling, and deploy rollback-capture issues found after the initial
+  Wave 7 implementation.
+
 **File ownership per phase (no overlaps):**
 - Phase 1: `approval_service.py`, `inventory_service.py`, `employee_service.py`
 - Phase 2: `stock.py`, `surplus.py`, `batch.py`, `inventory_count.py` (model layer) + new Alembic migrations

@@ -69,6 +69,15 @@ def _get_override_for_bucket(
     ).first()
 
 
+def _lock_group_for_update(group_id: int) -> Optional[DraftGroup]:
+    return (
+        db.session.query(DraftGroup)
+        .filter_by(id=group_id)
+        .with_for_update()
+        .first()
+    )
+
+
 def get_pending_draft_groups():
     """Return all DraftGroups that have at least one DRAFT line."""
     # Subquery to find draft groups with at least one pending draft
@@ -292,16 +301,17 @@ def edit_aggregated_line(group_id: int, line_id: int, new_quantity: Decimal) -> 
     if new_quantity < 0:
         raise ValueError("Override quantity cannot be negative")
 
+    # Lock group first so edit/approve/reject paths acquire locks in a consistent order.
+    group = _lock_group_for_update(group_id)
+    if group is None:
+        return None
+
     # Find the representative draft
     draft = db.session.get(Draft, line_id)
     if not draft or draft.draft_group_id != group_id:
         return None
 
     # H-1 / Wave 7 Phase 1: reject edits on groups that are no longer actionable.
-    # Load the DraftGroup and check its status. Only PENDING groups may be edited.
-    group = db.session.get(DraftGroup, group_id)
-    if group is None:
-        return None
     non_actionable = {DraftGroupStatus.APPROVED, DraftGroupStatus.REJECTED, DraftGroupStatus.PARTIAL}
     if group.status in non_actionable:
         raise ApprovalServiceError(
@@ -310,6 +320,40 @@ def edit_aggregated_line(group_id: int, line_id: int, new_quantity: Decimal) -> 
             "Override edits are not permitted after resolution.",
             409,
             {"group_id": group_id, "status": group.status.value},
+        )
+
+    # Wave 7 closeout: a PENDING group can still contain a bucket that was already
+    # approved/rejected while other buckets remain DRAFT. Lock and check the
+    # represented bucket itself before changing its override.
+    bucket_drafts = (
+        db.session.query(Draft)
+        .filter(
+            Draft.draft_group_id == group_id,
+            Draft.article_id == draft.article_id,
+            Draft.batch_id == draft.batch_id,
+        )
+        .order_by(Draft.id.asc())
+        .with_for_update()
+        .all()
+    )
+    if not bucket_drafts:
+        return None
+
+    non_draft_statuses = [
+        d.status.value if hasattr(d.status, "value") else str(d.status)
+        for d in bucket_drafts
+        if d.status != DraftStatus.DRAFT
+    ]
+    if non_draft_statuses:
+        raise ApprovalServiceError(
+            "LINE_ALREADY_RESOLVED",
+            "This approval line has already been processed. Override edits are not permitted.",
+            409,
+            {
+                "group_id": group_id,
+                "line_id": line_id,
+                "statuses": non_draft_statuses,
+            },
         )
 
     # Upsert the override
@@ -482,6 +526,9 @@ def _approve_pending_bucket(user_id: int, group_id: int, line_id: int) -> dict:
 
 
 def approve_line(user_id: int, group_id: int, line_id: int) -> dict:
+    group = _lock_group_for_update(group_id)
+    if group is None:
+        raise ValueError("Group not found.")
     result = _approve_pending_bucket(user_id, group_id, line_id)
     _update_group_status_if_done(group_id)
     db.session.commit()
@@ -501,9 +548,7 @@ def approve_all(user_id: int, group_id: int) -> dict:
     # likely outcome a deadlock or one request failing with a lock timeout —
     # not a clean double-approval — but the risk must be closed at the group
     # level to serialize concurrent calls cleanly.
-    group = db.session.query(DraftGroup).filter_by(
-        id=group_id
-    ).with_for_update().first()
+    group = _lock_group_for_update(group_id)
     if group is None:
         raise ValueError("Group not found.")
 
@@ -547,16 +592,26 @@ def reject_line(user_id: int, group_id: int, line_id: int, reason: Optional[str]
     """
     Reject an aggregated line. Reason is optional.
     """
+    group = _lock_group_for_update(group_id)
+    if group is None:
+        raise ValueError("Group not found.")
+
     draft = db.session.get(Draft, line_id)
     if not draft or draft.draft_group_id != group_id:
         raise ValueError("Line not found in this group.")
 
-    bucket_drafts = db.session.query(Draft).filter_by(
-        draft_group_id=group_id,
-        article_id=draft.article_id,
-        batch_id=draft.batch_id,
-        status=DraftStatus.DRAFT
-    ).all()
+    bucket_drafts = (
+        db.session.query(Draft)
+        .filter_by(
+            draft_group_id=group_id,
+            article_id=draft.article_id,
+            batch_id=draft.batch_id,
+            status=DraftStatus.DRAFT,
+        )
+        .order_by(Draft.id.asc())
+        .with_for_update()
+        .all()
+    )
 
     if not bucket_drafts:
         raise ValueError("Line already processed.")
@@ -576,14 +631,20 @@ def reject_line(user_id: int, group_id: int, line_id: int, reason: Optional[str]
 
 
 def reject_group(user_id: int, group_id: int, reason: Optional[str]) -> dict:
-    group = db.session.get(DraftGroup, group_id)
+    group = _lock_group_for_update(group_id)
     if not group:
         raise ValueError("Group not found.")
 
-    drafts = db.session.query(Draft).filter_by(
-        draft_group_id=group_id,
-        status=DraftStatus.DRAFT
-    ).all()
+    drafts = (
+        db.session.query(Draft)
+        .filter_by(
+            draft_group_id=group_id,
+            status=DraftStatus.DRAFT,
+        )
+        .order_by(Draft.id.asc())
+        .with_for_update()
+        .all()
+    )
 
     for d in drafts:
         d.status = DraftStatus.REJECTED

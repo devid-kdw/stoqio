@@ -7,16 +7,18 @@ PRE_DEPLOY_GIT_HEAD=""
 PRE_DEPLOY_ALEMBIC_HEAD=""
 PREDEPLOY_LOG=""
 
-trap '
+on_deploy_error() {
   echo "ERROR: deploy.sh failed at: $BASH_COMMAND" >&2
   echo "" >&2
   echo "Manual rollback instructions:" >&2
-  echo "  Git:        git reset --hard '"'"'$PRE_DEPLOY_GIT_HEAD'"'"'" >&2
-  echo "  Migrations: venv/bin/alembic downgrade '"'"'$PRE_DEPLOY_ALEMBIC_HEAD'"'"'" >&2
+  echo "  Git:        git reset --hard $PRE_DEPLOY_GIT_HEAD" >&2
+  echo "  Migrations: cd $BACKEND_DIR && $BACKEND_PYTHON -m alembic downgrade $PRE_DEPLOY_ALEMBIC_HEAD" >&2
   echo "  WARNING:    Destructive migrations cannot be safely reversed. Review migration state before downgrading." >&2
   echo "  Service:    sudo systemctl status wms" >&2
   echo "  Pre-deploy state saved to: $PREDEPLOY_LOG" >&2
-' ERR
+}
+
+trap on_deploy_error ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
@@ -44,7 +46,14 @@ cd "$ROOT_DIR"
 
 # Capture pre-deploy state for manual rollback reference
 PRE_DEPLOY_GIT_HEAD=$(git rev-parse HEAD)
-PRE_DEPLOY_ALEMBIC_HEAD=$(venv/bin/alembic current 2>/dev/null | head -1 || echo "unknown")
+PRE_DEPLOY_ALEMBIC_HEAD=$(
+  cd "$BACKEND_DIR" && \
+    PYTHONPATH="$BACKEND_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+    "$BACKEND_PYTHON" -m alembic current 2>/dev/null | head -1 || echo "unknown"
+)
+if [ -z "$PRE_DEPLOY_ALEMBIC_HEAD" ]; then
+  PRE_DEPLOY_ALEMBIC_HEAD="unknown"
+fi
 PREDEPLOY_LOG="/tmp/stoqio_predeploy_$(date +%Y%m%d_%H%M%S).txt"
 {
   echo "PRE_DEPLOY_GIT_HEAD=$PRE_DEPLOY_GIT_HEAD"

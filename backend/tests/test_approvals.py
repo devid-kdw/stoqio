@@ -1126,6 +1126,37 @@ class TestConcurrencyHardening:
         body = resp.get_json()
         assert body["error"] == "GROUP_ALREADY_RESOLVED"
 
+    def test_h1_edit_approved_bucket_in_pending_group_returns_409(self, client, app, app_data):
+        """H-1 closeout: a processed bucket cannot be edited while another bucket stays pending."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "stock": 10.0, "surplus": 0.0, "uom": "akg"},
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"},
+            {"article_id": app_data["art_with_batch"].id, "batch_id": app_data["b1"].id, "quantity": 2.0, "uom": "akg"},
+        ])
+        token = _login(client, "appr_admin")
+        approved_line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+
+        approve_resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{approved_line_id}/approve",
+            headers=_auth_header(token),
+        )
+        assert approve_resp.status_code == 200
+
+        with app.app_context():
+            group = _db.session.get(DraftGroup, group_id)
+            assert group.status == DraftGroupStatus.PENDING
+
+        edit_resp = client.patch(
+            f"/api/v1/approvals/{group_id}/lines/{approved_line_id}",
+            json={"quantity": 5.0},
+            headers=_auth_header(token),
+        )
+        assert edit_resp.status_code == 409
+        assert edit_resp.get_json()["error"] == "LINE_ALREADY_RESOLVED"
+
     def test_h1_edit_pending_group_still_allowed(self, client, app, app_data):
         """H-1: edit_aggregated_line on a PENDING group must still succeed."""
         _insert_balances(app, app_data["loc"].id, [

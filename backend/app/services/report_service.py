@@ -428,7 +428,7 @@ def get_stock_overview(
     category: Any = None,
     reorder_only: Any = None,
     page: int = 1,
-    per_page: int = 100,
+    per_page: int | None = 100,
 ) -> dict[str, Any]:
     parsed_from, parsed_to, months_in_period = _require_date_range(date_from, date_to)
     reorder_only_enabled = _parse_bool(
@@ -437,8 +437,11 @@ def get_stock_overview(
         default=False,
     )
     normalized_category = _normalize_optional_text(category)
-    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
-    per_page = min(per_page, 200)
+    # V-3 / Wave 6 Phase 1: cap API page size to prevent DoS via large result sets.
+    # Wave 7 closeout: per_page=None is reserved for rate-limited export paths that
+    # must include the full matching dataset instead of silently exporting page 1.
+    if per_page is not None:
+        per_page = min(per_page, 200)
 
     query = (
         Article.query
@@ -487,8 +490,15 @@ def get_stock_overview(
             warehouse_total_value += stock_total * unit_value
 
     total = len(all_items)
-    offset = (page - 1) * per_page
-    items = all_items[offset: offset + per_page]
+    if per_page is None:
+        items = all_items
+        response_page = 1
+        response_per_page = total
+    else:
+        offset = (page - 1) * per_page
+        items = all_items[offset: offset + per_page]
+        response_page = page
+        response_per_page = per_page
 
     return {
         "period": {
@@ -498,8 +508,8 @@ def get_stock_overview(
         },
         "items": items,
         "total": total,
-        "page": page,
-        "per_page": per_page,
+        "page": response_page,
+        "per_page": response_per_page,
         "summary": {
             "warehouse_total_value": _as_float(warehouse_total_value, _VALUE_QUANT),
         },
@@ -508,10 +518,12 @@ def get_stock_overview(
 
 def get_surplus_report(
     page: int = 1,
-    per_page: int = 100,
+    per_page: int | None = 100,
 ) -> dict[str, Any]:
-    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
-    per_page = min(per_page, 200)
+    # V-3 / Wave 6 Phase 1: cap API page size to prevent DoS via large result sets.
+    # per_page=None is reserved for the rate-limited full export path.
+    if per_page is not None:
+        per_page = min(per_page, 200)
 
     base_query = (
         Surplus.query
@@ -525,7 +537,14 @@ def get_surplus_report(
     )
 
     total = base_query.count()
-    rows = base_query.offset((page - 1) * per_page).limit(per_page).all()
+    if per_page is None:
+        rows = base_query.all()
+        response_page = 1
+        response_per_page = total
+    else:
+        rows = base_query.offset((page - 1) * per_page).limit(per_page).all()
+        response_page = page
+        response_per_page = per_page
 
     items = [
         {
@@ -542,7 +561,12 @@ def get_surplus_report(
         }
         for row in rows
     ]
-    return {"items": items, "total": total, "page": page, "per_page": per_page}
+    return {
+        "items": items,
+        "total": total,
+        "page": response_page,
+        "per_page": response_per_page,
+    }
 
 
 def _transaction_base_query(
@@ -1066,6 +1090,7 @@ def export_stock_overview(
         date_to=date_to,
         category=category,
         reorder_only=reorder_only,
+        per_page=None,
     )
     headers = [
         "Article No.",
@@ -1128,7 +1153,7 @@ def export_stock_overview(
 
 def export_surplus_report(*, export_format: Any) -> tuple[bytes, str, str]:
     parsed_format = _parse_export_format(export_format)
-    report = get_surplus_report()
+    report = get_surplus_report(per_page=None)
     headers = [
         "Article No.",
         "Description",

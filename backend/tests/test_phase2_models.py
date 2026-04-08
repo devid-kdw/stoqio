@@ -144,6 +144,13 @@ def test_initial_migration_creates_expected_tables_and_stock_check_constraint(
         for constraint in check_constraints
     )
 
+    inventory_count_indexes = inspector.get_indexes("inventory_count")
+    assert any(
+        index.get("name") == "uq_inventory_count_in_progress"
+        and index.get("unique")
+        for index in inventory_count_indexes
+    )
+
     with engine.begin() as conn:
         draft_fk_rows = conn.execute(text("PRAGMA foreign_key_list('draft')")).mappings().all()
         assert any(

@@ -1271,6 +1271,33 @@ def test_stock_overview_pdf_export_uses_landscape_title_subtitles_and_generic_ro
     assert rows_by_article["REP13-002"][9] == "∞"
 
 
+def test_stock_overview_export_requests_unpaginated_full_report(
+    app,
+    reports_data,
+    monkeypatch,
+):
+    calls: dict[str, object] = {}
+    original_get_stock_overview = report_service.get_stock_overview
+
+    def spy_get_stock_overview(**kwargs):
+        calls.update(kwargs)
+        return original_get_stock_overview(**kwargs)
+
+    monkeypatch.setattr(report_service, "get_stock_overview", spy_get_stock_overview)
+    monkeypatch.setattr(report_service, "_build_xlsx", lambda *args: b"xlsx")
+
+    with app.app_context():
+        content, _filename, _mimetype = report_service.export_stock_overview(
+            export_format="xlsx",
+            date_from=REPORT_DATE_FROM,
+            date_to=REPORT_DATE_TO,
+            category=REPORT_GENERAL_CATEGORY,
+        )
+
+    assert content == b"xlsx"
+    assert calls["per_page"] is None
+
+
 def test_surplus_pdf_export_uses_portrait_title_timestamp_and_expected_rows(
     app,
     reports_data,
@@ -1298,6 +1325,30 @@ def test_surplus_pdf_export_uses_portrait_title_timestamp_and_expected_rows(
     assert all("STOQIO" not in line for line in captured["subtitle_lines"])
     rows_by_article = {row[0]: row for row in captured["rows"]}
     assert rows_by_article["REP13-001"][4] == "3.0 rep13_kg"
+
+
+def test_surplus_export_requests_unpaginated_full_report(
+    app,
+    reports_data,
+    monkeypatch,
+):
+    calls: dict[str, object] = {}
+    original_get_surplus_report = report_service.get_surplus_report
+
+    def spy_get_surplus_report(**kwargs):
+        calls.update(kwargs)
+        return original_get_surplus_report(**kwargs)
+
+    monkeypatch.setattr(report_service, "get_surplus_report", spy_get_surplus_report)
+    monkeypatch.setattr(report_service, "_build_xlsx", lambda *args: b"xlsx")
+
+    with app.app_context():
+        content, _filename, _mimetype = report_service.export_surplus_report(
+            export_format="xlsx",
+        )
+
+    assert content == b"xlsx"
+    assert calls["per_page"] is None
 
 
 def test_transaction_pdf_export_uses_landscape_title_date_range_timestamp_and_expected_rows(

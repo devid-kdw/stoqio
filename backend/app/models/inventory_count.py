@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Enum as SAEnum, text
 
 from app.extensions import db
 from app.models.enums import InventoryCountStatus, InventoryCountLineResolution, InventoryCountType
@@ -10,6 +10,19 @@ from app.models.enums import InventoryCountStatus, InventoryCountLineResolution,
 
 class InventoryCount(db.Model):
     __tablename__ = "inventory_count"
+    __table_args__ = (
+        # Wave 7 closeout: only one inventory count may be active at a time.
+        # The service-level SELECT ... FOR UPDATE cannot lock a row that does
+        # not exist yet, so this partial unique index closes the concurrent
+        # double-start window at the database layer.
+        db.Index(
+            "uq_inventory_count_in_progress",
+            "status",
+            unique=True,
+            sqlite_where=text("status = 'IN_PROGRESS'"),
+            postgresql_where=text("status = 'IN_PROGRESS'"),
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     status = db.Column(
