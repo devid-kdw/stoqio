@@ -196,3 +196,101 @@ Post-Closeout Follow-Up 5
   - removed the completed-detail full-row background override for line status
   - kept status visibility through `ResolutionBadge` and colored `Razlika`
 - Added W8-F-012 to `handoff/Findings/wave-08-user-feedback.md` for traceability.
+
+Post-Closeout Follow-Up 6
+- User reported two additional Wave 8 follow-ups:
+  - completed Inventory detail still lists batch-tracked articles as repeated flat rows instead of
+    a single expandable parent row with batches beneath it
+  - Reports stock overview still shows `0,00 €` values even after initial/prosječna cijena was
+    entered for articles
+- Updated `frontend/src/pages/inventory/CompletedDetailView.tsx`:
+  - reused the active-inventory batch grouping pattern for completed counts
+  - added expandable parent rows for batch-tracked articles
+  - parent rows now summarize total system quantity, total counted quantity, and total difference
+    across grouped batches
+  - child rows keep per-batch `Šarža`, `Rok valjanosti`, and status detail
+- Updated `backend/app/services/report_service.py`:
+  - added `Article.initial_average_price` fallback for stock overview valuation when the current
+    stock weighted average is missing or resolves to zero
+  - kept current stock weighted average as the primary source whenever it is valid
+- Updated `backend/tests/test_reports.py`:
+  - added a regression test covering stock rows with zero `average_price` and non-zero
+    `initial_average_price`
+- Added W8-F-013 and W8-F-014 to `handoff/Findings/wave-08-user-feedback.md` for traceability.
+
+Post-Closeout Follow-Up 7
+- User requested explicit barcode generation actions in Warehouse article detail:
+  - a `Generiraj` action beside the non-batch article `Barkod` field
+  - a `Generiraj` action in `Šarže (FEFO) -> Akcije` for batch-tracked articles
+- Updated backend barcode flow:
+  - added dedicated JSON generate endpoints for articles and batches
+  - separated barcode generation/persistence from PDF download and direct printer output
+  - hardened barcode lookups to refresh entities from the database before generation so stale
+    session state cannot pretend a barcode exists when it does not
+- Updated frontend Warehouse detail:
+  - article edit form now shows a `Generiraj` button beside the `Barkod` input
+  - successful generation writes the returned barcode back into article state and the edit form
+  - FEFO batch action rows now include `Generiraj`, `PDF`, and `Printer`
+- Updated `backend/tests/test_articles.py` with coverage for the new generate endpoints.
+- Added W8-F-015 to `handoff/Findings/wave-08-user-feedback.md` for traceability.
+
+Post-Closeout Follow-Up 8
+- User requested two UI copy/presentation tweaks:
+  - FEFO batch action button should read `Generiraj barkod`, not only `Generiraj`
+  - Reports stock overview `Status` column should show only the colored indicator dot, without the
+    clipped badge text beside it
+- Updated `frontend/src/pages/warehouse/ArticleDetailPage.tsx`:
+  - renamed the FEFO batch action label to `Generiraj barkod`
+- Updated `frontend/src/pages/reports/ReportsPage.tsx`:
+  - simplified the stock-overview `Status` cell renderer to a dot-only reorder indicator with
+    tooltip/aria label
+- Added W8-F-016 to `handoff/Findings/wave-08-user-feedback.md` for traceability.
+
+Post-Closeout Follow-Up 9
+- User pointed out that batch-tracked articles should not show top-level article barcode output
+  actions in the header, because barcode output belongs to the batch rows under `Šarže (FEFO)`.
+- Updated `frontend/src/pages/warehouse/ArticleDetailPage.tsx`:
+  - hid top-right article-level `Ispis barkoda (PDF)` and `Pošalji na printer` actions when
+    `article.has_batch` is true
+  - kept the header edit/deactivate actions unchanged
+  - hid the related printer-configuration helper text in the header for batch-tracked articles
+- Added W8-F-017 to `handoff/Findings/wave-08-user-feedback.md` for traceability.
+
+Post-Closeout Follow-Up 10
+- User reported a small but annoying article-edit UX issue: after scrolling down to click `Spremi`,
+  the page stayed at the bottom after save, forcing a manual scroll back to the header.
+- Updated `frontend/src/pages/warehouse/ArticleDetailPage.tsx`:
+  - after a successful article save, the page now scrolls back to the top automatically
+- Added W8-F-018 to `handoff/Findings/wave-08-user-feedback.md` for traceability.
+
+Post-Closeout Follow-Up 11
+- User pointed out that create/edit forms for batch-tracked articles should not expose an
+  article-level `Barkod` field, because barcode ownership belongs to the batch.
+- Updated frontend Warehouse forms:
+  - `frontend/src/pages/warehouse/WarehouseArticleForm.tsx` now hides the barcode field whenever
+    `form.hasBatch` is true
+  - `frontend/src/pages/warehouse/WarehousePage.tsx` and
+    `frontend/src/pages/warehouse/ArticleDetailPage.tsx` now clear in-form barcode state when the
+    user switches an article into batch-tracked mode
+  - `frontend/src/pages/warehouse/warehouseUtils.ts` now sends `barcode: null` for batch articles
+    in create/update payloads
+  - article detail read-only metadata also hides the article-level `Barkod` field for batch
+    articles for consistency
+- Added W8-F-019 to `handoff/Findings/wave-08-user-feedback.md` for traceability.
+
+Post-Closeout Follow-Up 12
+- User pointed out that batch barcode generation still lacked visible state:
+  - after generating a batch barcode, the FEFO table did not show the actual barcode value
+  - `Generiraj barkod` stayed clickable, making it unclear whether generation had already happened
+    or whether repeated clicks would overwrite the barcode
+- Updated backend article detail serialization:
+  - batch rows now include `barcode` in the article detail payload
+- Updated `frontend/src/pages/warehouse/ArticleDetailPage.tsx`:
+  - added a FEFO `Barkod` column
+  - after successful generation, the returned barcode is written into local FEFO row state
+  - FEFO generate action now switches into a disabled `Barkod generiran` state when the batch
+    already has a barcode
+- Updated `backend/tests/test_articles.py`:
+  - article detail tests now assert batch barcode presence in the payload
+  - batch generate tests now verify the generated barcode is visible through the article detail API
+- Added W8-F-020 to `handoff/Findings/wave-08-user-feedback.md` for traceability.

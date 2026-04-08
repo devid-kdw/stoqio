@@ -117,7 +117,9 @@ export default function ArticleDetailPage() {
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [deactivateSubmitting, setDeactivateSubmitting] = useState(false)
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false)
+  const [barcodeGenerateSubmitting, setBarcodeGenerateSubmitting] = useState(false)
   const [batchBarcodeSubmittingId, setBatchBarcodeSubmittingId] = useState<number | null>(null)
+  const [batchBarcodeGenerateSubmittingId, setBatchBarcodeGenerateSubmittingId] = useState<number | null>(null)
   // Direct-print loading states (ADMIN only)
   const [directPrintSubmitting, setDirectPrintSubmitting] = useState(false)
   const [batchDirectPrintSubmittingId, setBatchDirectPrintSubmittingId] = useState<number | null>(null)
@@ -303,6 +305,7 @@ export default function ArticleDetailPage() {
       setEditForm((current) => ({
         ...current,
         [field]: value,
+        ...(field === 'hasBatch' && value === true ? { barcode: '' } : {}),
       }))
       setEditErrors({})
     },
@@ -351,6 +354,7 @@ export default function ArticleDetailPage() {
           articlesApi.update(article.id, buildArticlePayload(editForm, true))
         )
         applyArticleState(updatedArticle)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
         showSuccessToast('Artikl je ažuriran.')
       } catch (error) {
         if (isNetworkOrServerError(error)) {
@@ -443,6 +447,33 @@ export default function ArticleDetailPage() {
     }
   }, [article])
 
+  const handleBarcodeGenerate = useCallback(async () => {
+    if (!article) {
+      return
+    }
+
+    setBarcodeGenerateSubmitting(true)
+
+    try {
+      const response = await runWithRetry(() => articlesApi.generateBarcode(article.id))
+      setArticle((prev) => (prev ? { ...prev, barcode: response.barcode } : prev))
+      setEditForm((prev) => ({ ...prev, barcode: response.barcode }))
+      showSuccessToast('Barkod artikla je spreman.')
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        setFatalError(true)
+        return
+      }
+
+      const apiError = await getApiErrorBodyAsync(error)
+      showErrorToast(
+        translateArticleApiMessage(apiError, 'Generiranje barkoda artikla nije uspjelo.')
+      )
+    } finally {
+      setBarcodeGenerateSubmitting(false)
+    }
+  }, [article])
+
   const handleDirectPrint = useCallback(async () => {
     if (!article) {
       return
@@ -500,6 +531,44 @@ export default function ArticleDetailPage() {
         )
       } finally {
         setBatchBarcodeSubmittingId(null)
+      }
+    },
+    [article]
+  )
+
+  const handleBatchBarcodeGenerate = useCallback(
+    async (batchId: number, batchCode: string) => {
+      if (!article) {
+        return
+      }
+
+      setBatchBarcodeGenerateSubmittingId(batchId)
+
+      try {
+        const response = await runWithRetry(() => articlesApi.generateBatchBarcode(batchId))
+        setArticle((prev) =>
+          prev
+            ? {
+                ...prev,
+                batches: prev.batches?.map((batch) =>
+                  batch.id === batchId ? { ...batch, barcode: response.barcode } : batch
+                ),
+              }
+            : prev
+        )
+        showSuccessToast(`Barkod šarže ${batchCode} je spreman.`)
+      } catch (error) {
+        if (isNetworkOrServerError(error)) {
+          setFatalError(true)
+          return
+        }
+
+        const apiError = await getApiErrorBodyAsync(error)
+        showErrorToast(
+          translateArticleApiMessage(apiError, 'Generiranje barkoda šarže nije uspjelo.')
+        )
+      } finally {
+        setBatchBarcodeGenerateSubmittingId(null)
       }
     },
     [article]
@@ -722,19 +791,23 @@ export default function ArticleDetailPage() {
         {isAdmin ? (
           <Stack gap={4} align="flex-end">
             <Group>
-              <Button variant="default" onClick={() => void handleBarcodePrint()} loading={barcodeSubmitting}>
-                Ispis barkoda (PDF)
-              </Button>
-              <Button
-                variant="filled"
-                color="teal"
-                onClick={() => void handleDirectPrint()}
-                loading={directPrintSubmitting}
-                disabled={!barcodeSettings?.label_printer_ip}
-                title={!barcodeSettings?.label_printer_ip ? 'Printer nije konfiguriran' : undefined}
-              >
-                Pošalji na printer
-              </Button>
+              {!article.has_batch ? (
+                <>
+                  <Button variant="default" onClick={() => void handleBarcodePrint()} loading={barcodeSubmitting}>
+                    Ispis barkoda (PDF)
+                  </Button>
+                  <Button
+                    variant="filled"
+                    color="teal"
+                    onClick={() => void handleDirectPrint()}
+                    loading={directPrintSubmitting}
+                    disabled={!barcodeSettings?.label_printer_ip}
+                    title={!barcodeSettings?.label_printer_ip ? 'Printer nije konfiguriran' : undefined}
+                  >
+                    Pošalji na printer
+                  </Button>
+                </>
+              ) : null}
               {!editMode ? (
                 <>
                   <Button variant="default" onClick={handleStartEdit}>
@@ -751,7 +824,7 @@ export default function ArticleDetailPage() {
                 </>
               ) : null}
             </Group>
-            {!barcodeSettings?.label_printer_ip ? (
+            {!article.has_batch && !barcodeSettings?.label_printer_ip ? (
               <Text size="xs" c="dimmed">
                 Printer nije konfiguriran — postavite IP adresu u postavkama barkoda.
               </Text>
@@ -783,6 +856,13 @@ export default function ArticleDetailPage() {
                   supplierOptionsLoading={supplierOptionsLoading}
                   supplierOptionsError={supplierOptionsError}
                   disabled={editSubmitting}
+                  barcodeActionLabel="Generiraj"
+                  barcodeActionLoading={barcodeGenerateSubmitting}
+                  barcodeActionDisabled={Boolean(editForm.barcode.trim())}
+                  barcodeActionTitle={
+                    editForm.barcode.trim() ? 'Barkod je već upisan.' : undefined
+                  }
+                  onBarcodeAction={() => void handleBarcodeGenerate()}
                   onRetrySuppliers={() => void loadSupplierOptions()}
                   onChange={handleEditFieldChange}
                 />
@@ -812,7 +892,9 @@ export default function ArticleDetailPage() {
                 }
               />
               <DetailField label="Jedinica pakiranja" value={article.pack_uom ?? '—'} />
-              <DetailField label="Barkod" value={article.barcode ?? '—'} />
+              {!article.has_batch ? (
+                <DetailField label="Barkod" value={article.barcode ?? '—'} />
+              ) : null}
               <DetailField label="Proizvođač" value={article.manufacturer ?? '—'} />
               <DetailField label="Šifra proizvođača" value={article.manufacturer_art_number ?? '—'} />
               <DetailField
@@ -885,6 +967,7 @@ export default function ArticleDetailPage() {
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Šifra šarže</Table.Th>
+                      <Table.Th>Barkod</Table.Th>
                       <Table.Th>Rok trajanja</Table.Th>
                       <Table.Th>Količina zalihe</Table.Th>
                       <Table.Th>Količina viška</Table.Th>
@@ -895,6 +978,15 @@ export default function ArticleDetailPage() {
                     {article.batches.map((batch) => (
                       <Table.Tr key={batch.id}>
                         <Table.Td>{batch.batch_code}</Table.Td>
+                        <Table.Td>
+                          {batch.barcode ? (
+                            <Text size="sm" style={{ fontFamily: 'monospace' }}>
+                              {batch.barcode}
+                            </Text>
+                          ) : (
+                            '—'
+                          )}
+                        </Table.Td>
                         <Table.Td>{formatDate(batch.expiry_date)}</Table.Td>
                         <Table.Td>{formatQuantity(batch.stock_total, article.base_uom, uomMap)}</Table.Td>
                         <Table.Td>
@@ -903,6 +995,16 @@ export default function ArticleDetailPage() {
                         {isAdmin ? (
                           <Table.Td>
                             <Group gap="xs">
+                              <Button
+                                size="xs"
+                                variant="light"
+                                onClick={() => void handleBatchBarcodeGenerate(batch.id, batch.batch_code)}
+                                loading={batchBarcodeGenerateSubmittingId === batch.id}
+                                disabled={Boolean(batch.barcode)}
+                                title={batch.barcode ? 'Barkod je već generiran.' : undefined}
+                              >
+                                {batch.barcode ? 'Barkod generiran' : 'Generiraj barkod'}
+                              </Button>
                               <Button
                                 size="xs"
                                 variant="default"

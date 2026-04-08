@@ -257,6 +257,7 @@ export default function WarehousePage() {
       setCreateForm((current) => ({
         ...current,
         [field]: value,
+        ...(field === 'hasBatch' && value === true ? { barcode: '' } : {}),
       }))
       setCreateErrors({})
     },

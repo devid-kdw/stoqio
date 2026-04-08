@@ -588,7 +588,7 @@ export function buildArticlePayload(
     base_uom: String(form.baseUom),
     pack_size: parseOptionalNumber(form.packSize),
     pack_uom: form.packUom ?? null,
-    barcode: normalizeOptionalText(form.barcode),
+    barcode: form.hasBatch ? null : normalizeOptionalText(form.barcode),
     manufacturer: normalizeOptionalText(form.manufacturer),
     has_batch: form.hasBatch,
     initial_average_price: parseOptionalNumber(form.initialAveragePrice),

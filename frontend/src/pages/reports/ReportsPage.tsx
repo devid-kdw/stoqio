@@ -167,9 +167,11 @@ function validateOptionalDateRange(dateFrom: string, dateTo: string): {
 
 function ReorderStatusBadge({ status }: { status: ReportReorderStatus }) {
   return (
-    <Group gap={8} wrap="nowrap">
+    <Group gap={0} wrap="nowrap" justify="center">
       <span
-        aria-hidden="true"
+        aria-label={getReorderStatusLabel(status)}
+        role="img"
+        title={getReorderStatusLabel(status)}
         style={{
           width: 10,
           height: 10,
@@ -179,9 +181,6 @@ function ReorderStatusBadge({ status }: { status: ReportReorderStatus }) {
           flexShrink: 0,
         }}
       />
-      <Badge color={getReorderStatusBadgeColor(status)} variant="light">
-        {getReorderStatusLabel(status)}
-      </Badge>
     </Group>
   )
 }

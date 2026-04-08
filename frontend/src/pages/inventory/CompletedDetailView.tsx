@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Badge,
   Box,
@@ -13,10 +13,11 @@ import {
   Text,
   Title,
 } from '@mantine/core'
-import { IconArrowLeft } from '@tabler/icons-react'
+import { IconArrowLeft, IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 
 import type { CountDetail } from '../../api/inventory'
 import { formatDate, formatDateTime } from '../../utils/locale'
+import { buildActiveDisplayItems } from './activeCountDisplay'
 import { fmtQty, fmtDiff } from './inventoryFormatters'
 import { ResolutionBadge } from './ResolutionBadge'
 
@@ -35,11 +36,13 @@ export interface CompletedDetailViewProps {
 
 export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps) {
   const [resolutionFilter, setResolutionFilter] = useState('ALL')
+  const [expandedArticles, setExpandedArticles] = useState<Set<number>>(new Set())
 
   const displayLines = count.lines.filter((line) => {
     if (resolutionFilter === 'ALL') return true
     return line.resolution === resolutionFilter
   })
+  const displayItems = useMemo(() => buildActiveDisplayItems(displayLines), [displayLines])
 
   const s = count.summary
   const isOpeningCount = count.type === 'OPENING'
@@ -47,6 +50,15 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
   const primaryAdjustmentValue = isOpeningCount
     ? s.opening_stock_set ?? s.surplus_added ?? 0
     : s.surplus_added
+
+  function toggleArticle(articleId: number) {
+    setExpandedArticles((prev) => {
+      const next = new Set(prev)
+      if (next.has(articleId)) next.delete(articleId)
+      else next.add(articleId)
+      return next
+    })
+  }
 
   return (
     <Stack gap="lg" p="md">
@@ -153,7 +165,7 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {displayLines.length === 0 ? (
+              {displayItems.length === 0 ? (
                 <Table.Tr>
                   <Table.Td colSpan={9}>
                     <Text c="dimmed" ta="center" py="md">
@@ -162,43 +174,173 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
                   </Table.Td>
                 </Table.Tr>
               ) : (
-                displayLines.map((line) => (
-                  <Table.Tr key={line.line_id}>
-                    <Table.Td>{line.article_no || '—'}</Table.Td>
-                    <Table.Td>{line.description || '—'}</Table.Td>
-                    <Table.Td>{line.batch_code || '—'}</Table.Td>
-                    <Table.Td>{formatDate(line.expiry_date)}</Table.Td>
-                    <Table.Td>{fmtQty(line.system_quantity, line.decimal_display)}</Table.Td>
-                    <Table.Td>{line.uom}</Table.Td>
-                    <Table.Td>
-                      {line.counted_quantity !== null
-                        ? fmtQty(line.counted_quantity, line.decimal_display)
-                        : '—'}
-                    </Table.Td>
-                    <Table.Td>
-                      {line.difference !== null ? (
-                        <Text
-                          size="sm"
-                          fw={500}
-                          c={
-                            line.difference > 0
-                              ? 'blue'
-                              : line.difference < 0
-                                ? 'yellow.7'
-                                : 'green'
-                          }
-                        >
-                          {fmtDiff(line.difference, line.decimal_display)}
+                displayItems.flatMap((item) => {
+                  if (item.kind === 'non-batch') {
+                    const line = item.line
+                    return [
+                      <Table.Tr key={line.line_id}>
+                        <Table.Td>{line.article_no || '—'}</Table.Td>
+                        <Table.Td>{line.description || '—'}</Table.Td>
+                        <Table.Td>{line.batch_code || '—'}</Table.Td>
+                        <Table.Td>{formatDate(line.expiry_date)}</Table.Td>
+                        <Table.Td>{fmtQty(line.system_quantity, line.decimal_display)}</Table.Td>
+                        <Table.Td>{line.uom}</Table.Td>
+                        <Table.Td>
+                          {line.counted_quantity !== null
+                            ? fmtQty(line.counted_quantity, line.decimal_display)
+                            : '—'}
+                        </Table.Td>
+                        <Table.Td>
+                          {line.difference !== null ? (
+                            <Text
+                              size="sm"
+                              fw={500}
+                              c={
+                                line.difference > 0
+                                  ? 'blue'
+                                  : line.difference < 0
+                                    ? 'yellow.7'
+                                    : 'green'
+                              }
+                            >
+                              {fmtDiff(line.difference, line.decimal_display)}
+                            </Text>
+                          ) : (
+                            '—'
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          <ResolutionBadge resolution={line.resolution} />
+                        </Table.Td>
+                      </Table.Tr>,
+                    ]
+                  }
+
+                  const { group } = item
+                  const isExpanded = expandedArticles.has(group.article_id)
+                  const totalSystemQty = group.lines.reduce((sum, line) => sum + line.system_quantity, 0)
+                  const totalCountedQty = group.lines.every((line) => line.counted_quantity !== null)
+                    ? group.lines.reduce((sum, line) => sum + (line.counted_quantity ?? 0), 0)
+                    : null
+                  const totalDiff =
+                    totalCountedQty !== null ? totalCountedQty - totalSystemQty : null
+                  const summaryText = `${group.lines.length} šarža / ${fmtQty(totalSystemQty, group.decimal_display)} ${group.uom} ukupno`
+                  const resolutionValues = Array.from(
+                    new Set(group.lines.map((line) => line.resolution).filter(Boolean))
+                  )
+                  const groupResolution =
+                    resolutionValues.length === 1 ? (resolutionValues[0] ?? null) : null
+                  const rows = [
+                    <Table.Tr
+                      key={`group-${group.article_id}`}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => toggleArticle(group.article_id)}
+                    >
+                      <Table.Td>
+                        <Group gap="xs" wrap="nowrap">
+                          {isExpanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+                          <Text size="sm" fw={600}>
+                            {group.article_no || '—'}
+                          </Text>
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={600}>
+                          {group.description || '—'}
                         </Text>
-                      ) : (
-                        '—'
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <ResolutionBadge resolution={line.resolution} />
-                    </Table.Td>
-                  </Table.Tr>
-                ))
+                      </Table.Td>
+                      <Table.Td>—</Table.Td>
+                      <Table.Td>—</Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">
+                          {summaryText}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>{group.uom}</Table.Td>
+                      <Table.Td>
+                        {totalCountedQty !== null
+                          ? fmtQty(totalCountedQty, group.decimal_display)
+                          : '—'}
+                      </Table.Td>
+                      <Table.Td>
+                        {totalDiff !== null ? (
+                          <Text
+                            size="sm"
+                            fw={500}
+                            c={
+                              totalDiff > 0
+                                ? 'blue'
+                                : totalDiff < 0
+                                  ? 'yellow.7'
+                                  : 'green'
+                            }
+                          >
+                            {fmtDiff(totalDiff, group.decimal_display)}
+                          </Text>
+                        ) : (
+                          '—'
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        {groupResolution ? (
+                          <ResolutionBadge resolution={groupResolution} />
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            Više statusa
+                          </Text>
+                        )}
+                      </Table.Td>
+                    </Table.Tr>,
+                  ]
+
+                  if (isExpanded) {
+                    for (const line of group.lines) {
+                      rows.push(
+                        <Table.Tr key={line.line_id}>
+                          <Table.Td />
+                          <Table.Td />
+                          <Table.Td>
+                            <Text size="sm" pl="sm">
+                              {line.batch_code || '—'}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>{formatDate(line.expiry_date)}</Table.Td>
+                          <Table.Td>{fmtQty(line.system_quantity, line.decimal_display)}</Table.Td>
+                          <Table.Td>{line.uom}</Table.Td>
+                          <Table.Td>
+                            {line.counted_quantity !== null
+                              ? fmtQty(line.counted_quantity, line.decimal_display)
+                              : '—'}
+                          </Table.Td>
+                          <Table.Td>
+                            {line.difference !== null ? (
+                              <Text
+                                size="sm"
+                                fw={500}
+                                c={
+                                  line.difference > 0
+                                    ? 'blue'
+                                    : line.difference < 0
+                                      ? 'yellow.7'
+                                      : 'green'
+                                }
+                              >
+                                {fmtDiff(line.difference, line.decimal_display)}
+                              </Text>
+                            ) : (
+                              '—'
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <ResolutionBadge resolution={line.resolution} />
+                          </Table.Td>
+                        </Table.Tr>
+                      )
+                    }
+                  }
+
+                  return rows
+                })
               )}
             </Table.Tbody>
           </Table>

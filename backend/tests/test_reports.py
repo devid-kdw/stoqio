@@ -986,6 +986,76 @@ def test_stock_overview_value_supplier_fallback_when_no_stock_rows(
     assert fallback_item["total_value"] == 0.0
 
 
+def test_stock_overview_value_uses_initial_average_price_when_stock_average_is_zero(
+    app, client, reports_data, reports_value_data
+):
+    """Initial average price should backfill valuation when current stock rows are zero-valued."""
+    with app.app_context():
+        location = _db.session.get(Location, 1)
+        kg = UomCatalog.query.filter_by(code="rep13_kg").first()
+        value_category = Category.query.filter_by(key=REPORT_VALUE_CATEGORY).first()
+
+        article = Article.query.filter_by(article_no="REP13-007").first()
+        if article is None:
+            article = Article(
+                article_no="REP13-007",
+                description="Initial average price article",
+                category_id=value_category.id,
+                base_uom=kg.id,
+                has_batch=False,
+                is_active=True,
+                density=Decimal("1.0"),
+                initial_average_price=Decimal("4.2500"),
+            )
+            _db.session.add(article)
+            _db.session.flush()
+        else:
+            article.initial_average_price = Decimal("4.2500")
+            article.is_active = True
+
+        stock = Stock.query.filter_by(
+            location_id=location.id,
+            article_id=article.id,
+            batch_id=None,
+        ).first()
+        if stock is None:
+            stock = Stock(
+                location_id=location.id,
+                article_id=article.id,
+                batch_id=None,
+                quantity=Decimal("12.000"),
+                uom=kg.code,
+                average_price=Decimal("0.0000"),
+            )
+            _db.session.add(stock)
+        else:
+            stock.quantity = Decimal("12.000")
+            stock.average_price = Decimal("0.0000")
+        _db.session.commit()
+
+    try:
+        response = client.get(
+            "/api/v1/reports/stock-overview"
+            f"?date_from={REPORT_DATE_FROM}&date_to={REPORT_DATE_TO}&category={REPORT_VALUE_CATEGORY}",
+            headers=_admin_headers(client, reports_data),
+        )
+
+        assert response.status_code == 200, response.get_json()
+        payload = response.get_json()
+        initial_item = _item_by_article(payload["items"], "REP13-007")
+        assert initial_item["stock"] == 12.0
+        assert initial_item["unit_value"] == 4.25
+        assert initial_item["total_value"] == round(12.0 * 4.25, 2)
+        assert payload["summary"]["warehouse_total_value"] == round(12.0 * 4.25, 2)
+    finally:
+        with app.app_context():
+            article = Article.query.filter_by(article_no="REP13-007").first()
+            if article is not None:
+                Stock.query.filter_by(article_id=article.id).delete()
+                _db.session.delete(article)
+                _db.session.commit()
+
+
 def test_stock_overview_value_null_when_no_stock_and_no_price_data(
     client, reports_data, reports_value_data
 ):

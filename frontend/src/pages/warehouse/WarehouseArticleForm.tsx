@@ -39,6 +39,11 @@ interface WarehouseArticleFormProps {
   supplierOptionsLoading?: boolean
   supplierOptionsError?: string | null
   disabled?: boolean
+  barcodeActionLabel?: string
+  barcodeActionLoading?: boolean
+  barcodeActionDisabled?: boolean
+  barcodeActionTitle?: string
+  onBarcodeAction?: () => void
   onRetrySuppliers?: () => void
   onChange: <K extends keyof WarehouseArticleFormState>(
     field: K,
@@ -55,6 +60,11 @@ export default function WarehouseArticleForm({
   supplierOptionsLoading = false,
   supplierOptionsError = null,
   disabled = false,
+  barcodeActionLabel,
+  barcodeActionLoading = false,
+  barcodeActionDisabled = false,
+  barcodeActionTitle,
+  onBarcodeAction,
   onRetrySuppliers,
   onChange,
 }: WarehouseArticleFormProps) {
@@ -177,14 +187,39 @@ export default function WarehouseArticleForm({
           disabled={disabled}
         />
 
-        <TextInput
-          label="Barkod"
-          placeholder="Opcionalno"
-          value={form.barcode}
-          onChange={(event) => onChange('barcode', event.currentTarget.value)}
-          error={errors.barcode}
-          disabled={disabled}
-        />
+        {!form.hasBatch && onBarcodeAction ? (
+          <Group align="flex-start" gap="sm" wrap="nowrap">
+            <TextInput
+              style={{ flex: 1 }}
+              label="Barkod"
+              placeholder="Opcionalno"
+              value={form.barcode}
+              onChange={(event) => onChange('barcode', event.currentTarget.value)}
+              error={errors.barcode}
+              disabled={disabled}
+            />
+            <Button
+              type="button"
+              variant="default"
+              mt={26}
+              onClick={onBarcodeAction}
+              loading={barcodeActionLoading}
+              disabled={disabled || barcodeActionDisabled}
+              title={barcodeActionTitle}
+            >
+              {barcodeActionLabel ?? 'Generiraj'}
+            </Button>
+          </Group>
+        ) : !form.hasBatch ? (
+          <TextInput
+            label="Barkod"
+            placeholder="Opcionalno"
+            value={form.barcode}
+            onChange={(event) => onChange('barcode', event.currentTarget.value)}
+            error={errors.barcode}
+            disabled={disabled}
+          />
+        ) : null}
 
         <TextInput
           label="Proizvođač (opcionalno)"

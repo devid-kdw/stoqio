@@ -504,6 +504,7 @@ def _serialize_batch(
     return {
         "id": batch.id,
         "batch_code": batch.batch_code,
+        "barcode": batch.barcode,
         "expiry_date": batch.expiry_date.isoformat() if batch.expiry_date else None,
         "stock_total": float(stock_total),
         "surplus_total": float(surplus_total),

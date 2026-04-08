@@ -282,6 +282,16 @@ def get_article_barcode(article_id: int):
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
+@articles_bp.route("/articles/<int:article_id>/barcode/generate", methods=["POST"])
+@require_role("ADMIN")
+def generate_article_barcode(article_id: int):
+    try:
+        return jsonify(barcode_service.ensure_article_barcode(article_id)), 200
+    except BarcodeServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
 @articles_bp.route("/batches/<int:batch_id>/barcode", methods=["GET"])
 @require_role("ADMIN")
 def get_batch_barcode(batch_id: int):
@@ -299,6 +309,16 @@ def get_batch_barcode(batch_id: int):
             download_name=filename,
             as_attachment=True,
         )
+    except BarcodeServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@articles_bp.route("/batches/<int:batch_id>/barcode/generate", methods=["POST"])
+@require_role("ADMIN")
+def generate_batch_barcode(batch_id: int):
+    try:
+        return jsonify(barcode_service.ensure_batch_barcode(batch_id)), 200
     except BarcodeServiceError as exc:
         db.session.rollback()
         return _error(exc.error, exc.message, exc.status_code, exc.details)

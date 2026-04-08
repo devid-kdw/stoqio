@@ -76,7 +76,7 @@ def _safe_filename_part(value: str) -> str:
 
 
 def _get_article_or_404(article_id: int) -> Article:
-    article = db.session.get(Article, article_id)
+    article = db.session.get(Article, article_id, populate_existing=True)
     if article is None:
         raise BarcodeServiceError(
             "ARTICLE_NOT_FOUND",
@@ -90,6 +90,7 @@ def _get_article_or_404(article_id: int) -> Article:
 def _get_batch_or_404(batch_id: int) -> Batch:
     batch = (
         Batch.query.options(joinedload(Batch.article))
+        .populate_existing()
         .filter(Batch.id == batch_id)
         .first()
     )
@@ -297,6 +298,26 @@ def generate_article_barcode_pdf(article_id: int) -> tuple[bytes, str, str]:
     return content, filename, _PDF_MIMETYPE
 
 
+def ensure_article_barcode(article_id: int) -> dict[str, Any]:
+    article = _get_article_or_404(article_id)
+    barcode_format = _get_configured_barcode_format()
+    barcode_value, changed = _resolve_barcode_value(
+        entity=article,
+        existing_value=article.barcode,
+        generated_value=_build_generated_barcode(_ARTICLE_PREFIX, article.id),
+        barcode_format=barcode_format,
+        entity_type="Article",
+    )
+    if changed:
+        db.session.commit()
+
+    return {
+        "article_id": article.id,
+        "barcode": barcode_value,
+        "generated": changed,
+    }
+
+
 def generate_batch_barcode_pdf(batch_id: int) -> tuple[bytes, str, str]:
     batch = _get_batch_or_404(batch_id)
     barcode_format = _get_configured_barcode_format()
@@ -336,6 +357,26 @@ def generate_batch_barcode_pdf(batch_id: int) -> tuple[bytes, str, str]:
         f"{_safe_filename_part(batch.batch_code)}_barcode.pdf"
     )
     return content, filename, _PDF_MIMETYPE
+
+
+def ensure_batch_barcode(batch_id: int) -> dict[str, Any]:
+    batch = _get_batch_or_404(batch_id)
+    barcode_format = _get_configured_barcode_format()
+    barcode_value, changed = _resolve_barcode_value(
+        entity=batch,
+        existing_value=batch.barcode,
+        generated_value=_build_generated_barcode(_BATCH_PREFIX, batch.id),
+        barcode_format=barcode_format,
+        entity_type="Batch",
+    )
+    if changed:
+        db.session.commit()
+
+    return {
+        "batch_id": batch.id,
+        "barcode": barcode_value,
+        "generated": changed,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -77,6 +77,7 @@ export interface WarehouseArticlesListResponse {
 export interface ArticleDetailBatch {
   id: number
   batch_code: string
+  barcode: string | null
   expiry_date: string | null
   stock_total: number
   surplus_total: number
@@ -242,6 +243,11 @@ export interface LabelPrintResponse {
   message: string
 }
 
+export interface BarcodeGenerationResponse {
+  barcode: string
+  generated: boolean
+}
+
 export const articlesApi = {
   /**
    * Lookup an article by article_no or barcode.
@@ -343,6 +349,20 @@ export const articlesApi = {
     const filename = getPdfFilename(response.headers['content-disposition'], fallbackName)
 
     triggerDownload(response.data, filename)
+  },
+
+  generateBarcode: async (articleId: number): Promise<BarcodeGenerationResponse> => {
+    const response = await client.post<BarcodeGenerationResponse>(
+      `/articles/${articleId}/barcode/generate`
+    )
+    return response.data
+  },
+
+  generateBatchBarcode: async (batchId: number): Promise<BarcodeGenerationResponse> => {
+    const response = await client.post<BarcodeGenerationResponse>(
+      `/batches/${batchId}/barcode/generate`
+    )
+    return response.data
   },
 
   lookupCategories: async (): Promise<ArticleCategoryLookupItem[]> => {

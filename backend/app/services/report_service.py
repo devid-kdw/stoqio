@@ -372,6 +372,14 @@ def _resolve_unit_value_map(article_ids: list[int]) -> dict[int, Decimal | None]
     return result
 
 
+def _initial_unit_value(article: Article) -> Decimal | None:
+    if article.initial_average_price is None:
+        return None
+
+    value = _decimal_from_model(article.initial_average_price)
+    return value if value > 0 else None
+
+
 def _stock_unit_value_map(article_ids: list[int]) -> dict[int, Decimal]:
     """Resolve current stock weighted-average unit values per article."""
     if not article_ids:
@@ -503,10 +511,8 @@ def get_stock_overview(
         stock_total, surplus_total = totals_map.get(article.id, (Decimal("0"), Decimal("0")))
         inbound_total, outbound_total = movement_map.get(article.id, (Decimal("0"), Decimal("0")))
         unit_value = stock_value_map.get(article.id)
-        if unit_value is None and stock_total <= 0:
-            unit_value = fallback_value_map.get(article.id)
-        elif unit_value is None:
-            unit_value = fallback_value_map.get(article.id)
+        if unit_value is None or unit_value <= 0:
+            unit_value = _initial_unit_value(article) or fallback_value_map.get(article.id)
         item = _serialize_stock_overview_item(
             article,
             stock_total=stock_total,

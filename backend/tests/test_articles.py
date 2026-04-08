@@ -868,6 +868,7 @@ class TestWarehouseArticles:
         assert payload["base_uom"] == "whkg"
         assert payload["pack_uom"] == "whkom"
         assert [batch["batch_code"] for batch in payload["batches"]] == ["24001", "24099"]
+        assert payload["batches"][0]["barcode"] is None
         assert payload["batches"][0]["stock_total"] == 100.0
         assert payload["batches"][0]["surplus_total"] == 4.0
         assert len(payload["suppliers"]) == 2
@@ -1187,6 +1188,18 @@ class TestWarehouseArticles:
         )
         assert batch_response.status_code == 403
 
+        article_generate_response = client.post(
+            f"/api/v1/articles/{warehouse_data['active_article'].id}/barcode/generate",
+            headers=_auth_header(manager_token),
+        )
+        assert article_generate_response.status_code == 403
+
+        batch_generate_response = client.post(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/generate",
+            headers=_auth_header(manager_token),
+        )
+        assert batch_generate_response.status_code == 403
+
     def test_article_barcode_download_returns_pdf_for_admin(self, client, app, warehouse_data):
         token = _login(client, "warehouse_admin")
         with app.app_context():
@@ -1240,6 +1253,39 @@ class TestWarehouseArticles:
             stored = _db.session.get(Article, warehouse_data["batch_article"].id)
             assert stored.barcode == generated_barcode
 
+    def test_article_barcode_generate_endpoint_returns_json_and_persists_missing_value(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            article = _db.session.get(Article, warehouse_data["batch_article"].id)
+            article.barcode = None
+            _db.session.commit()
+            _set_system_config("barcode_format", "EAN-13")
+
+        response = client.post(
+            f"/api/v1/articles/{warehouse_data['batch_article'].id}/barcode/generate",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200, response.get_json()
+        payload = response.get_json()
+        assert payload["article_id"] == warehouse_data["batch_article"].id
+        assert isinstance(payload["generated"], bool)
+        assert re.fullmatch(r"\d{13}", payload["barcode"])
+
+        second = client.post(
+            f"/api/v1/articles/{warehouse_data['batch_article'].id}/barcode/generate",
+            headers=_auth_header(token),
+        )
+        assert second.status_code == 200, second.get_json()
+        second_payload = second.get_json()
+        assert isinstance(second_payload["generated"], bool)
+        assert second_payload["barcode"] == payload["barcode"]
+
+        with app.app_context():
+            stored = _db.session.get(Article, warehouse_data["batch_article"].id)
+            assert stored.barcode == payload["barcode"]
+
     def test_batch_barcode_download_returns_one_label_per_batch(self, client, app, warehouse_data):
         token = _login(client, "warehouse_admin")
         with app.app_context():
@@ -1264,6 +1310,51 @@ class TestWarehouseArticles:
             stored_batch = _db.session.get(Batch, warehouse_data["batch_early"].id)
             assert stored_batch.barcode is not None
             assert re.fullmatch(r"\d{13}", stored_batch.barcode)
+
+    def test_batch_barcode_generate_endpoint_returns_json_and_persists_missing_value(
+        self, client, app, warehouse_data
+    ):
+        token = _login(client, "warehouse_admin")
+        with app.app_context():
+            batch = _db.session.get(Batch, warehouse_data["batch_early"].id)
+            batch.barcode = None
+            _db.session.commit()
+            _set_system_config("barcode_format", "Code128")
+
+        response = client.post(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/generate",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200, response.get_json()
+        payload = response.get_json()
+        assert payload["batch_id"] == warehouse_data["batch_early"].id
+        assert isinstance(payload["generated"], bool)
+        assert re.fullmatch(r"\d{13}", payload["barcode"])
+
+        second = client.post(
+            f"/api/v1/batches/{warehouse_data['batch_early'].id}/barcode/generate",
+            headers=_auth_header(token),
+        )
+        assert second.status_code == 200, second.get_json()
+        second_payload = second.get_json()
+        assert isinstance(second_payload["generated"], bool)
+        assert second_payload["barcode"] == payload["barcode"]
+
+        with app.app_context():
+            stored = _db.session.get(Batch, warehouse_data["batch_early"].id)
+            assert stored.barcode == payload["barcode"]
+
+        detail_response = client.get(
+            f"/api/v1/articles/{warehouse_data['batch_article'].id}",
+            headers=_auth_header(token),
+        )
+        assert detail_response.status_code == 200
+        detail_payload = detail_response.get_json()
+        detail_batch = next(
+            batch for batch in detail_payload["batches"]
+            if batch["id"] == warehouse_data["batch_early"].id
+        )
+        assert detail_batch["barcode"] == payload["barcode"]
 
     def test_barcode_route_rejects_ean13_for_incompatible_existing_value(
         self, client, app, warehouse_data

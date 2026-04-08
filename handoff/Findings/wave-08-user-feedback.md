@@ -463,3 +463,227 @@ Expected behavior:
 Recommended direction:
 - Remove the completed-detail full-row status background override.
 - Keep `ResolutionBadge` and colored `Razlika` text as the primary status signals.
+
+## W8-F-013: Completed Inventory should group batch-tracked articles into one expandable parent row
+
+Status:
+- open
+
+Area:
+- Inventory Count
+- Completed inventory detail
+- Frontend batch presentation
+
+Source:
+- User feedback and screenshot, 2026-04-08 20:11 CEST
+
+User report:
+- On the completed inventory screen, the same batch-tracked article is listed multiple times, once
+  per batch.
+- The user expects the same grouped dropdown/expand behavior that already exists in the active
+  inventory screen.
+
+Expected behavior:
+- Batch-tracked articles should appear as one parent row in completed inventory.
+- Expanding the parent row should reveal the individual batches beneath it.
+- Parent rows should summarize the grouped batches instead of repeating the article identity.
+
+Recommended direction:
+- Reuse the active-inventory batch grouping pattern in completed detail.
+- Show aggregate counted quantity and aggregate difference on the parent row.
+- Keep per-batch `Šarža`, `Rok valjanosti`, and status visible in expandable child rows.
+
+## W8-F-014: Stock overview reports should value opening stock using configured initial average prices
+
+Status:
+- open
+
+Area:
+- Reports
+- Stock overview valuation
+- Backend pricing fallback
+
+Source:
+- User feedback and screenshot, 2026-04-08 20:12 CEST
+
+User report:
+- Articles have configured average prices, but the Reports screen still shows `0,00 €` for unit
+  value, total value, and warehouse total value.
+
+Expected behavior:
+- Articles seeded through opening setup should contribute to report valuation.
+- If current stock valuation is missing or zero, configured initial/prosječna cijena should be used
+  as the value basis until newer stock pricing supersedes it.
+
+Recommended direction:
+- Treat `Article.initial_average_price` as a valuation fallback for stock overview when the current
+  stock weighted average is unavailable or zero.
+- Keep current weighted stock average as the highest-priority source when it is valid.
+
+## W8-F-015: Warehouse article detail needs explicit barcode generation actions
+
+Status:
+- open
+
+Area:
+- Warehouse article detail
+- Barcode UX
+- Frontend + backend barcode actions
+
+Source:
+- User feedback and screenshots, 2026-04-08 20:27 CEST
+
+User report:
+- For non-batch articles there is a barcode field, but no nearby action to generate and fill a
+  barcode value.
+- For batch-tracked articles, FEFO rows expose `PDF` and `Printer`, but there is no explicit
+  `Generiraj barkod` action in batch row actions.
+
+Expected behavior:
+- Non-batch article detail should offer an explicit `Generiraj` action beside the `Barkod` field.
+- Batch rows under `Šarže (FEFO)` should expose a direct barcode generation action alongside label
+  output actions.
+- Generating a barcode should persist the value in the backend instead of only producing a PDF.
+
+Recommended direction:
+- Add dedicated generate endpoints for article and batch barcodes so UI generation is separate from
+  PDF download and printer output.
+- In article edit mode, place a `Generiraj` button next to the barcode input and write the returned
+  value back into the form.
+- In FEFO batch actions, add a `Generiraj` button before `PDF` and `Printer`.
+
+## W8-F-016: Reports status column should show only the reorder indicator dot, and batch action label should be explicit
+
+Status:
+- open
+
+Area:
+- Reports stock overview
+- Warehouse article detail FEFO actions
+- Frontend microcopy / table UX
+
+Source:
+- User feedback and screenshot, 2026-04-08 20:39 CEST
+
+User report:
+- In Reports `Status`, the colored dot is fine, but a clipped green character appears beside it as if
+  extra text is being cut off.
+- In FEFO batch actions, the button label `Generiraj` is too vague and should explicitly say
+  `Generiraj barkod`.
+
+Expected behavior:
+- The Reports status cell should show only the colored reorder indicator dot.
+- FEFO batch action labels should clearly state what is being generated.
+
+Recommended direction:
+- Replace the stock-overview status badge with a dot-only indicator in the table cell.
+- Rename the FEFO batch action button from `Generiraj` to `Generiraj barkod`.
+
+## W8-F-017: Batch-tracked article detail should not show top-level article barcode output actions
+
+Status:
+- open
+
+Area:
+- Warehouse article detail
+- Barcode UX
+- Frontend action visibility
+
+Source:
+- User feedback and screenshot, 2026-04-08 20:44 CEST
+
+User report:
+- For articles with batches, the top-right action bar still shows article-level barcode output
+  actions such as `Ispis barkoda (PDF)`.
+- This is misleading because barcode output for batch-tracked articles should happen per batch.
+
+Expected behavior:
+- Non-batch articles should keep the top-right article barcode actions.
+- Batch-tracked articles should not show article-level barcode PDF/printer actions in the header.
+- Barcode output for batch-tracked articles should remain in `Šarže (FEFO) -> Akcije`.
+
+Recommended direction:
+- Hide top-level article barcode output actions when `article.has_batch === true`.
+- Keep edit/deactivate actions visible in the header.
+- Remove the related printer-configuration helper text from the header for batch articles as well.
+
+## W8-F-018: After saving article edits, the detail page should return to the top
+
+Status:
+- open
+
+Area:
+- Warehouse article detail
+- Frontend edit UX
+
+Source:
+- User feedback and screenshot, 2026-04-08 20:47 CEST
+
+User report:
+- When editing an article, the user scrolls down to reach `Spremi`.
+- After saving, the page stays scrolled down, so the user must manually scroll back up to use
+  header actions such as `Natrag na skladište`.
+
+Expected behavior:
+- After a successful article save, the detail page should return to the top automatically.
+
+Recommended direction:
+- Scroll the page back to the top after successful save and exit from edit mode.
+
+## W8-F-019: Batch-tracked article create/edit forms should not expose article-level barcode field
+
+Status:
+- open
+
+Area:
+- Warehouse create article
+- Warehouse article edit
+- Frontend form UX / payload mapping
+
+Source:
+- User feedback and screenshot, 2026-04-08 20:49 CEST
+
+User report:
+- When creating or editing an article with `Artikl sa šaržom`, the form still shows the article-level
+  `Barkod` field.
+- This is inconsistent because the barcode belongs to the batch, not to the article.
+
+Expected behavior:
+- Create and edit forms should hide the article-level `Barkod` field whenever `Artikl sa šaržom` is
+  enabled.
+- Batch articles should not submit an article-level barcode value in the payload.
+
+Recommended direction:
+- Hide the form barcode field for batch articles in both create and edit flows.
+- Clear any in-form article barcode when the user switches an article to batch-tracked mode.
+- Send `barcode: null` for batch articles in the article mutation payload.
+
+## W8-F-020: FEFO batch rows should show generated barcode state and prevent redundant generation clicks
+
+Status:
+- open
+
+Area:
+- Warehouse article detail
+- FEFO batch barcode UX
+- Frontend + backend detail payload
+
+Source:
+- User feedback, 2026-04-08 20:50 CEST
+
+User report:
+- After generating a batch barcode, the UI does not show the generated barcode anywhere.
+- The `Generiraj barkod` button remains clickable, so it is unclear whether generation already
+  happened or whether repeated clicks overwrite the old value.
+
+Expected behavior:
+- The generated barcode should be visible on the FEFO row for that batch.
+- Once a batch already has a barcode, the generation action should become clearly non-repeatable in
+  the UI.
+- Repeated clicks should not silently create a different barcode value.
+
+Recommended direction:
+- Include `barcode` in the batch detail payload returned by article detail.
+- Add a visible FEFO `Barkod` column.
+- Disable the FEFO generate button when a batch barcode already exists and show a clear generated
+  state label.
