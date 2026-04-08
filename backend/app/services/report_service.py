@@ -30,6 +30,7 @@ from app.models.personal_issuance import PersonalIssuance
 from app.models.receiving import Receiving
 from app.models.supplier import Supplier
 from app.models.surplus import Surplus
+from app.models.stock import Stock
 from app.models.transaction import Transaction
 from app.services import article_service, employee_service
 from app.utils.validators import (
@@ -371,6 +372,34 @@ def _resolve_unit_value_map(article_ids: list[int]) -> dict[int, Decimal | None]
     return result
 
 
+def _stock_unit_value_map(article_ids: list[int]) -> dict[int, Decimal]:
+    """Resolve current stock weighted-average unit values per article."""
+    if not article_ids:
+        return {}
+
+    rows = (
+        db.session.query(
+            Stock.article_id,
+            func.coalesce(func.sum(Stock.quantity), 0),
+            func.coalesce(func.sum(Stock.quantity * Stock.average_price), 0),
+        )
+        .filter(
+            Stock.article_id.in_(article_ids),
+            Stock.quantity > 0,
+        )
+        .group_by(Stock.article_id)
+        .all()
+    )
+
+    result: dict[int, Decimal] = {}
+    for article_id, total_quantity, total_value in rows:
+        quantity = _decimal_from_model(total_quantity)
+        if quantity <= 0:
+            continue
+        result[article_id] = _decimal_from_model(total_value) / quantity
+    return result
+
+
 def _serialize_stock_overview_item(
     article: Article,
     *,
@@ -465,14 +494,19 @@ def get_stock_overview(
         started_at=_range_start(parsed_from),
         ended_at=_range_end_exclusive(parsed_to),
     )
-    unit_value_map = _resolve_unit_value_map(all_article_ids)
+    stock_value_map = _stock_unit_value_map(all_article_ids)
+    fallback_value_map = _resolve_unit_value_map(all_article_ids)
 
     all_items: list[dict[str, Any]] = []
     warehouse_total_value = Decimal("0")
     for article in all_articles:
         stock_total, surplus_total = totals_map.get(article.id, (Decimal("0"), Decimal("0")))
         inbound_total, outbound_total = movement_map.get(article.id, (Decimal("0"), Decimal("0")))
-        unit_value = unit_value_map.get(article.id)
+        unit_value = stock_value_map.get(article.id)
+        if unit_value is None and stock_total <= 0:
+            unit_value = fallback_value_map.get(article.id)
+        elif unit_value is None:
+            unit_value = fallback_value_map.get(article.id)
         item = _serialize_stock_overview_item(
             article,
             stock_total=stock_total,

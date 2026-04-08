@@ -14,6 +14,7 @@ export interface InventoryCountSummary {
   no_change: number
   surplus_added: number
   shortage_drafts_created: number
+  opening_stock_set?: number
 }
 
 export interface InventoryCountLine {
@@ -29,7 +30,12 @@ export interface InventoryCountLine {
   difference: number | null
   uom: string
   decimal_display: boolean
-  resolution: 'NO_CHANGE' | 'SURPLUS_ADDED' | 'SHORTAGE_DRAFT_CREATED' | null
+  resolution:
+    | 'NO_CHANGE'
+    | 'SURPLUS_ADDED'
+    | 'SHORTAGE_DRAFT_CREATED'
+    | 'OPENING_STOCK_SET'
+    | null
 }
 
 export interface ActiveCount {
@@ -74,6 +80,13 @@ export interface CountDetail {
   summary: InventoryCountSummary
   shortage_drafts_summary?: ShortageApprovalSummary
   lines: InventoryCountLine[]
+}
+
+export interface OpeningBatchLinePayload {
+  article_id: number
+  batch_code: string
+  expiry_date: string
+  counted_quantity: number
 }
 
 export const inventoryApi = {
@@ -121,6 +134,18 @@ export const inventoryApi = {
   /** POST /api/v1/inventory/{id}/complete */
   complete: async (countId: number): Promise<{ id: number }> => {
     const response = await client.post<{ id: number }>(`/inventory/${countId}/complete`)
+    return response.data
+  },
+
+  /** POST /api/v1/inventory/{count_id}/opening-batch-lines */
+  addOpeningBatchLine: async (
+    countId: number,
+    payload: OpeningBatchLinePayload
+  ): Promise<ActiveCount> => {
+    const response = await client.post<ActiveCount>(
+      `/inventory/${countId}/opening-batch-lines`,
+      payload
+    )
     return response.data
   },
 }

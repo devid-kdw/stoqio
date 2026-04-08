@@ -13,6 +13,7 @@ import FullPageState from './components/shared/FullPageState'
 import i18n from './i18n'
 import { getStoredRefreshToken, useAuthStore } from './store/authStore'
 import { useSettingsStore } from './store/settingsStore'
+import { stoqioTheme } from './theme'
 
 const queryClient = new QueryClient()
 const root = ReactDOM.createRoot(document.getElementById('root')!)
@@ -25,7 +26,11 @@ function renderApp() {
     <React.StrictMode>
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
-          <MantineProvider colorSchemeManager={colorSchemeManager} defaultColorScheme="light">
+          <MantineProvider
+            colorSchemeManager={colorSchemeManager}
+            defaultColorScheme="light"
+            theme={stoqioTheme}
+          >
             <Notifications autoClose={4000} limit={1} />
             <App />
           </MantineProvider>
@@ -38,7 +43,11 @@ function renderApp() {
 function renderBootstrapLoading() {
   root.render(
     <React.StrictMode>
-      <MantineProvider colorSchemeManager={colorSchemeManager} defaultColorScheme="light">
+      <MantineProvider
+        colorSchemeManager={colorSchemeManager}
+        defaultColorScheme="light"
+        theme={stoqioTheme}
+      >
         <FullPageState
           title={i18n.t('auth.loading.title')}
           message={i18n.t('auth.loading.message')}

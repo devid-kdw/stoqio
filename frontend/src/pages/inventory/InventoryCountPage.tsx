@@ -121,6 +121,7 @@ export default function InventoryCountPage() {
       <ActiveCountView
         count={activeCount}
         onCompleted={handleCountCompleted}
+        onCountRefreshed={(nextCount) => setActiveCount(nextCount)}
         onFatalError={() => setView('load-error')}
       />
     )

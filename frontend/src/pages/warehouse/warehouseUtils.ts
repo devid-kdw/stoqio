@@ -48,6 +48,7 @@ export interface WarehouseArticleFormState {
   barcode: string
   manufacturer: string
   hasBatch: boolean
+  initialAveragePrice: number | string
   reorderThreshold: number | string
   reorderCoverageDays: number | string
   density: number | string
@@ -64,6 +65,7 @@ export interface WarehouseArticleFormErrors {
   packUom?: string
   barcode?: string
   manufacturer?: string
+  initialAveragePrice?: string
   reorderThreshold?: string
   reorderCoverageDays?: string
   density?: string
@@ -84,6 +86,7 @@ export function createArticleFormState(
     barcode: article?.barcode ?? '',
     manufacturer: article?.manufacturer ?? '',
     hasBatch: article?.has_batch ?? false,
+    initialAveragePrice: article?.initial_average_price ?? '',
     reorderThreshold: article?.reorder_threshold ?? '',
     reorderCoverageDays: article?.reorder_coverage_days ?? '',
     density: 1,
@@ -288,6 +291,7 @@ const ARTICLE_API_FIELD_LABELS: Record<string, string> = {
   barcode: 'Barkod',
   manufacturer: 'Proizvođač',
   has_batch: 'Artikl sa šaržom',
+  initial_average_price: 'Prosječna cijena',
   is_active: 'Aktivnost artikla',
   suppliers: 'Dobavljači',
   page: 'Stranica',
@@ -484,6 +488,7 @@ export function validateArticleForm(
   const normalizedArticleNo = form.articleNo.trim().toUpperCase()
   const description = form.description.trim()
   const packSize = parseOptionalNumber(form.packSize)
+  const initialAveragePrice = parseOptionalNumber(form.initialAveragePrice)
   const reorderThreshold = parseOptionalNumber(form.reorderThreshold)
   const reorderCoverageDays = parseOptionalInteger(form.reorderCoverageDays)
   const density = parseOptionalNumber(form.density)
@@ -512,6 +517,13 @@ export function validateArticleForm(
 
   if (form.packSize !== '' && (packSize === null || packSize <= 0)) {
     errors.packSize = 'Veličina pakiranja mora biti veća od 0.'
+  }
+
+  if (
+    form.initialAveragePrice !== '' &&
+    (initialAveragePrice === null || initialAveragePrice < 0)
+  ) {
+    errors.initialAveragePrice = 'Prosječna cijena mora biti veća ili jednaka 0.'
   }
 
   if (form.reorderThreshold !== '' && (reorderThreshold === null || reorderThreshold <= 0)) {
@@ -579,6 +591,7 @@ export function buildArticlePayload(
     barcode: normalizeOptionalText(form.barcode),
     manufacturer: normalizeOptionalText(form.manufacturer),
     has_batch: form.hasBatch,
+    initial_average_price: parseOptionalNumber(form.initialAveragePrice),
     reorder_threshold: parseOptionalNumber(form.reorderThreshold),
     reorder_coverage_days: parseOptionalInteger(form.reorderCoverageDays),
     // Omit density for updates — backend preserves existing density when absent.
@@ -640,6 +653,10 @@ export function mapArticleApiErrorToFormErrors(
 
   if (normalizedMessage.startsWith('pack_uom')) {
     return { packUom: translatedMessage || message }
+  }
+
+  if (normalizedMessage.startsWith('initial_average_price')) {
+    return { initialAveragePrice: translatedMessage || message }
   }
 
   if (normalizedMessage.startsWith('reorder_threshold')) {

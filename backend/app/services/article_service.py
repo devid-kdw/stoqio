@@ -29,6 +29,7 @@ from app.models.transaction import Transaction
 from app.models.uom_catalog import UomCatalog
 
 _QTY_QUANT = Decimal("0.001")
+_PRICE_QUANT = Decimal("0.0001")
 _ARTICLE_NO_RE = re.compile(r"^[A-Z0-9-]+$")
 _SUPPLIERS_MISSING = object()
 
@@ -64,6 +65,7 @@ class PreparedArticlePayload:
     manufacturer: str | None
     manufacturer_art_number: str | None
     has_batch: bool
+    initial_average_price: Decimal | None
     reorder_threshold: Decimal | None
     reorder_coverage_days: int | None
     density: Decimal
@@ -195,6 +197,7 @@ def _parse_optional_decimal(
     *,
     field_name: str,
     allow_zero: bool = False,
+    quant: Decimal = _QTY_QUANT,
     details: dict[str, Any] | None = None,
 ) -> Decimal | None:
     if value in (None, ""):
@@ -223,7 +226,7 @@ def _parse_optional_decimal(
             400,
             details,
         )
-    return _quantize_quantity(parsed)
+    return parsed.quantize(quant, rounding=ROUND_HALF_UP)
 
 
 def _parse_bool(
@@ -724,6 +727,11 @@ def _serialize_detail(article: Article) -> dict[str, Any]:
         "manufacturer": article.manufacturer,
         "manufacturer_art_number": article.manufacturer_art_number,
         "has_batch": article.has_batch,
+        "initial_average_price": (
+            float(_decimal_from_model(article.initial_average_price))
+            if article.initial_average_price is not None
+            else None
+        ),
         "reorder_threshold": (
             float(_decimal_from_model(article.reorder_threshold))
             if article.reorder_threshold is not None
@@ -941,6 +949,7 @@ def _prepare_article_payload(
             "manufacturer",
             "manufacturer_art_number",
             "has_batch",
+            "initial_average_price",
             "reorder_threshold",
             "reorder_coverage_days",
             "density",
@@ -1048,6 +1057,16 @@ def _prepare_article_payload(
         field_name="has_batch",
         details=details,
     )
+    initial_average_price = _parse_optional_decimal(
+        body.get(
+            "initial_average_price",
+            existing_article.initial_average_price if existing_article else None,
+        ),
+        field_name="initial_average_price",
+        allow_zero=True,
+        quant=_PRICE_QUANT,
+        details=details,
+    )
     is_active = _parse_bool(
         body.get(
             "is_active",
@@ -1095,6 +1114,7 @@ def _prepare_article_payload(
         manufacturer=manufacturer,
         manufacturer_art_number=manufacturer_art_number,
         has_batch=has_batch,
+        initial_average_price=initial_average_price,
         reorder_threshold=reorder_threshold,
         reorder_coverage_days=reorder_coverage_days,
         density=density,
@@ -1404,6 +1424,7 @@ def create_article(payload: dict[str, Any] | None) -> dict[str, Any]:
         manufacturer=prepared.manufacturer,
         manufacturer_art_number=prepared.manufacturer_art_number,
         has_batch=prepared.has_batch,
+        initial_average_price=prepared.initial_average_price,
         reorder_threshold=prepared.reorder_threshold,
         reorder_coverage_days=prepared.reorder_coverage_days,
         density=prepared.density,
@@ -1444,6 +1465,7 @@ def update_article(article_id: int, payload: dict[str, Any] | None) -> dict[str,
     article.manufacturer = prepared.manufacturer
     article.manufacturer_art_number = prepared.manufacturer_art_number
     article.has_batch = prepared.has_batch
+    article.initial_average_price = prepared.initial_average_price
     article.reorder_threshold = prepared.reorder_threshold
     article.reorder_coverage_days = prepared.reorder_coverage_days
     article.density = prepared.density

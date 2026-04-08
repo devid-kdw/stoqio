@@ -66,8 +66,9 @@ Subtle colour indicator per row — not aggressive, just a soft visual cue:
 ## 4. Creating a New Article
 
 - Clicking "Novi artikl" opens a form (modal or separate page — implementation choice).
-- Visible fields match the Article data model except `density` and `reorder_coverage_days`: article_no, description, category, base_uom, pack_size, pack_uom, has_batch, reorder_threshold, manufacturer, manufacturer_art_number, is_active.
+- Visible fields match the Article data model except `density` and `reorder_coverage_days`: article_no, description, category, base_uom, pack_size, pack_uom, has_batch, initial_average_price, reorder_threshold, manufacturer, manufacturer_art_number, is_active.
 - In the v1 Croatian UI, `has_batch` is shown with the label `"Artikl sa šaržom"` rather than a process-oriented phrase such as `"Praćenje po šarži"`.
+- `initial_average_price` is shown as `"Prosječna cijena"` and is available on create and edit.
 - `density` remains a backend/master-data field but is hidden in the v1 Warehouse UI. Warehouse create/edit flows submit it as `1.0`.
 - `reorder_coverage_days` remains a backend/planning field but is hidden in the v1 Warehouse UI until automated reorder-threshold logic is introduced in a later phase.
 - On submit: POST to `/api/v1/articles`.
@@ -83,13 +84,15 @@ Accessible by clicking any row in the articles list.
 
 Displays all article master data fields relevant to the v1 Warehouse UI. `density` and `reorder_coverage_days` are not displayed. The visible label for `has_batch` remains `"Artikl sa šaržom"`. "Uredi" button allows inline editing of the visible fields directly on this screen.
 
+`initial_average_price` is displayed as `"Prosječna cijena"`.
+
 ### 5.2 Stock & Surplus Section
 
 Shows current stock and surplus quantities. If article has `has_batch = true`, displays a table of active batches:
 
 | Column | Notes |
 |--------|-------|
-| Batch code | Batch identifier |
+| Šarža | Šifra šarže |
 | Expiry date | Date of expiry |
 | Stock qty | Current stock quantity for this batch |
 | Surplus qty | Current surplus quantity for this batch, or "—" if 0 |
@@ -116,7 +119,7 @@ Paginated list of all inventory transactions for this article, newest first.
 | Date & time | When the transaction occurred |
 | Type | STOCK_RECEIPT / OUTBOUND / SURPLUS_CONSUMED / STOCK_CONSUMED / INVENTORY_ADJUSTMENT / PERSONAL_ISSUE |
 | Quantity | Algebraic amount (negative = outbound) + UOM |
-| Batch | Batch code, or "—" |
+| Šarža | Šifra šarže, or "—" |
 | Reference | Order number or delivery note number if available |
 | User | Who performed the action |
 
@@ -206,6 +209,7 @@ A future raw-label printer mode (e.g., browser-direct, without server mediation)
   "pack_size": 4.0,
   "pack_uom": "kom",
   "has_batch": true,
+  "initial_average_price": 12.5,
   "reorder_threshold": 20.0,
   "reorder_coverage_days": 30,
   "density": 1.0,
@@ -221,6 +225,7 @@ A future raw-label printer mode (e.g., browser-direct, without server mediation)
   "description": "Epoxy paint RAL 7035",
   "category": "safety_equipment",
   "base_uom": "kg",
+  "initial_average_price": 12.5,
   "stock": 0.0,
   "surplus": 0.0,
   "is_active": true,

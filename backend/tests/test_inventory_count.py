@@ -146,6 +146,36 @@ def inv_data(app):
             _db.session.add(art_batch_surplus_only)
             _db.session.flush()
 
+        art_opening_plain = Article.query.filter_by(article_no="INV-ART-006").first()
+        if art_opening_plain is None:
+            art_opening_plain = Article(
+                article_no="INV-ART-006",
+                description="Opening article without batch",
+                category_id=cat.id,
+                base_uom=kom.id,
+                has_batch=False,
+                is_active=True,
+                density=Decimal("1.0"),
+                initial_average_price=Decimal("7.2500"),
+            )
+            _db.session.add(art_opening_plain)
+            _db.session.flush()
+
+        art_opening_batch = Article.query.filter_by(article_no="INV-ART-007").first()
+        if art_opening_batch is None:
+            art_opening_batch = Article(
+                article_no="INV-ART-007",
+                description="Opening article with batch",
+                category_id=cat.id,
+                base_uom=kg.id,
+                has_batch=True,
+                is_active=True,
+                density=Decimal("1.0"),
+                initial_average_price=Decimal("8.5000"),
+            )
+            _db.session.add(art_opening_batch)
+            _db.session.flush()
+
         art_inactive = Article.query.filter_by(article_no="INV-ART-999").first()
         if art_inactive is None:
             art_inactive = Article(
@@ -293,6 +323,8 @@ def inv_data(app):
             "art_no_stock": art_no_stock,
             "art_with_surplus": art_with_surplus,
             "art_batch_surplus_only": art_batch_surplus_only,
+            "art_opening_plain": art_opening_plain,
+            "art_opening_batch": art_opening_batch,
             "art_inactive": art_inactive,
             "batch1": batch1,
             "batch2": batch2,
@@ -921,18 +953,63 @@ def test_second_opening_while_first_opening_is_in_progress_is_blocked(client, in
     assert data["message"] == "Opening stock count already exists."
 
 
-def test_complete_opening_count_generates_discrepancies(client, inv_data):
+def test_add_opening_batch_line_creates_batch_and_replaces_placeholder(
+    client, inv_data, app
+):
+    headers = _admin_headers(client)
+    active = client.get("/api/v1/inventory/active", headers=headers).get_json()
+    count_id = active["id"]
+
+    response = client.post(
+        f"/api/v1/inventory/{count_id}/opening-batch-lines",
+        json={
+            "article_id": inv_data["art_opening_batch"].id,
+            "batch_code": "202600001",
+            "expiry_date": "2026-12-31",
+            "counted_quantity": 9,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    batch_line = next(l for l in payload["lines"] if l["article_no"] == "INV-ART-007")
+    assert batch_line["batch_code"] == "202600001"
+    assert batch_line["counted_quantity"] == 9.0
+    assert batch_line["difference"] == 9.0
+
+    with app.app_context():
+        batch = Batch.query.filter_by(
+            article_id=inv_data["art_opening_batch"].id,
+            batch_code="202600001",
+        ).first()
+        assert batch is not None
+        assert batch.expiry_date.isoformat() == "2026-12-31"
+        placeholder = (
+            _db.session.query(InventoryCountLine)
+            .filter_by(
+                inventory_count_id=count_id,
+                article_id=inv_data["art_opening_batch"].id,
+                batch_id=None,
+            )
+            .first()
+        )
+        assert placeholder is None
+
+
+def test_complete_opening_count_sets_stock_baseline_without_surplus_or_shortage(
+    client, inv_data, app
+):
     headers = _admin_headers(client)
     active = client.get("/api/v1/inventory/active", headers=headers).get_json()
     count_id = active["id"]
 
     for line in active["lines"]:
         qty = line["system_quantity"]
-        if line["article_no"] == "INV-ART-002":
-            qty = line["system_quantity"] - 1  # Shortage
-        elif line["article_no"] == "INV-ART-001":
-            qty = line["system_quantity"] + 1  # Surplus
-        
+        if line["article_no"] == "INV-ART-006":
+            qty = 6
+        elif line["article_no"] == "INV-ART-007":
+            qty = 9
+
         payload_qty = int(qty) if qty == int(qty) else qty
         client.patch(
             f"/api/v1/inventory/{count_id}/lines/{line['line_id']}",
@@ -944,8 +1021,72 @@ def test_complete_opening_count_generates_discrepancies(client, inv_data):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["status"] == "COMPLETED"
-    assert data["summary"]["surplus_added"] >= 1
-    assert data["summary"]["shortage_drafts_created"] >= 1
+    assert data["summary"]["opening_stock_set"] >= 2
+    assert data["summary"]["surplus_added"] == 0
+    assert data["summary"]["shortage_drafts_created"] == 0
+    assert data["summary"]["no_change"] == 0
+
+    plain_article_id = inv_data["art_opening_plain"].id
+    batch_article_id = inv_data["art_opening_batch"].id
+
+    with app.app_context():
+        count = _db.session.get(InventoryCount, count_id)
+        assert count.status == InventoryCountStatus.COMPLETED
+        assert count.completed_at is not None
+
+        surplus_plain = (
+            _db.session.query(Surplus)
+            .filter_by(article_id=plain_article_id, batch_id=None)
+            .first()
+        )
+        surplus_batch = (
+            _db.session.query(Surplus)
+            .filter_by(article_id=batch_article_id, batch_id=None)
+            .first()
+        )
+        assert surplus_plain is None
+        assert surplus_batch is None
+
+        plain_stock = (
+            _db.session.query(Stock)
+            .filter_by(
+                location_id=inv_data["loc"].id,
+                article_id=plain_article_id,
+                batch_id=None,
+            )
+            .first()
+        )
+        assert plain_stock is not None
+        assert float(plain_stock.quantity) == pytest.approx(6.0)
+        assert float(plain_stock.average_price) == pytest.approx(7.25)
+
+        batch = (
+            _db.session.query(Batch)
+            .filter_by(article_id=batch_article_id, batch_code="202600001")
+            .first()
+        )
+        assert batch is not None
+        batch_stock = (
+            _db.session.query(Stock)
+            .filter_by(
+                location_id=inv_data["loc"].id,
+                article_id=batch_article_id,
+                batch_id=batch.id,
+            )
+            .first()
+        )
+        assert batch_stock is not None
+        assert float(batch_stock.quantity) == pytest.approx(9.0)
+        assert float(batch_stock.average_price) == pytest.approx(8.5)
+
+        lines = (
+            _db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .all()
+        )
+        resolutions = {l.article_id: l.resolution for l in lines}
+        assert resolutions[plain_article_id] == InventoryCountLineResolution.OPENING_STOCK_SET
+        assert resolutions[batch_article_id] == InventoryCountLineResolution.OPENING_STOCK_SET
 
 
 def test_start_second_opening_count_blocked(client, inv_data):
@@ -993,6 +1134,7 @@ def test_history_shows_opening_count_exists_flag_and_details(client, inv_data):
     opening_counts = [c for c in data["items"] if c["type"] == "OPENING"]
     assert len(opening_counts) == 1
     assert opening_counts[0]["status"] == "COMPLETED"
+    assert opening_counts[0]["opening_stock_set"] >= 2
     
 def test_count_detail_shows_opening_type(client, inv_data):
     headers = _admin_headers(client)
@@ -1004,6 +1146,7 @@ def test_count_detail_shows_opening_type(client, inv_data):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["type"] == "OPENING"
+    assert data["summary"]["opening_stock_set"] >= 2
 
 
 # ---------------------------------------------------------------------------

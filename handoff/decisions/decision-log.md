@@ -679,3 +679,30 @@
 - Decision: Frontend ESLint keeps `eslint-plugin-security` enabled but disables `security/detect-object-injection` for TypeScript/TSX code in `frontend/eslint.config.js`. The rule is not TypeScript-aware and reported typed enum/union lookups, role/locale maps, keyed form state, and React state maps as object-injection sinks. Future agents should not add broad inline disables for these patterns. Genuinely untrusted dynamic property access still requires normal code review and input validation.
 - Impact: `npm run lint` should remain useful without 30+ recurring false-positive object-injection warnings. New frontend security-sensitive dynamic key usage must be reviewed manually instead of relying on this AST-only rule.
 - Docs update required: no
+
+## DEC-INV-008
+
+- Date: 2026-04-08
+- Phase: Wave 8 feedback intake
+- Source: User feedback recorded in `handoff/Findings/wave-08-user-feedback.md` as W8-F-001
+- Decision: Opening inventory counts must not use the regular surplus/shortage discrepancy semantics for the user's counted opening quantities. Quantities entered during an `OPENING` inventory count represent the warehouse's initial/current stock baseline and must be recorded as stock/on-hand starting state, not as `Surplus` (`višak`). This supersedes the portion of `DEC-INV-007` that said `OPENING` counts use the exact same completion semantics as `REGULAR` counts. Exact implementation details for pre-existing non-zero stock and audit transaction typing remain to be resolved during Wave 8 scoping.
+- Impact: Backend inventory completion needs a dedicated `OPENING` path; tests must assert opening counts create stock rather than surplus; product/docs should be updated wherever opening inventory is described as sharing regular discrepancy outcomes.
+- Docs update required: yes
+
+## DEC-PRICE-001
+
+- Date: 2026-04-08
+- Phase: Wave 8 feedback intake
+- Source: User feedback recorded in `handoff/Findings/wave-08-user-feedback.md` as W8-F-004
+- Decision: Initial warehouse setup must support entering a known starting purchase/average price for opening stock. Future receiving/order flows should continue to derive weighted average price automatically from `unit_price`, but initial setup must not force known existing stock to start with `Stock.average_price = 0.0000` or unknown valuation. Exact UI placement and persistence mechanics remain Wave 8 scope, with the important constraint that canonical average price currently lives on `Stock`, not `Article`.
+- Impact: Wave 8 should coordinate Warehouse article creation, opening inventory, stock valuation, and reports. Tests should cover initial stock created with a non-zero average price and later receiving preserving/updating the weighted-average behavior.
+- Docs update required: yes
+
+## DEC-PRICE-002
+
+- Date: 2026-04-08
+- Phase: Wave 8 feedback intake
+- Source: User clarification recorded in `handoff/Findings/wave-08-user-feedback.md` under W8-F-004
+- Decision: The initial price field belongs in article creation/setup, not in the opening inventory counting workflow. Opening inventory is expected to be performed by warehouse staff and should capture physical facts (quantities and batches), while ADMIN/procurement users who create article master data should enter the starting purchase/average price. Wave 8 should implement a backend bridge so the article setup price becomes the initial `Stock.average_price` when opening inventory creates stock rows.
+- Impact: Frontend Wave 8 scope should add the price input to the Warehouse article setup path rather than the Inventory active-count table. Backend Wave 8 scope may need a new article-level setup/default valuation field or another deliberate persistence mechanism because canonical `Stock.average_price` is only available after stock rows exist.
+- Docs update required: yes

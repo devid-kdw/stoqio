@@ -87,6 +87,7 @@
 | `manufacturer` | string nullable | Naziv proizvođača |
 | `manufacturer_art_number` | string nullable | Šifra artikla kod proizvođača |
 | `has_batch` | bool | Prati li se po šaržama |
+| `initial_average_price` | decimal(14,4) nullable | Početna prosječna cijena za opening stock i početno postavljanje artikla |
 | `reorder_threshold` | decimal nullable | Trenutni prag za naručivanje |
 | `reorder_coverage_days` | int nullable | Ciljna pokrivenost u danima (za auto-izračun thresholda) |
 | `density` | decimal | Gustoća za KG↔L konverziju (default 1.0) |
@@ -97,6 +98,8 @@
 > **Napomena o pakiranju**: Stanje se uvijek vodi u `base_uom`. `pack_size` je informativno polje — sustav prikazuje "100 kg (4 kante po 25 kg)" ali interno pamti samo 100 kg.
 
 > **Napomena o reorder thresholdu**: Pri prvom unosu artikla, threshold se unosi ručno. Nakon dovoljno transakcija, sustav može predložiti novi threshold baziran na prosječnoj potrošnji × `reorder_coverage_days`. Korisnik uvijek može override.
+>
+> **Napomena o početnoj cijeni**: `initial_average_price` je početna nabavna/prosječna cijena koju ADMIN/procurement unosi pri postavljanju artikla. Opening inventura je koristi kada stvara početne `Stock` redove.
 
 ---
 
@@ -199,6 +202,7 @@ Trenutno stanje zaliha po artiklu i šarži.
 > **Constraint**: `quantity >= 0` — stock nikad ne ide ispod nule.
 > **Unique**: `(location_id, article_id, batch_id)` — PostgreSQL tretira NULL kao "nema šarže".
 > **Receiving fallback**: ako ad-hoc primka dođe bez `unit_price` i stock red već postoji, `average_price` ostaje nepromijenjen; ako stock red ne postoji, inicijalizira se na `0.0000`.
+> **Opening inventory seed**: kada se početna inventura završava, `Article.initial_average_price` se koristi kao početni `average_price` za stvarne `Stock` redove (ako je postavljena).
 
 ---
 
@@ -367,6 +371,7 @@ Nepromjenjiv zapis svake inventory operacije.
 | Polje | Tip | Opis |
 |-------|-----|------|
 | `id` | int PK | |
+| `type` | enum | `REGULAR` / `OPENING` |
 | `status` | enum | `IN_PROGRESS` / `COMPLETED` |
 | `note` | text nullable | |
 | `started_by` | FK → User | |
@@ -387,7 +392,9 @@ Nepromjenjiv zapis svake inventory operacije.
 | `counted_quantity` | decimal(14,3) nullable | Prebrojano stanje (NULL = nije još prebrojan) |
 | `uom` | string | |
 | `difference` | decimal(14,3) nullable | `counted - system` (izračunato) |
-| `resolution` | enum nullable | `SURPLUS_ADDED` / `SHORTAGE_DRAFT_CREATED` / `NO_CHANGE` |
+| `resolution` | enum nullable | `SURPLUS_ADDED` / `SHORTAGE_DRAFT_CREATED` / `NO_CHANGE` / `OPENING_STOCK_SET` |
+
+> `OPENING` inventura postavlja početno stanje skladišta. Za batch-tracked artikle početni batch unosi se kroz opening flow, a završetak opening counta ne stvara surplus niti shortage draftove.
 
 ---
 

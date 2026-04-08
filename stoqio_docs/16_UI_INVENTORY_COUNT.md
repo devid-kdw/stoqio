@@ -88,6 +88,8 @@ Shows: date started, started by, progress indicator (e.g. "47 / 120 counted").
 
 **"Complete Count"** button — visible but disabled until all lines have a `counted_quantity` entered. When all lines are filled: button becomes active.
 
+If the active count is `OPENING`, the header also exposes **"Dodaj šaržu"** so warehouse staff can add opening batch lines for batch-tracked articles. The opening flow captures `article`, `Šarža`, `Rok valjanosti`, and `Količina` only; it does not ask for price.
+
 ### 6.2 Count Lines Table
 
 One row per article (and per batch for batch-tracked articles).
@@ -96,7 +98,7 @@ One row per article (and per batch for batch-tracked articles).
 |--------|-------|
 | Article No. | Article number |
 | Description | Article description |
-| Batch | Batch code, or "—" if no batch |
+| Šarža | Šifra šarže, or "—" if no batch |
 | Expiry date | Expiry date if batch exists, or "—" |
 | System qty | Quantity recorded in the system at count start |
 | UOM | Unit of measure |
@@ -149,6 +151,8 @@ The system processes each line on completion:
 | `counted > system` | Difference is added to Surplus automatically | `SURPLUS_ADDED` |
 | `counted < system` | A shortage Draft is created (status `DRAFT`, type `INVENTORY_SHORTAGE`) for admin approval | `SHORTAGE_DRAFT_CREATED` |
 
+> Opening count setup lines can be resolved separately as `OPENING_STOCK_SET` when the batch is captured through the opening-batch flow. Those lines do not create surplus rows or shortage drafts.
+
 > Shortage drafts created by inventory count follow the same approval workflow as regular outbound drafts. They appear in the Approvals module as pending items. The admin reviews and approves them there — this is intentional, as the shortage may need investigation before stock is reduced.
 
 ---
@@ -158,9 +162,9 @@ The system processes each line on completion:
 Read-only view of a completed count.
 
 - Header: date, started by, completed at.
-- Summary: total lines, lines with no change, surpluses added, shortage drafts created.
+- Summary: total lines, lines with no change, surpluses added, shortage drafts created. Opening counts may additionally expose `opening_stock_set`.
 - Full lines table (same columns as active count, all read-only, with Resolution column filled in).
-- Filter by resolution: All / NO_CHANGE / SURPLUS_ADDED / SHORTAGE_DRAFT_CREATED.
+- Filter by resolution: All / NO_CHANGE / SURPLUS_ADDED / SHORTAGE_DRAFT_CREATED / OPENING_STOCK_SET.
 
 ---
 
@@ -174,6 +178,7 @@ Read-only view of a completed count.
 | Get count detail | GET | `/api/v1/inventory/{id}` |
 | Update counted qty on a line | PATCH | `/api/v1/inventory/{id}/lines/{line_id}` |
 | Complete count | POST | `/api/v1/inventory/{id}/complete` |
+| Add opening batch line | POST | `/api/v1/inventory/{id}/opening-batch-lines` |
 
 ---
 
@@ -228,6 +233,33 @@ Read-only view of a completed count.
     "surplus_added": 14,
     "shortage_drafts_created": 8
   }
+}
+```
+
+### POST `/api/v1/inventory/{id}/opening-batch-lines` — Add opening batch line
+
+**Request:**
+```json
+{
+  "article_id": 42,
+  "batch_code": "24001",
+  "expiry_date": "2026-12-31",
+  "counted_quantity": 10
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": 8,
+  "status": "IN_PROGRESS",
+  "type": "OPENING",
+  "started_by": "admin",
+  "started_at": "2026-03-10T07:00:00Z",
+  "completed_at": null,
+  "total_lines": 121,
+  "counted_lines": 1,
+  "lines": []
 }
 ```
 

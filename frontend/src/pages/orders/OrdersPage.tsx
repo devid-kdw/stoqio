@@ -20,6 +20,7 @@ import {
 import {
   ordersApi,
   type CreateOrderPayload,
+  type OrderArticleLookupItem,
   type OrdersListItem,
   type OrderSupplierLookupItem,
 } from '../../api/orders'
@@ -173,6 +174,7 @@ export default function OrdersPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const articleLookupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const selectedSupplierIdRef = useRef<string | null>(null)
 
   const loadOrders = useCallback(async () => {
     setPageLoading(true)
@@ -221,6 +223,23 @@ export default function OrdersPage() {
     }
   }, [])
 
+  useEffect(() => {
+    selectedSupplierIdRef.current = selectedSupplierId
+  }, [selectedSupplierId])
+
+  const clearLineForSupplierChange = useCallback((line: OrderLineDraft): OrderLineDraft => {
+    return {
+      ...line,
+      articleId: null,
+      selectedArticle: null,
+      articleOptions: [],
+      articleLookupState: 'idle',
+      supplierArticleCode: '',
+      uom: '',
+      unitPrice: '',
+    }
+  }, [])
+
   const resetCreateForm = useCallback(() => {
     setOrderNumber('')
     setSelectedSupplierId(null)
@@ -262,8 +281,25 @@ export default function OrdersPage() {
 
   const handleSupplierChange = useCallback(
     (value: string | null) => {
+      Object.values(articleLookupTimersRef.current).forEach((timer) => clearTimeout(timer))
+      articleLookupTimersRef.current = {}
+
       setSelectedSupplierId(value)
+      selectedSupplierIdRef.current = value
       setHeaderErrors((current) => ({ ...current, supplierId: undefined }))
+      setLineDrafts((current) => current.map((line) => clearLineForSupplierChange(line)))
+      setLineErrors((current) =>
+        Object.fromEntries(
+          Object.entries(current).map(([lineKey, errors]) => [
+            lineKey,
+            {
+              ...errors,
+              article: undefined,
+              supplierArticleCode: undefined,
+            },
+          ])
+        )
+      )
 
       if (!value) {
         setSelectedSupplier(null)
@@ -278,7 +314,7 @@ export default function OrdersPage() {
 
       setSelectedSupplier(nextSupplier)
     },
-    [selectedSupplier, supplierOptions]
+    [clearLineForSupplierChange, selectedSupplier, supplierOptions]
   )
 
   const handleArticleSearch = useCallback(
@@ -306,7 +342,10 @@ export default function OrdersPage() {
       articleLookupTimersRef.current[lineKey] = setTimeout(async () => {
         try {
           const response = await runWithRetry(() =>
-            ordersApi.lookupArticles(normalized, selectedSupplierId ? Number(selectedSupplierId) : undefined)
+            ordersApi.lookupArticles(
+              normalized,
+              selectedSupplierIdRef.current ? Number(selectedSupplierIdRef.current) : undefined
+            )
           )
           updateLineDraft(lineKey, (line) => ({
             ...line,
@@ -327,14 +366,71 @@ export default function OrdersPage() {
         }
       }, 300)
     },
-    [selectedSupplierId, updateLineDraft]
+    [updateLineDraft]
+  )
+
+  const refreshSupplierArticleDetails = useCallback(
+    async (lineKey: string, selectedArticle: OrderArticleLookupItem) => {
+      const rawSupplierId = selectedSupplierIdRef.current
+      if (!rawSupplierId) {
+        return
+      }
+
+      const supplierId = Number(rawSupplierId)
+      if (!Number.isFinite(supplierId)) {
+        return
+      }
+
+      try {
+        const response = await runWithRetry(() =>
+          ordersApi.lookupArticles(selectedArticle.article_no, supplierId)
+        )
+        const refreshedArticle = response.items.find(
+          (item) => item.article_id === selectedArticle.article_id
+        )
+        if (!refreshedArticle) {
+          return
+        }
+
+        updateLineDraft(lineKey, (line) => {
+          if (line.articleId !== refreshedArticle.article_id) {
+            return line
+          }
+
+          const currentCode = line.supplierArticleCode.trim()
+          const selectedCode = line.selectedArticle?.supplier_article_code?.trim() ?? ''
+          const shouldRefreshCode =
+            refreshedArticle.supplier_article_code !== null &&
+            (currentCode === '' || currentCode === selectedCode)
+          const shouldRefreshPrice = line.unitPrice === '' && refreshedArticle.last_price !== null
+
+          return {
+            ...line,
+            selectedArticle: refreshedArticle,
+            articleOptions: line.articleOptions.map((article) =>
+              article.article_id === refreshedArticle.article_id ? refreshedArticle : article
+            ),
+            supplierArticleCode: shouldRefreshCode
+              ? refreshedArticle.supplier_article_code ?? ''
+              : line.supplierArticleCode,
+            unitPrice: shouldRefreshPrice ? refreshedArticle.last_price ?? '' : line.unitPrice,
+          }
+        })
+      } catch (error) {
+        if (isNetworkOrServerError(error)) {
+          setFatalError(true)
+        }
+      }
+    },
+    [updateLineDraft]
   )
 
   const handleArticleChange = useCallback(
     (lineKey: string, value: string | null) => {
-      updateLineDraft(lineKey, (line) => {
-        const selectedArticle = findArticleOption(line, value)
+      const currentLine = lineDrafts.find((line) => line.key === lineKey)
+      const selectedArticle = currentLine ? findArticleOption(currentLine, value) : null
 
+      updateLineDraft(lineKey, (line) => {
         if (!selectedArticle) {
           return {
             ...line,
@@ -366,8 +462,12 @@ export default function OrdersPage() {
           supplierArticleCode: undefined,
         },
       }))
+
+      if (selectedArticle) {
+        void refreshSupplierArticleDetails(lineKey, selectedArticle)
+      }
     },
-    [updateLineDraft]
+    [lineDrafts, refreshSupplierArticleDetails, updateLineDraft]
   )
 
   const validateCreateForm = useCallback(() => {

@@ -41,7 +41,6 @@ import {
   formatQuantity,
   getReorderStatusColor,
   getReorderStatusLabel,
-  getReorderStatusTint,
   mapArticleApiErrorToFormErrors,
   translateArticleApiMessage,
   validateArticleForm,
@@ -466,9 +465,6 @@ export default function WarehousePage() {
                         style={{
                           cursor: 'pointer',
                           opacity: article.is_active ? 1 : 0.58,
-                          background: article.is_active
-                            ? getReorderStatusTint(article.reorder_status)
-                            : 'rgba(173, 181, 189, 0.08)',
                         }}
                       >
                         <Table.Td>

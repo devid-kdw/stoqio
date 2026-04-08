@@ -3,6 +3,7 @@ import { MantineProvider } from '@mantine/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import { stoqioTheme } from '../theme'
 
 export const renderWithProviders = (
   ui: ReactNode,
@@ -17,7 +18,7 @@ export const renderWithProviders = (
   })
 
   return render(
-    <MantineProvider>
+    <MantineProvider theme={stoqioTheme}>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[route]}>
           <Routes>

@@ -114,6 +114,7 @@ export interface WarehouseArticleDetail {
   manufacturer: string | null
   manufacturer_art_number: string | null
   has_batch: boolean
+  initial_average_price: number | null
   reorder_threshold: number | null
   reorder_coverage_days: number | null
   density: number
@@ -192,6 +193,7 @@ export interface ArticleMutationPayload {
   manufacturer?: string | null
   manufacturer_art_number?: string | null
   has_batch: boolean
+  initial_average_price: number | null
   reorder_threshold?: number | null
   reorder_coverage_days?: number | null
   density?: number

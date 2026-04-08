@@ -72,6 +72,7 @@ class InventoryCountLineResolution(str, enum.Enum):
     SURPLUS_ADDED = "SURPLUS_ADDED"
     SHORTAGE_DRAFT_CREATED = "SHORTAGE_DRAFT_CREATED"
     NO_CHANGE = "NO_CHANGE"
+    OPENING_STOCK_SET = "OPENING_STOCK_SET"
 
 
 class UserRole(str, enum.Enum):

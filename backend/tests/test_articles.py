@@ -638,6 +638,7 @@ class TestWarehouseArticles:
                 "pack_size": 5,
                 "pack_uom": "whkom",
                 "has_batch": False,
+                "initial_average_price": 12.3456,
                 "reorder_threshold": 7.5,
                 "reorder_coverage_days": 10,
                 "density": 1.2,
@@ -650,6 +651,7 @@ class TestWarehouseArticles:
         assert payload["article_no"] == "WH-NEW-005"
         assert payload["base_uom"] == "whkg"
         assert payload["pack_uom"] == "whkom"
+        assert payload["initial_average_price"] == 12.3456
         assert payload["stock_total"] == 0.0
         assert payload["surplus_total"] == 0.0
         assert payload["reorder_status"] == "RED"
@@ -662,6 +664,7 @@ class TestWarehouseArticles:
             stored = Article.query.filter_by(article_no="WH-NEW-005").first()
             assert stored is not None
             assert stored.description == "New warehouse article"
+            assert float(stored.initial_average_price) == pytest.approx(12.3456)
 
     def test_duplicate_article_no_returns_409(self, client, warehouse_data):
         token = _login(client, "warehouse_admin")
@@ -951,6 +954,7 @@ class TestWarehouseArticles:
                 "manufacturer": "UpdatedCo",
                 "manufacturer_art_number": "UPD-001",
                 "has_batch": False,
+                "initial_average_price": 9.8765,
                 "reorder_threshold": 10,
                 "reorder_coverage_days": 12,
                 "density": 1.5,
@@ -963,11 +967,13 @@ class TestWarehouseArticles:
         assert payload["article_no"] == "WH-ACT-001-UPD"
         assert payload["manufacturer"] == "UpdatedCo"
         assert payload["manufacturer_art_number"] == "UPD-001"
+        assert payload["initial_average_price"] == 9.8765
         assert payload["density"] == 1.5
 
         with app.app_context():
             stored = _db.session.get(Article, warehouse_data["active_article"].id)
             assert stored.article_no == "WH-ACT-001-UPD"
+            assert float(stored.initial_average_price) == pytest.approx(9.8765)
 
     def test_update_article_without_suppliers_preserves_existing_links(
         self, client, app, warehouse_data

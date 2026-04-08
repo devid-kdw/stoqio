@@ -25,20 +25,8 @@ const RESOLUTION_OPTIONS = [
   { value: 'NO_CHANGE', label: 'Bez promjena' },
   { value: 'SURPLUS_ADDED', label: 'Višak dodan' },
   { value: 'SHORTAGE_DRAFT_CREATED', label: 'Manjkovi' },
+  { value: 'OPENING_STOCK_SET', label: 'Početno stanje' },
 ]
-
-function getCompletedBg(resolution: string | null): string | undefined {
-  switch (resolution) {
-    case 'NO_CHANGE':
-      return 'var(--mantine-color-green-0)'
-    case 'SURPLUS_ADDED':
-      return 'var(--mantine-color-blue-0)'
-    case 'SHORTAGE_DRAFT_CREATED':
-      return 'var(--mantine-color-yellow-0)'
-    default:
-      return undefined
-  }
-}
 
 export interface CompletedDetailViewProps {
   count: CountDetail
@@ -54,6 +42,11 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
   })
 
   const s = count.summary
+  const isOpeningCount = count.type === 'OPENING'
+  const primaryAdjustmentLabel = isOpeningCount ? 'Početno stanje postavljeno' : 'Višak dodan'
+  const primaryAdjustmentValue = isOpeningCount
+    ? s.opening_stock_set ?? s.surplus_added ?? 0
+    : s.surplus_added
 
   return (
     <Stack gap="lg" p="md">
@@ -68,7 +61,7 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
         </Button>
         <Title order={2}>Završena inventura #{count.id}</Title>
         {count.type === 'OPENING' && (
-          <Badge color="violet" size="lg">Opening Stock</Badge>
+          <Badge color="violet" size="lg">Inicijalna inventura</Badge>
         )}
       </Group>
 
@@ -116,10 +109,10 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
         </Paper>
         <Paper withBorder p="md">
           <Text size="xs" c="dimmed">
-            Višak dodan
+            {primaryAdjustmentLabel}
           </Text>
-          <Text size="xl" fw={700} c="blue">
-            {s.surplus_added}
+          <Text size="xl" fw={700} c={isOpeningCount ? 'violet' : 'blue'}>
+            {primaryAdjustmentValue}
           </Text>
         </Paper>
         <Paper withBorder p="md">
@@ -150,7 +143,7 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
               <Table.Tr>
                 <Table.Th>Artikl br.</Table.Th>
                 <Table.Th>Opis</Table.Th>
-                <Table.Th>Serija</Table.Th>
+                <Table.Th>Šarža</Table.Th>
                 <Table.Th>Rok valjanosti</Table.Th>
                 <Table.Th>Stanje sustava</Table.Th>
                 <Table.Th>JMJ</Table.Th>
@@ -170,10 +163,7 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
                 </Table.Tr>
               ) : (
                 displayLines.map((line) => (
-                  <Table.Tr
-                    key={line.line_id}
-                    style={{ backgroundColor: getCompletedBg(line.resolution) }}
-                  >
+                  <Table.Tr key={line.line_id}>
                     <Table.Td>{line.article_no || '—'}</Table.Td>
                     <Table.Td>{line.description || '—'}</Table.Td>
                     <Table.Td>{line.batch_code || '—'}</Table.Td>
@@ -196,8 +186,8 @@ export function CompletedDetailView({ count, onBack }: CompletedDetailViewProps)
                               : line.difference < 0
                                 ? 'yellow.7'
                                 : 'green'
-                            }
-                          >
+                          }
+                        >
                           {fmtDiff(line.difference, line.decimal_display)}
                         </Text>
                       ) : (

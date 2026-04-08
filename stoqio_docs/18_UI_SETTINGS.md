@@ -20,19 +20,19 @@ Settings are grouped into sections. Changes take effect immediately on save unle
 
 Single page with clearly separated sections, each with its own Save button:
 
-1. **General** — location name, language, timezone
-2. **Roles** — display names for system roles
-3. **UOM Catalog** — units of measure
-4. **Article Categories** — category labels and personal issue flag
-5. **Quotas** — annual quotas for personal issuances per job title
-6. **Barcode** — barcode format and printer configuration
-7. **Export** — SAP/Excel export format
-8. **Suppliers** — supplier master data (create, edit, deactivate)
-9. **Users** — user management (create, edit, deactivate system users)
+1. **Općenito** — location name, language, timezone
+2. **Role** — display names for system roles
+3. **Katalog jedinica mjere** — units of measure
+4. **Kategorije artikala** — category labels and personal issue flag
+5. **Kvote** — annual quotas for personal issuances per job title
+6. **Barkodovi** — barcode format and printer configuration
+7. **Izvoz** — SAP/Excel export format
+8. **Dobavljači** — supplier master data (create, edit, deactivate)
+9. **Korisnici** — user management (create, edit, deactivate system users)
 
 ---
 
-## 3. Section: General
+## 3. Section: Općenito
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -42,7 +42,7 @@ Single page with clearly separated sections, each with its own Save button:
 
 ---
 
-## 4. Section: Roles
+## 4. Section: Role
 
 Display names for each system role. The system role key never changes — only the label shown in the UI.
 
@@ -59,7 +59,7 @@ Display names for each system role. The system role key never changes — only t
 
 ---
 
-## 5. Section: UOM Catalog
+## 5. Section: Katalog jedinica mjere
 
 Displays all current units of measure. Admin can add new units.
 
@@ -82,7 +82,7 @@ Displays all current units of measure. Admin can add new units.
 
 ---
 
-## 6. Section: Article Categories
+## 6. Section: Kategorije artikala
 
 Displays all article categories. Admin can edit labels and configure the personal issue flag.
 
@@ -100,7 +100,7 @@ Displays all article categories. Admin can edit labels and configure the persona
 
 ---
 
-## 7. Section: Quotas
+## 7. Section: Kvote
 
 Annual quota configuration for personal issuances. Quotas are defined per job title and category/article.
 
@@ -139,21 +139,21 @@ The system applies quotas in this priority order (highest first):
 
 ---
 
-## 8. Section: Barcode
+## 8. Section: Barkodovi
 
-The Barcode section controls barcode format and the two distinct print workflows available in the system.
+Odjeljak Barkodovi kontrolira format barkoda i dva odvojena načina ispisa dostupna u sustavu.
 
-### 8.1 Barcode format
-
-| Field | Type | Notes |
-|-------|------|-------|
-| Barcode format | Dropdown | EAN-13 / Code128. Default: Code128. Applied when generating barcode images for articles and batches. |
-
-### 8.2 PDF download printing (`barcode_printer`)
+### 8.1 Format barkoda
 
 | Field | Type | Notes |
 |-------|------|-------|
-| Barcode printer | Text input | Optional. OS-level printer name configured on the host machine. Free-text field — must match the host OS printer name exactly. Used as a hint when the host OS triggers a print dialog after the PDF is downloaded. No printer discovery UI in v1. |
+| Format barkoda | Dropdown | EAN-13 / Code128. Default: Code128. Applied when generating barcode images for articles and batches. |
+
+### 8.2 Ispis kroz PDF preuzimanje (`barcode_printer`)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| Barkod printer | Text input | Optional. OS-level printer name configured on the host machine. Free-text field — must match the host OS printer name exactly. Used as a hint when the host OS triggers a print dialog after the PDF is downloaded. No printer discovery UI in v1. |
 
 > The PDF download workflow (`GET /api/v1/articles/{id}/barcode`, `GET /api/v1/batches/{id}/barcode`) generates a PDF barcode label and downloads it directly in the browser. The `barcode_printer` field is stored as a configuration reference; it does not drive the current direct ZPL network-print path.
 
@@ -175,7 +175,7 @@ A future raw-label printer mode (e.g., printing raw ZPL directly from the browse
 
 ---
 
-## 9. Section: Export
+## 9. Section: Izvoz
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -183,11 +183,11 @@ A future raw-label printer mode (e.g., printing raw ZPL directly from the browse
 
 ---
 
-## 10. Section: Suppliers
+## 10. Section: Dobavljači
 
-Supplier master data management. Suppliers are referenced in Orders — they must exist before an order can be created.
+Upravljanje podacima dobavljača. Dobavljači se koriste u Narudžbenicama i moraju postojati prije kreiranja narudžbe.
 
-### 10.1 Suppliers Table
+### 10.1 Tablica dobavljača
 
 | Column | Notes |
 |--------|-------|
@@ -221,11 +221,11 @@ Supplier master data management. Suppliers are referenced in Orders — they mus
 
 ---
 
-## 11. Section: Users
+## 11. Section: Korisnici
 
 User management for system accounts (not employees — these are login users).
 
-### 11.1 Users Table
+### 11.1 Tablica korisnika
 
 | Column | Notes |
 |--------|-------|

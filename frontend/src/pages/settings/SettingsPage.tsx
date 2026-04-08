@@ -1141,14 +1141,16 @@ export default function SettingsPage() {
     try {
       const response = await settingsApi.updateBarcode(barcodeForm)
       setBarcodeForm(response)
-      showSuccessToast('Barcode postavke su spremljene.')
+      showSuccessToast('Postavke barkoda su spremljene.')
     } catch (error) {
       if (isNetworkOrServerError(error)) {
         setLoadErrorMessage(SETTINGS_CONNECTION_ERROR_MESSAGE)
         return
       }
 
-      showErrorToast(getApiErrorBody(error)?.message ?? 'Spremanje barcode postavki nije uspjelo.')
+      showErrorToast(
+        getApiErrorBody(error)?.message ?? 'Spremanje postavki barkoda nije uspjelo.'
+      )
     } finally {
       setBarcodeSaving(false)
     }
@@ -1161,14 +1163,16 @@ export default function SettingsPage() {
     try {
       const response = await settingsApi.updateExport(exportForm)
       setExportForm(response)
-      showSuccessToast('Export postavke su spremljene.')
+      showSuccessToast('Postavke izvoza su spremljene.')
     } catch (error) {
       if (isNetworkOrServerError(error)) {
         setLoadErrorMessage(SETTINGS_CONNECTION_ERROR_MESSAGE)
         return
       }
 
-      showErrorToast(getApiErrorBody(error)?.message ?? 'Spremanje export postavki nije uspjelo.')
+      showErrorToast(
+        getApiErrorBody(error)?.message ?? 'Spremanje postavki izvoza nije uspjelo.'
+      )
     } finally {
       setExportSaving(false)
     }
@@ -1479,7 +1483,7 @@ export default function SettingsPage() {
       </div>
 
       <SettingsSection
-        title="1. General"
+        title="1. Općenito"
         description="Naziv lokacije, jezik sučelja i operativna vremenska zona."
       >
         <form onSubmit={handleGeneralSave}>
@@ -1525,7 +1529,7 @@ export default function SettingsPage() {
 
             <Group justify="flex-end">
               <Button type="submit" loading={generalSaving}>
-                Spremi General
+                Spremi opće postavke
               </Button>
             </Group>
           </Stack>
@@ -1533,8 +1537,8 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="2. Roles"
-        description="Display nazivi sistemskih rola za UI prikaz."
+        title="2. Role"
+        description="Prikazni nazivi sistemskih rola za UI prikaz."
       >
         <form onSubmit={handleRolesSave}>
           <Stack gap="md">
@@ -1557,7 +1561,7 @@ export default function SettingsPage() {
 
             <Group justify="flex-end">
               <Button type="submit" loading={rolesSaving}>
-                Spremi Roles
+                Spremi nazive rola
               </Button>
             </Group>
           </Stack>
@@ -1565,7 +1569,7 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="3. UOM Catalog"
+        title="3. Katalog jedinica mjere"
         description="Katalog jedinica mjere i dodavanje novih unosa."
       >
         <Stack gap="md">
@@ -1689,7 +1693,7 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="4. Article Categories"
+        title="4. Kategorije artikala"
         description="HR/EN nazivi kategorija i oznaka osobnog izdavanja."
       >
         <Paper withBorder radius="md">
@@ -1697,7 +1701,7 @@ export default function SettingsPage() {
             <Table highlightOnHover verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Key</Table.Th>
+                  <Table.Th>Ključ</Table.Th>
                   <Table.Th>Naziv (HR)</Table.Th>
                   <Table.Th>Naziv (EN)</Table.Th>
                   <Table.Th>Osobno izdavanje</Table.Th>
@@ -1783,7 +1787,7 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="5. Quotas"
+        title="5. Kvote"
         description="Globalni override po artiklu i default po radnom mjestu + kategoriji."
       >
         <Stack gap="md">
@@ -1799,7 +1803,7 @@ export default function SettingsPage() {
               <Table highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Scope</Table.Th>
+                    <Table.Th>Opseg</Table.Th>
                     <Table.Th>Radno mjesto</Table.Th>
                     <Table.Th>Artikl / kategorija</Table.Th>
                     <Table.Th>Količina</Table.Th>
@@ -1858,14 +1862,14 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="6. Barcode"
+        title="6. Barkodovi"
         description="Format barkoda, naziv printera (PDF ispis) i konfiguracija direktnog label printera."
       >
         <form onSubmit={handleBarcodeSave}>
           <Stack gap="md">
             <SimpleGrid cols={{ base: 1, md: 2 }}>
               <Select
-                label="Barcode format"
+                label="Format barkoda"
                 data={BARCODE_OPTIONS}
                 value={barcodeForm.barcode_format}
                 onChange={(value) =>
@@ -1937,7 +1941,7 @@ export default function SettingsPage() {
 
             <Group justify="flex-end">
               <Button type="submit" loading={barcodeSaving}>
-                Spremi Barcode
+                Spremi postavke barkoda
               </Button>
             </Group>
           </Stack>
@@ -1945,13 +1949,13 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="7. Export"
+        title="7. Izvoz"
         description="Format Excela za izvoz podataka."
       >
         <form onSubmit={handleExportSave}>
           <Stack gap="md">
             <Select
-              label="Excel format"
+              label="Format Excela"
               data={EXPORT_OPTIONS}
               value={exportForm.export_format}
               onChange={(value) =>
@@ -1966,7 +1970,7 @@ export default function SettingsPage() {
 
             <Group justify="flex-end">
               <Button type="submit" loading={exportSaving}>
-                Spremi Export
+                Spremi postavke izvoza
               </Button>
             </Group>
           </Stack>
@@ -1974,7 +1978,7 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="8. Suppliers"
+        title="8. Dobavljači"
         description="Pretraga, kreiranje, uređivanje i deaktivacija dobavljača."
       >
         <Stack gap="md">
@@ -2085,7 +2089,7 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="9. Users"
+        title="9. Korisnici"
         description="Kreiranje, uređivanje i deaktivacija korisničkih računa."
       >
         <Stack gap="md">

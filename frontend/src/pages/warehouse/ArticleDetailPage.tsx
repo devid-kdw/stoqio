@@ -58,6 +58,7 @@ import {
   buildArticlePayload,
   buildUomMap,
   createArticleFormState,
+  formatDecimal,
   formatDate,
   formatDateTime,
   formatOptionalQuantity,
@@ -814,6 +815,10 @@ export default function ArticleDetailPage() {
               <DetailField label="Barkod" value={article.barcode ?? '—'} />
               <DetailField label="Proizvođač" value={article.manufacturer ?? '—'} />
               <DetailField label="Šifra proizvođača" value={article.manufacturer_art_number ?? '—'} />
+              <DetailField
+                label="Prosječna cijena"
+                value={formatDecimal(article.initial_average_price)}
+              />
               <DetailField label="Artikl sa šaržom" value={article.has_batch ? 'Da' : 'Ne'} />
               <DetailField
                 label="Prag naručivanja"

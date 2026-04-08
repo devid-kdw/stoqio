@@ -158,7 +158,7 @@ export function HistoryView({
                         <Group gap="xs">
                           <Badge color="teal">ZAVRŠENA</Badge>
                           {item.type === 'OPENING' && (
-                            <Badge color="violet">Opening Stock</Badge>
+                            <Badge color="violet">Inicijalna inventura</Badge>
                           )}
                           <ShortageApprovalBadge summary={item.shortage_drafts_summary} />
                         </Group>
@@ -195,10 +195,10 @@ export function HistoryView({
             loading={starting}
             onClick={() => doStart('OPENING')}
           >
-            Opening Stock Count
+            Početna inventura
           </Button>
           <Button loading={starting} onClick={() => doStart('REGULAR')}>
-            Regular Count
+            Redovna inventura
           </Button>
         </Stack>
       </Modal>

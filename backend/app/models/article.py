@@ -27,6 +27,7 @@ class Article(db.Model):
     manufacturer = db.Column(db.String, nullable=True)
     manufacturer_art_number = db.Column(db.String, nullable=True)
     has_batch = db.Column(db.Boolean, nullable=False, default=False)
+    initial_average_price = db.Column(db.Numeric(14, 4), nullable=True)
     reorder_threshold = db.Column(db.Numeric(14, 3), nullable=True)
     reorder_coverage_days = db.Column(db.Integer, nullable=True)
     density = db.Column(db.Numeric(14, 3), nullable=False, server_default="1.0")

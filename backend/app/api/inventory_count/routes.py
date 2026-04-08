@@ -112,6 +112,21 @@ def update_line(count_id: int, line_id: int):
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
+@inventory_bp.route("/inventory/<int:count_id>/opening-batch-lines", methods=["POST"])
+@require_role("ADMIN")
+def add_opening_batch_line(count_id: int):
+    """POST /api/v1/inventory/{id}/opening-batch-lines — add an opening batch line."""
+    try:
+        result = inventory_service.add_opening_batch_line(
+            count_id,
+            request.get_json(silent=True) or {},
+        )
+        return jsonify(result), 200
+    except InventoryServiceError as exc:
+        db.session.rollback()
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
 # ---------------------------------------------------------------------------
 # Complete count
 # ---------------------------------------------------------------------------

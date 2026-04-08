@@ -206,6 +206,18 @@ export default function WarehouseArticleForm({
           decimalScale={getQuantityScale(form.baseUom, uomMap)}
           disabled={disabled}
         />
+
+        <NumberInput
+          label="Prosječna cijena"
+          placeholder="0,0000"
+          value={form.initialAveragePrice}
+          onChange={(value) => onChange('initialAveragePrice', value)}
+          error={errors.initialAveragePrice}
+          min={0}
+          step={0.01}
+          decimalScale={4}
+          disabled={disabled}
+        />
       </SimpleGrid>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">

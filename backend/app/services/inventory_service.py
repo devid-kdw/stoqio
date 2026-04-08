@@ -1,9 +1,12 @@
 """Inventory Count module business logic (Phase 12).
 
 Discrepancy processing on completion:
-  counted == system  → NO_CHANGE
-  counted >  system  → add difference to Surplus + INVENTORY_ADJUSTMENT Transaction
-  counted <  system  → create shortage Draft (INVENTORY_SHORTAGE) in a DraftGroup
+  REGULAR counts:
+    counted == system  → NO_CHANGE
+    counted >  system  → add difference to Surplus + INVENTORY_ADJUSTMENT Transaction
+    counted <  system  → create shortage Draft (INVENTORY_SHORTAGE) in a DraftGroup
+  OPENING counts:
+    counted values establish the initial stock baseline and resolve as OPENING_STOCK_SET.
 
 Group-number semantics (DEC-INV-001):
   One DraftGroup per count completion, reusing the IZL-#### sequence from the
@@ -20,7 +23,7 @@ Batch snapshot rule:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -28,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models.article import Article
+from app.models.batch import Batch
 from app.models.draft import Draft
 from app.models.draft_group import DraftGroup
 from app.models.enums import (
@@ -49,6 +53,7 @@ from app.models.transaction import Transaction
 from app.models.uom_catalog import UomCatalog
 from app.models.user import User
 from app.utils.draft_numbering import next_izl_group_number
+from app.utils.validators import validate_batch_code
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +166,160 @@ def _serialize_line(line: InventoryCountLine) -> dict:
     }
 
 
+def _serialize_count_summary(
+    count: InventoryCount,
+    all_lines: list[InventoryCountLine],
+) -> dict[str, int]:
+    summary = {
+        "total_lines": len(all_lines),
+        "no_change": 0,
+        "surplus_added": 0,
+        "shortage_drafts_created": 0,
+        "opening_stock_set": 0,
+    }
+    for line in all_lines:
+        if line.resolution == InventoryCountLineResolution.NO_CHANGE:
+            summary["no_change"] += 1
+        elif line.resolution == InventoryCountLineResolution.SURPLUS_ADDED:
+            summary["surplus_added"] += 1
+        elif line.resolution == InventoryCountLineResolution.SHORTAGE_DRAFT_CREATED:
+            summary["shortage_drafts_created"] += 1
+        elif line.resolution == InventoryCountLineResolution.OPENING_STOCK_SET:
+            summary["opening_stock_set"] += 1
+
+    if count.type == InventoryCountType.OPENING and summary["opening_stock_set"] == 0:
+        summary["opening_stock_set"] = len(all_lines)
+
+    return summary
+
+
+def _resolve_batch_for_opening(
+    article: Article,
+    *,
+    batch_code: str | None,
+    expiry_date_value: Any,
+    details: dict[str, Any],
+) -> Batch | None:
+    if not article.has_batch:
+        return None
+
+    if batch_code is None:
+        raise InventoryServiceError(
+            "VALIDATION_ERROR",
+            "batch_code is required for batch-tracked articles.",
+            400,
+            details,
+        )
+    if not validate_batch_code(batch_code):
+        raise InventoryServiceError(
+            "VALIDATION_ERROR",
+            "batch_code has an invalid format.",
+            400,
+            details,
+        )
+    if expiry_date_value in (None, ""):
+        raise InventoryServiceError(
+            "VALIDATION_ERROR",
+            "expiry_date is required.",
+            400,
+            details,
+        )
+    if isinstance(expiry_date_value, date):
+        expiry_date = expiry_date_value
+    else:
+        try:
+            expiry_date = date.fromisoformat(str(expiry_date_value))
+        except ValueError:
+            raise InventoryServiceError(
+                "VALIDATION_ERROR",
+                "expiry_date must be a valid ISO date.",
+                400,
+                details,
+            ) from None
+
+    batch = Batch.query.filter_by(article_id=article.id, batch_code=batch_code).first()
+    if batch is not None:
+        if batch.expiry_date != expiry_date:
+            raise InventoryServiceError(
+                "BATCH_EXPIRY_MISMATCH",
+                f"Batch {batch_code} already exists with a different expiry date.",
+                409,
+                {
+                    **details,
+                    "article_id": article.id,
+                    "batch_code": batch_code,
+                    "existing_expiry_date": batch.expiry_date.isoformat(),
+                    "received_expiry_date": expiry_date.isoformat(),
+                },
+            )
+        return batch
+
+    batch = Batch(
+        article_id=article.id,
+        batch_code=batch_code,
+        expiry_date=expiry_date,
+    )
+    db.session.add(batch)
+    db.session.flush()
+    return batch
+
+
+def _opening_stock_average_price(
+    article: Article,
+    *,
+    stock_row: Stock | None,
+) -> Decimal:
+    if article.initial_average_price is not None:
+        return Decimal(str(article.initial_average_price))
+    if stock_row is not None:
+        return Decimal(str(stock_row.average_price))
+    return Decimal("0")
+
+
+def _upsert_opening_stock(
+    *,
+    location_id: int,
+    article: Article,
+    batch: Batch | None,
+    counted_quantity: Decimal,
+    uom: str,
+    occurred_at: datetime,
+) -> Stock | None:
+    if article.has_batch and batch is None and counted_quantity == 0:
+        return None
+
+    stock_row = (
+        db.session.query(Stock)
+        .filter_by(
+            location_id=location_id,
+            article_id=article.id,
+            batch_id=batch.id if batch else None,
+        )
+        .with_for_update()
+        .first()
+    )
+
+    average_price = _opening_stock_average_price(article, stock_row=stock_row)
+    if stock_row is None:
+        stock_row = Stock(
+            location_id=location_id,
+            article_id=article.id,
+            batch_id=batch.id if batch else None,
+            quantity=counted_quantity,
+            uom=uom,
+            average_price=average_price,
+            last_updated=occurred_at,
+        )
+        db.session.add(stock_row)
+    else:
+        stock_row.quantity = counted_quantity
+        stock_row.uom = uom
+        stock_row.average_price = average_price
+        stock_row.last_updated = occurred_at
+
+    return stock_row
+
+
 # ---------------------------------------------------------------------------
 # Start count
 # ---------------------------------------------------------------------------
@@ -231,23 +390,24 @@ def start_count(current_user: User, count_type: InventoryCountType = InventoryCo
             .filter(Stock.location_id == location.id)
             .all()
         )
-        surplus_rows = (
-            db.session.query(Surplus.article_id, Surplus.batch_id, Surplus.quantity)
-            .filter(Surplus.location_id == location.id)
-            .all()
-        )
-
         for article_id, batch_id, quantity in stock_rows:
             key = (article_id, batch_id)
             quantity_by_key[key] = quantity_by_key.get(key, Decimal("0")) + Decimal(
                 str(quantity)
             )
 
-        for article_id, batch_id, quantity in surplus_rows:
-            key = (article_id, batch_id)
-            quantity_by_key[key] = quantity_by_key.get(key, Decimal("0")) + Decimal(
-                str(quantity)
+        if count_type != InventoryCountType.OPENING:
+            surplus_rows = (
+                db.session.query(Surplus.article_id, Surplus.batch_id, Surplus.quantity)
+                .filter(Surplus.location_id == location.id)
+                .all()
             )
+
+            for article_id, batch_id, quantity in surplus_rows:
+                key = (article_id, batch_id)
+                quantity_by_key[key] = quantity_by_key.get(key, Decimal("0")) + Decimal(
+                    str(quantity)
+                )
 
     line_count = 0
     for article in active_articles:
@@ -337,15 +497,23 @@ def list_counts(page: int, per_page: int) -> dict:
             .filter_by(inventory_count_id=count.id)
             .count()
         )
-        discrepancies = (
+        all_lines = (
             db.session.query(InventoryCountLine)
             .filter_by(inventory_count_id=count.id)
-            .filter(
-                InventoryCountLine.counted_quantity.isnot(None),
-                InventoryCountLine.difference != 0,
-            )
-            .count()
+            .all()
         )
+        opening_stock_set = sum(
+            1
+            for line in all_lines
+            if line.resolution == InventoryCountLineResolution.OPENING_STOCK_SET
+        )
+        discrepancies = 0
+        if count.type == InventoryCountType.REGULAR:
+            discrepancies = sum(
+                1
+                for line in all_lines
+                if line.counted_quantity is not None and line.difference != 0
+            )
         starter = count.starter
         items.append(
             {
@@ -361,6 +529,7 @@ def list_counts(page: int, per_page: int) -> dict:
                 ),
                 "total_lines": total_lines,
                 "discrepancies": discrepancies,
+                "opening_stock_set": opening_stock_set,
                 "shortage_drafts_summary": _get_shortage_drafts_summary(count.id),
             }
         )
@@ -434,17 +603,6 @@ def get_count_detail(count_id: int) -> dict:
         .filter_by(inventory_count_id=count_id)
         .all()
     )
-    no_change = sum(
-        1 for l in all_lines if l.resolution == InventoryCountLineResolution.NO_CHANGE
-    )
-    surplus_added = sum(
-        1 for l in all_lines if l.resolution == InventoryCountLineResolution.SURPLUS_ADDED
-    )
-    shortage_drafts = sum(
-        1
-        for l in all_lines
-        if l.resolution == InventoryCountLineResolution.SHORTAGE_DRAFT_CREATED
-    )
     starter = count.starter
 
     return {
@@ -456,12 +614,7 @@ def get_count_detail(count_id: int) -> dict:
         "completed_at": (
             count.completed_at.isoformat() if count.completed_at else None
         ),
-        "summary": {
-            "total_lines": len(all_lines),
-            "no_change": no_change,
-            "surplus_added": surplus_added,
-            "shortage_drafts_created": shortage_drafts,
-        },
+        "summary": _serialize_count_summary(count, all_lines),
         "shortage_drafts_summary": _get_shortage_drafts_summary(count_id),
         "lines": [_serialize_line(l) for l in all_lines],
     }
@@ -524,6 +677,152 @@ def update_line(count_id: int, line_id: int, data: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Opening batch line
+# ---------------------------------------------------------------------------
+
+def add_opening_batch_line(count_id: int, data: dict) -> dict:
+    count = db.session.query(InventoryCount).filter_by(id=count_id).with_for_update().first()
+    if count is None:
+        raise InventoryServiceError("COUNT_NOT_FOUND", "Inventory count not found.", 404)
+    if count.status != InventoryCountStatus.IN_PROGRESS:
+        raise InventoryServiceError(
+            "COUNT_NOT_IN_PROGRESS", "Count is not in progress.", 400
+        )
+    if count.type != InventoryCountType.OPENING:
+        raise InventoryServiceError(
+            "OPENING_COUNT_ONLY",
+            "Batch lines can only be added to an opening inventory count.",
+            400,
+        )
+
+    if not isinstance(data, dict):
+        raise InventoryServiceError("VALIDATION_ERROR", "Request body must be an object.", 400)
+
+    if "article_id" not in data:
+        raise InventoryServiceError(
+            "VALIDATION_ERROR", "'article_id' is required.", 400
+        )
+    if "counted_quantity" not in data:
+        raise InventoryServiceError(
+            "VALIDATION_ERROR", "'counted_quantity' is required.", 400
+        )
+
+    try:
+        article_id = int(data["article_id"])
+    except (TypeError, ValueError):
+        raise InventoryServiceError(
+            "VALIDATION_ERROR", "'article_id' must be a valid integer.", 400
+        ) from None
+
+    raw_quantity = data["counted_quantity"]
+    try:
+        counted_quantity = Decimal(str(raw_quantity))
+    except Exception:
+        raise InventoryServiceError(
+            "VALIDATION_ERROR", "'counted_quantity' must be a number.", 400
+        ) from None
+    if counted_quantity < 0:
+        raise InventoryServiceError(
+            "VALIDATION_ERROR", "'counted_quantity' must be >= 0.", 400
+        )
+
+    article = (
+        db.session.query(Article)
+        .filter(Article.id == article_id, Article.is_active.is_(True))
+        .first()
+    )
+    if article is None:
+        raise InventoryServiceError(
+            "ARTICLE_NOT_FOUND",
+            "Article not found.",
+            404,
+            {"article_id": article_id},
+        )
+    if not article.has_batch:
+        raise InventoryServiceError(
+            "VALIDATION_ERROR",
+            "Article is not batch-tracked.",
+            400,
+            {"article_id": article_id},
+        )
+
+    uom = _uom_code(article)
+    details = {"count_id": count_id, "article_id": article.id}
+    batch = _resolve_batch_for_opening(
+        article,
+        batch_code=data.get("batch_code"),
+        expiry_date_value=data.get("expiry_date"),
+        details=details,
+    )
+
+    placeholder_line = (
+        db.session.query(InventoryCountLine)
+        .filter_by(
+            inventory_count_id=count.id,
+            article_id=article.id,
+            batch_id=None,
+        )
+        .first()
+    )
+    if (
+        placeholder_line is not None
+        and placeholder_line.counted_quantity is None
+        and Decimal(str(placeholder_line.system_quantity)) == 0
+    ):
+        db.session.delete(placeholder_line)
+
+    line = (
+        db.session.query(InventoryCountLine)
+        .filter_by(
+            inventory_count_id=count.id,
+            article_id=article.id,
+            batch_id=batch.id if batch else None,
+        )
+        .first()
+    )
+    if line is None:
+        line = InventoryCountLine(
+            inventory_count_id=count.id,
+            article_id=article.id,
+            batch_id=batch.id if batch else None,
+            system_quantity=Decimal("0"),
+            counted_quantity=counted_quantity,
+            uom=uom,
+            difference=counted_quantity,
+            resolution=None,
+        )
+        db.session.add(line)
+    else:
+        line.system_quantity = Decimal("0")
+        line.counted_quantity = counted_quantity
+        line.uom = uom
+        line.difference = counted_quantity
+        line.resolution = None
+
+    db.session.commit()
+    return get_active_count() or {
+        "id": count.id,
+        "status": count.status.value,
+        "type": count.type.value,
+        "started_by": count.starter.username if count.starter else None,
+        "started_at": count.started_at.isoformat() if count.started_at else None,
+        "completed_at": None,
+        "total_lines": (
+            db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .count()
+        ),
+        "counted_lines": (
+            db.session.query(InventoryCountLine)
+            .filter_by(inventory_count_id=count.id)
+            .filter(InventoryCountLine.counted_quantity.isnot(None))
+            .count()
+        ),
+        "lines": [_serialize_line(line)],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Complete count
 # ---------------------------------------------------------------------------
 
@@ -564,6 +863,56 @@ def complete_count(count_id: int, current_user: User) -> dict:
 
     location = _get_default_location()
     now = datetime.now(timezone.utc)
+
+    if count.type == InventoryCountType.OPENING:
+        opening_stock_set = 0
+        for line in all_lines:
+            counted = Decimal(str(line.counted_quantity))
+            system = Decimal(str(line.system_quantity))
+            line.difference = counted - system
+
+            if line.article and line.article.has_batch and line.batch_id is None and counted > 0:
+                raise InventoryServiceError(
+                    "OPENING_BATCH_REQUIRED",
+                    "Batch-tracked opening lines must use a batch.",
+                    400,
+                    {"line_id": line.id, "article_id": line.article_id},
+                )
+
+            if not (
+                line.article
+                and line.article.has_batch
+                and line.batch_id is None
+                and counted == 0
+            ):
+                _upsert_opening_stock(
+                    location_id=location.id if location else 1,
+                    article=line.article,
+                    batch=line.batch,
+                    counted_quantity=counted,
+                    uom=line.uom,
+                    occurred_at=now,
+                )
+
+            line.resolution = InventoryCountLineResolution.OPENING_STOCK_SET
+            opening_stock_set += 1
+
+        count.status = InventoryCountStatus.COMPLETED
+        count.completed_at = now
+        db.session.commit()
+
+        return {
+            "id": count.id,
+            "status": count.status.value,
+            "completed_at": count.completed_at.isoformat(),
+            "summary": {
+                "total_lines": len(all_lines),
+                "no_change": 0,
+                "surplus_added": 0,
+                "shortage_drafts_created": 0,
+                "opening_stock_set": opening_stock_set,
+            },
+        }
 
     # Determine if we need a DraftGroup (any shortages?)
     shortage_lines = [
@@ -679,5 +1028,6 @@ def complete_count(count_id: int, current_user: User) -> dict:
             "no_change": counters["no_change"],
             "surplus_added": counters["surplus_added"],
             "shortage_drafts_created": counters["shortage_drafts_created"],
+            "opening_stock_set": 0,
         },
     }
