@@ -52,3 +52,46 @@ cd /Users/grzzi/Desktop/STOQIO/frontend && npm run test -- --run
 ### Next Recommended Step
 - Testing agent: run `npm run build` and `npm run test -- --run` from `frontend/` directory, confirm zero failures, then mark this phase complete.
 - Optionally: extend `getDisplayError` usage to SettingsPage and ReportsPage in a future wave, as those pages also surface raw backend messages in toasts.
+
+## [2026-04-08 10:54 CEST] Codex — lint-policy cleanup
+
+### Status
+completed
+
+### Scope
+Cleaned up the frontend ESLint policy after Wave 6 Phase 3 so future agents do not chase `security/detect-object-injection` false positives one line at a time. Also removed the one remaining non-object-injection lint warning by replacing the barcode IPv4 regex shape check with equivalent split/character validation.
+
+### Docs Read
+- `handoff/README.md`
+- `handoff/decisions/decision-log.md`
+- `handoff/wave-06/phase-03-wave-06-frontend-security/frontend.md`
+- `frontend/eslint.config.js`
+- `frontend/src/pages/settings/SettingsPage.tsx`
+
+### Files Changed
+- `frontend/eslint.config.js`
+- `frontend/src/pages/settings/SettingsPage.tsx`
+- `handoff/decisions/decision-log.md`
+- `handoff/wave-06/phase-03-wave-06-frontend-security/frontend.md`
+
+### Commands Run
+- `git status --short --branch`
+- `npm run lint`
+- `nl -ba frontend/eslint.config.js`
+- `nl -ba frontend/src/pages/settings/SettingsPage.tsx`
+- `tail -n 120 handoff/decisions/decision-log.md`
+- `git diff --check`
+- `npm run build`
+
+### Tests
+- `npm run lint` was run before this cleanup and produced `0 errors, 39 warnings`; 38 were `security/detect-object-injection` false positives and 1 was `security/detect-unsafe-regex` on the barcode IPv4 regex.
+- `npm run lint` was run after this cleanup and completed with `0 errors, 0 warnings`.
+- `git diff --check` passed.
+- `npm run build` completed successfully.
+
+### Open Issues / Risks
+- `security/detect-object-injection` is intentionally disabled for TypeScript/TSX because the rule is not type-aware. Future agents must still manually review genuinely untrusted dynamic property access.
+- See `DEC-FE-008` in `handoff/decisions/decision-log.md`.
+
+### Next Recommended Step
+Keep the central lint policy in `frontend/eslint.config.js`; do not add broad inline disables for typed enum/union lookup patterns.

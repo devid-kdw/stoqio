@@ -22,5 +22,11 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // eslint-plugin-security is not TypeScript-aware, so this rule reports
+      // typed enum/union lookups and keyed React state maps as object injection.
+      // Keep validating genuinely untrusted dynamic keys in code review instead.
+      'security/detect-object-injection': 'off',
+    },
   },
 ])

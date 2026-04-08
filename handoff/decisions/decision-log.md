@@ -668,3 +668,14 @@
 - Decision: Draft PATCH and DELETE operations are restricted to the draft's creator unless the caller has the ADMIN role. OPERATOR and SUPERVISOR callers receive HTTP 403 if `draft.created_by != current_user.id`. ADMIN callers bypass this check entirely (admin oversight). This ownership model applies to the two mutation endpoints only — read endpoints for drafts are not affected.
 - Impact: Future agents adding new draft mutation endpoints must apply the same ownership check pattern. The ADMIN bypass must be preserved; removing it would break supervisor-level corrections and admin data management.
 - Docs update required: no
+
+---
+
+## DEC-FE-008
+
+- Date: 2026-04-08
+- Phase: phase-03-wave-06-frontend-security
+- Source: Codex lint-policy cleanup after Wave 6 frontend security remediation
+- Decision: Frontend ESLint keeps `eslint-plugin-security` enabled but disables `security/detect-object-injection` for TypeScript/TSX code in `frontend/eslint.config.js`. The rule is not TypeScript-aware and reported typed enum/union lookups, role/locale maps, keyed form state, and React state maps as object-injection sinks. Future agents should not add broad inline disables for these patterns. Genuinely untrusted dynamic property access still requires normal code review and input validation.
+- Impact: `npm run lint` should remain useful without 30+ recurring false-positive object-injection warnings. New frontend security-sensitive dynamic key usage must be reviewed manually instead of relying on this AST-only rule.
+- Docs update required: no

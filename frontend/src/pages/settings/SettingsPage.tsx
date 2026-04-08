@@ -1111,8 +1111,16 @@ export default function SettingsPage() {
   const validateBarcodeIp = (ip: string): string | null => {
     const trimmed = ip.trim()
     if (trimmed === '') return null // allow clearing
-    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/
-    if (!ipv4Regex.test(trimmed)) {
+    const octets = trimmed.split('.')
+    const looksLikeIpv4 =
+      octets.length === 4 &&
+      octets.every(
+        (octet) =>
+          octet.length >= 1 &&
+          octet.length <= 3 &&
+          Array.from(octet).every((char) => char >= '0' && char <= '9')
+      )
+    if (!looksLikeIpv4) {
       return 'Unesite ispravnu IPv4 adresu ili ostavite prazno.'
     }
     return null
