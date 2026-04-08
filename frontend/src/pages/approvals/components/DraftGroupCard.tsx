@@ -15,6 +15,8 @@ import {
   Text,
   Textarea,
   UnstyledButton,
+  useMantineColorScheme,
+  useMantineTheme,
 } from '@mantine/core'
 import { 
   IconCheck, 
@@ -76,6 +78,9 @@ export default function DraftGroupCard({
   onGroupResolved,
   onFatalError,
 }: DraftGroupCardProps) {
+  const theme = useMantineTheme()
+  const { colorScheme } = useMantineColorScheme()
+  const isDark = colorScheme === 'dark'
   const [detail, setDetail] = useState<ApprovalsDraftGroup | null>(null)
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -98,6 +103,9 @@ export default function DraftGroupCard({
 
   // Inline Row Errors (e.g., Insufficient stock)
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({})
+
+  const resolvedRowBg = isDark ? theme.colors.dark[6] : theme.colors.gray[0]
+  const expandedDetailBg = isDark ? theme.colors.dark[7] : theme.colors.gray[0]
 
   // -------------------------------------------------------------------------
   // Fetch Details
@@ -376,7 +384,9 @@ export default function DraftGroupCard({
                     {detail.rows.map((row: ApprovalsAggregatedRow) => (
                       <Fragment key={row.line_id}>
                         {/* Parent Row */}
-                        <Table.Tr bg={row.status !== 'PENDING' && !isHistory ? 'gray.0' : undefined}>
+                        <Table.Tr
+                          bg={row.status !== 'PENDING' && !isHistory ? resolvedRowBg : undefined}
+                        >
                           <Table.Td>
                             <ActionIcon variant="subtle" onClick={() => toggleRow(row.line_id)}>
                               {expandedRows[row.line_id] ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
@@ -477,7 +487,7 @@ export default function DraftGroupCard({
                         {expandedRows[row.line_id] && (
                           <Table.Tr>
                             <Table.Td colSpan={!isHistory ? 8 : 7} p={0}>
-                              <Box bg="gray.0" p="sm" pl={48}>
+                              <Box bg={expandedDetailBg} p="sm" pl={48}>
                                 <Table withTableBorder={false}>
                                   <Table.Thead>
                                     <Table.Tr>

@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STOQIO — Miješanje boja</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111827;
+        --panel: #18212f;
+        --panel-strong: #0f172a;
+        --border: #273449;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --blue: #3b82f6;
+        --green: #22c55e;
+        --yellow: #f59e0b;
+        --red: #ef4444;
+        --gray: #6b7280;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(59, 130, 246, 0.18), transparent 32%),
+          linear-gradient(180deg, #0b1220 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+
+      .app-shell {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: flex-start;
+        margin-bottom: 20px;
+      }
+
+      .header-copy h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1.1;
+      }
+
+      .header-copy p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .eyebrow {
+        color: #93c5fd;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 8px;
+      }
+
+      .header-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 12px;
+      }
+
+      .connection {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.8);
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .badge-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 700;
+        border: 1px solid transparent;
+      }
+
+      .badge-blue {
+        background: rgba(59, 130, 246, 0.15);
+        color: #bfdbfe;
+        border-color: rgba(59, 130, 246, 0.35);
+      }
+
+      .badge-green {
+        background: rgba(34, 197, 94, 0.15);
+        color: #bbf7d0;
+        border-color: rgba(34, 197, 94, 0.35);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.9fr);
+        gap: 20px;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .panel {
+        background: rgba(24, 33, 47, 0.86);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      }
+
+      .panel h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      .panel p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .scale-panel {
+        min-height: 340px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        gap: 18px;
+        background:
+          linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(24, 33, 47, 0.95)),
+          rgba(24, 33, 47, 0.86);
+      }
+
+      .scale-value {
+        font-size: clamp(64px, 10vw, 118px);
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .stability {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+      }
+
+      .dot-connecting {
+        background: var(--yellow);
+      }
+
+      .dot-ok {
+        background: var(--green);
+      }
+
+      .dot-error {
+        background: var(--red);
+      }
+
+      .dot-unstable {
+        background: var(--gray);
+        animation: pulse 1s infinite ease-in-out;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.35;
+          transform: scale(0.88);
+        }
+
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      .instruction {
+        font-size: clamp(28px, 3.2vw, 40px);
+        font-weight: 700;
+        line-height: 1.2;
+        margin: 0;
+      }
+
+      .countdown {
+        margin-top: 14px;
+        font-size: 16px;
+        color: #93c5fd;
+      }
+
+      .feedback {
+        margin-top: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .message {
+        border-radius: 8px;
+        padding: 14px 16px;
+        font-size: 15px;
+        border: 1px solid transparent;
+      }
+
+      .message-error {
+        color: #fecaca;
+        background: rgba(127, 29, 29, 0.35);
+        border-color: rgba(239, 68, 68, 0.4);
+      }
+
+      .message-warning {
+        color: #fde68a;
+        background: rgba(120, 53, 15, 0.35);
+        border-color: rgba(245, 158, 11, 0.4);
+      }
+
+      .message-success {
+        color: #bbf7d0;
+        background: rgba(20, 83, 45, 0.35);
+        border-color: rgba(34, 197, 94, 0.4);
+      }
+
+      .breakdown {
+        display: grid;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .breakdown-row {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 14px 16px;
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.55);
+        border: 1px solid rgba(59, 130, 246, 0.08);
+      }
+
+      .breakdown-row strong {
+        font-size: 16px;
+      }
+
+      .breakdown-row .detail {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .breakdown-row .status {
+        font-weight: 700;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .status-active {
+        color: #93c5fd;
+      }
+
+      .status-done {
+        color: #86efac;
+      }
+
+      .status-info {
+        color: #d1d5db;
+      }
+
+      .scanner-form {
+        margin-top: 16px;
+      }
+
+      .scanner-label {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 10px;
+        color: var(--muted);
+      }
+
+      .scanner-input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px 18px;
+        font-size: 22px;
+        color: var(--text);
+        background: rgba(15, 23, 42, 0.92);
+        outline: none;
+      }
+
+      .scanner-input:focus {
+        border-color: rgba(59, 130, 246, 0.8);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      }
+
+      .scanner-meta {
+        margin-top: 14px;
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .scanner-meta code {
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      .shortcut-stack {
+        margin-top: 16px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .shortcut-group {
+        display: grid;
+        gap: 10px;
+      }
+
+      .shortcut-heading {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: #93c5fd;
+      }
+
+      .shortcut-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .shortcut-btn {
+        padding: 10px 12px;
+        font-size: 13px;
+        line-height: 1.25;
+        font-weight: 700;
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.9);
+        color: var(--text);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+      }
+
+      .shortcut-btn:hover:not(:disabled) {
+        background: rgba(30, 41, 59, 0.96);
+      }
+
+      .shortcut-btn-base {
+        border-color: rgba(59, 130, 246, 0.28);
+      }
+
+      .shortcut-btn-hardener {
+        border-color: rgba(34, 197, 94, 0.28);
+      }
+
+      .shortcut-btn-scale {
+        border-color: rgba(245, 158, 11, 0.28);
+      }
+
+      .shortcut-note {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        margin-top: 20px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 14px 18px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        background: var(--blue);
+        color: white;
+      }
+
+      .btn-secondary {
+        background: rgba(55, 65, 81, 0.85);
+        color: white;
+        border-color: rgba(156, 163, 175, 0.18);
+      }
+
+      .btn-warning {
+        background: var(--yellow);
+        color: #111827;
+      }
+
+      .btn-success {
+        background: var(--green);
+        color: #0f172a;
+      }
+
+      .summary-list {
+        margin-top: 14px;
+        display: grid;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .summary-list strong {
+        color: var(--text);
+      }
+
+      .footer-note {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @media (max-width: 1100px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .header-right {
+          align-items: flex-start;
+        }
+
+        .badge-row {
+          justify-content: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="header">
+        <div class="header-copy">
+          <div class="eyebrow">STOQIO</div>
+          <h1>Miješanje boja</h1>
+          <p>Simulacija vaganja i batch-scan workflowa za demo prezentaciju.</p>
+        </div>
+        <div class="header-right">
+          <div class="connection">
+            <span id="connection-dot" class="dot dot-connecting"></span>
+            <span id="connection-text">Povezivanje na STOQIO...</span>
+          </div>
+          <div class="badge-row">
+            <div id="system-badge" class="badge badge-blue" hidden></div>
+            <div id="variant-badge" class="badge badge-green" hidden></div>
+          </div>
+        </div>
+      </header>
+
+      <div class="layout">
+        <div class="stack">
+          <section class="panel scale-panel">
+            <div class="scale-value" id="scale-value">0,0 g</div>
+            <div class="stability">
+              <span id="stability-dot" class="dot dot-ok"></span>
+              <span id="stability-text">Spremno</span>
+            </div>
+            <div class="footer-note">
+              Stabilno = bez promjene veće od
+              <strong>0,5 g</strong>
+              kroz
+              <strong>3 s</strong>.
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Trenutni korak</h2>
+            <p id="instruction-text" class="instruction">Ulijte bazu u posudu za miješanje</p>
+            <div id="countdown" class="countdown" hidden></div>
+            <div id="feedback" class="feedback"></div>
+          </section>
+
+          <section class="panel" id="breakdown-panel" hidden>
+            <h2>Sastav mješavine</h2>
+            <p>Količine su interne u gramima; u STOQIO se šalje vrijednost u kilogramima.</p>
+            <div class="breakdown">
+              <div class="breakdown-row">
+                <div>
+                  <strong>Baza</strong>
+                  <div class="detail" id="base-detail">Nije još potvrđeno</div>
+                </div>
+                <div class="detail" id="base-meta">—</div>
+                <div class="status" id="base-status">Na čekanju</div>
+              </div>
+              <div class="breakdown-row">
+                <div>
+                  <strong>Učvršćivač</strong>
+                  <div class="detail" id="hardener-detail">Nije još potvrđeno</div>
+                </div>
+                <div class="detail" id="hardener-meta">—</div>
+                <div class="status" id="hardener-status">Na čekanju</div>
+              </div>
+              <div class="breakdown-row">
+                <div>
+                  <strong>Voda</strong>
+                  <div class="detail" id="water-detail">Informativno, ne šalje se u STOQIO</div>
+                </div>
+                <div class="detail" id="water-meta">—</div>
+                <div class="status" id="water-status">Na čekanju</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="panel">
+            <h2>Skeniranje barkoda</h2>
+            <p>Polje je stalno vidljivo. Enter potvrđuje skeniranje.</p>
+            <form id="scanner-form" class="scanner-form" autocomplete="off">
+              <label class="scanner-label" for="scanner-input">Skeniraj barkod</label>
+              <input
+                id="scanner-input"
+                class="scanner-input"
+                type="text"
+                inputmode="text"
+                placeholder="Skeniraj ili upiši barkod"
+                autofocus
+              />
+            </form>
+            <div class="scanner-meta">
+              <div>Zadnje skenirano: <code id="last-scanned">—</code></div>
+              <div>Demo prihvaća i stvarni spremljeni batch barkod i batch code alias iz mape.</div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Demo prečaci</h2>
+            <p>Klik simulira skeniranje ili očitanje vage bez ručnog tipkanja.</p>
+            <div class="shortcut-stack">
+              <div class="shortcut-group">
+                <div class="shortcut-heading">Baza — skeniranje šarže</div>
+                <div id="base-shortcuts" class="shortcut-grid"></div>
+              </div>
+              <div class="shortcut-group">
+                <div class="shortcut-heading">Učvršćivač — skeniranje šarže</div>
+                <div id="hardener-shortcuts" class="shortcut-grid"></div>
+              </div>
+              <div class="shortcut-group">
+                <div class="shortcut-heading">Vaga — simulacija očitanja</div>
+                <div class="shortcut-grid">
+                  <button id="weight-base-shortcut" type="button" class="shortcut-btn shortcut-btn-scale">
+                    Baza nasumično
+                  </button>
+                  <button id="weight-hardener-shortcut" type="button" class="shortcut-btn shortcut-btn-scale">
+                    Učvršćivač u toleranciji
+                  </button>
+                  <button id="weight-hardener-out-shortcut" type="button" class="shortcut-btn shortcut-btn-scale">
+                    Učvršćivač izvan tolerancije
+                  </button>
+                  <button id="weight-water-shortcut" type="button" class="shortcut-btn shortcut-btn-scale">
+                    Voda
+                  </button>
+                  <button id="weight-reset-shortcut" type="button" class="shortcut-btn shortcut-btn-scale">
+                    Reset na 0,0 g
+                  </button>
+                </div>
+                <div class="shortcut-note">
+                  Prečaci su context-aware: baza radi na početku, učvršćivač tek nakon baze, a voda ovisno o sustavu.
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Aktivna sesija</h2>
+            <div class="summary-list">
+              <div><strong>Boja:</strong> <span id="session-base">—</span></div>
+              <div><strong>Batch baze:</strong> <span id="session-base-batch">—</span></div>
+              <div><strong>Učvršćivač:</strong> <span id="session-hardener">—</span></div>
+              <div><strong>Batch učvršćivača:</strong> <span id="session-hardener-batch">—</span></div>
+              <div><strong>Mixing order:</strong> <span id="session-order">—</span></div>
+              <div><strong>Draft note:</strong> <span id="session-note">—</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="pour-button" class="btn-primary" hidden>Ulijevanje</button>
+        <button id="tare-button" class="btn-secondary" hidden>Tariranje</button>
+        <button id="retry-button" class="btn-secondary" hidden>Pokušaj ponovo</button>
+        <button id="override-button" class="btn-warning" hidden>Nastavi svejedno</button>
+        <button id="new-mix-button" class="btn-success" hidden>Novo miješanje</button>
+      </div>
+    </div>
+
+    <script src="./demo.js" defer></script>
+  </body>
+</html>
