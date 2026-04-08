@@ -603,6 +603,12 @@ def update_draft(draft_id: int):
     if draft is None:
         return _error("NOT_FOUND", "Draft line not found.", 404)
 
+    # Ownership check — ADMIN bypasses, OPERATOR/SUPERVISOR must be the creator
+    current_user = get_current_user()
+    current_user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if current_user_role not in ("ADMIN",) and draft.created_by != current_user.id:
+        return _error("FORBIDDEN", "You do not have permission to modify this draft", 403)
+
     # Only DRAFT lines may be edited
     status_val = draft.status.value if hasattr(draft.status, "value") else draft.status
     if status_val != DraftStatus.DRAFT.value:
@@ -639,6 +645,12 @@ def delete_draft(draft_id: int):
     draft = db.session.get(Draft, draft_id)
     if draft is None:
         return _error("NOT_FOUND", "Draft line not found.", 404)
+
+    # Ownership check — ADMIN bypasses, OPERATOR/SUPERVISOR must be the creator
+    current_user = get_current_user()
+    current_user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if current_user_role not in ("ADMIN",) and draft.created_by != current_user.id:
+        return _error("FORBIDDEN", "You do not have permission to modify this draft", 403)
 
     # Only DRAFT lines may be deleted
     status_val = draft.status.value if hasattr(draft.status, "value") else draft.status

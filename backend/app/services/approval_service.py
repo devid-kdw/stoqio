@@ -267,6 +267,10 @@ def _build_group_rows(group_id: int) -> List[Dict[str, Any]]:
 
 def edit_aggregated_line(group_id: int, line_id: int, new_quantity: Decimal) -> Optional[Dict[str, Any]]:
     """Upsert an ApprovalOverride for the bucket represented by line_id."""
+    # S-3 / Wave 6 Phase 1: reject negative override quantities
+    if new_quantity < 0:
+        raise ValueError("Override quantity cannot be negative")
+
     # Find the representative draft
     draft = db.session.get(Draft, line_id)
     if not draft or draft.draft_group_id != group_id:
@@ -294,7 +298,11 @@ def edit_aggregated_line(group_id: int, line_id: int, new_quantity: Decimal) -> 
 
 def _approve_pending_bucket(user_id: int, group_id: int, line_id: int) -> dict:
     """Approve one pending aggregated bucket without committing the session."""
-    draft = db.session.get(Draft, line_id)
+    # K-3 / Wave 6 Phase 1: acquire a row-level lock on the representative draft
+    # BEFORE reading status or computing quantities to prevent double-spend race.
+    draft = db.session.query(Draft).filter_by(
+        id=line_id
+    ).with_for_update().first()
     if not draft or draft.draft_group_id != group_id:
         raise ValueError("Line not found in this group.")
 

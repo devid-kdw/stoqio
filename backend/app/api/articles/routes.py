@@ -11,7 +11,7 @@ from app.services import article_service
 from app.services.article_service import ArticleServiceError
 from app.services.barcode_service import BarcodeServiceError
 from app.services import barcode_service
-from app.utils.auth import get_current_user, require_role
+from app.utils.auth import check_rate_limit, get_current_user, require_role
 from app.utils.errors import api_error as _error
 from app.utils.validators import (
     QueryValidationError,
@@ -263,6 +263,10 @@ def get_article_stats(article_id: int):
 @articles_bp.route("/articles/<int:article_id>/barcode", methods=["GET"])
 @require_role("ADMIN")
 def get_article_barcode(article_id: int):
+    ip = request.remote_addr or "unknown"
+    allowed = check_rate_limit(f"export:{ip}", max_requests=30, window_seconds=60)
+    if not allowed:
+        return _error("TOO_MANY_REQUESTS", "Too many requests. Please wait.", 429)
     try:
         content, filename, mimetype = barcode_service.generate_article_barcode_pdf(
             article_id
@@ -281,6 +285,10 @@ def get_article_barcode(article_id: int):
 @articles_bp.route("/batches/<int:batch_id>/barcode", methods=["GET"])
 @require_role("ADMIN")
 def get_batch_barcode(batch_id: int):
+    ip = request.remote_addr or "unknown"
+    allowed = check_rate_limit(f"export:{ip}", max_requests=30, window_seconds=60)
+    if not allowed:
+        return _error("TOO_MANY_REQUESTS", "Too many requests. Please wait.", 429)
     try:
         content, filename, mimetype = barcode_service.generate_batch_barcode_pdf(
             batch_id

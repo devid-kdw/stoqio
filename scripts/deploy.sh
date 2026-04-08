@@ -44,13 +44,13 @@ echo "Installing backend Python requirements from requirements.lock..."
 "$BACKEND_PYTHON" -m pip install -r requirements.lock
 
 cd "$ROOT_DIR"
-# Run npm security audit — fail deploy on high/critical findings (F-SEC-015).
-# Low and moderate findings are informational only and do not block deploy.
+# Run npm security audit — fail deploy on moderate/high/critical findings (F-SEC-015).
+# Low findings are informational only and do not block deploy.
 echo "Running npm security audit..."
 cd "$ROOT_DIR/frontend"
 if command -v npm >/dev/null 2>&1; then
-  npm audit --audit-level=high
-  echo "npm audit passed (no high/critical vulnerabilities)."
+  npm audit --audit-level=moderate
+  echo "npm audit passed (no moderate/high/critical vulnerabilities)."
 else
   echo "WARNING: npm not found; skipping npm audit." >&2
 fi
@@ -70,6 +70,12 @@ fi
 if command -v systemctl >/dev/null 2>&1; then
   echo "Restarting wms service..."
   sudo systemctl restart wms
+  sleep 2
+  if ! sudo systemctl is-active --quiet wms; then
+      echo "ERROR: wms service failed to start. Check logs with: sudo journalctl -u wms -n 50"
+      exit 1
+  fi
+  echo "Service wms is active and running."
 else
   echo "systemctl not available; restart skipped."
 fi

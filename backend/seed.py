@@ -41,6 +41,17 @@ from app.models.user import User
 
 load_dotenv()
 
+import os as _os
+_db_url = _os.environ.get("DATABASE_URL", "")
+_safe_markers = ("localhost", "127.0.0.1", "wms_dev", "test", "wms_test")
+if _db_url and not any(m in _db_url for m in _safe_markers):
+    print("=" * 60)
+    print("ERROR: seed.py is for LOCAL DEVELOPMENT ONLY.")
+    print(f"DATABASE_URL does not look like a dev database.")
+    print("Aborting to prevent accidental production data corruption.")
+    print("=" * 60)
+    raise SystemExit(1)
+
 
 # ---------------------------------------------------------------------------
 # Seed helpers

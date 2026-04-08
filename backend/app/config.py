@@ -27,12 +27,14 @@ class Development(_Base):
     """Local development — debug mode on, permissive defaults."""
 
     DEBUG = True
+    JWT_ALGORITHM = "HS256"
 
 
 class Production(_Base):
     """Pi / production — strict secret validation."""
 
     DEBUG = False
+    JWT_ALGORITHM = "HS256"
 
     _WEAK_SECRETS = frozenset(
         {

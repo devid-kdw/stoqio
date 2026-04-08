@@ -327,7 +327,13 @@ def _get_uom_by_code(
     return uom
 
 
-def _get_article(article_id: int) -> Article:
+def _get_article_including_inactive(article_id: int) -> Article:
+    """Fetch an article by ID regardless of is_active state.
+
+    Use this only for administrative paths that must operate on deactivated
+    articles (e.g. the soft-delete confirmation response). All normal
+    read/write paths should use _get_article() which filters active only.
+    """
     article = (
         Article.query
         .options(
@@ -336,6 +342,33 @@ def _get_article(article_id: int) -> Article:
             joinedload(Article.pack_uom_ref),
         )
         .filter(Article.id == article_id)
+        .first()
+    )
+    if article is None:
+        raise ArticleServiceError(
+            "ARTICLE_NOT_FOUND",
+            "Article not found.",
+            404,
+            {"article_id": article_id},
+        )
+    return article
+
+
+def _get_article(article_id: int) -> Article:
+    """Fetch an active article by ID. Raises 404 for inactive or missing articles.
+
+    S-2 / Wave 6 Phase 1: filters is_active=True to prevent deactivated articles
+    from being fetched through normal service paths.
+    """
+    article = (
+        Article.query
+        .options(
+            joinedload(Article.category),
+            joinedload(Article.base_uom_ref),
+            joinedload(Article.pack_uom_ref),
+        )
+        .filter(Article.id == article_id)
+        .filter(Article.is_active.is_(True))
         .first()
     )
     if article is None:
@@ -1122,6 +1155,8 @@ def lookup_suppliers() -> list[dict[str, Any]]:
 
 def lookup_suppliers_paginated(page: int, per_page: int) -> dict[str, Any]:
     """Return the paginated Warehouse supplier preload response."""
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     query = (
         Supplier.query
         .filter(Supplier.is_active.is_(True))
@@ -1153,6 +1188,8 @@ def list_articles(
     include_inactive: bool = False,
 ) -> dict[str, Any]:
     """Return the canonical Warehouse paginated articles list."""
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     query = (
         Article.query
         .options(
@@ -1433,7 +1470,9 @@ def deactivate_article(article_id: int) -> dict[str, Any]:
     article.is_active = False
     article.updated_at = datetime.now(timezone.utc)
     db.session.commit()
-    return get_article_detail(article.id)
+    # S-2 / Wave 6 Phase 1: use _get_article_including_inactive so the deactivated
+    # article can be serialized in the response; _get_article filters active only.
+    return _serialize_detail(_get_article_including_inactive(article.id))
 
 
 def _serialize_reference(transaction: Transaction) -> str | None:
@@ -1448,6 +1487,8 @@ def _serialize_reference(transaction: Transaction) -> str | None:
 
 def list_article_transactions(article_id: int, page: int, per_page: int) -> dict[str, Any]:
     """Return paginated article transaction history ordered newest first."""
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     _get_article(article_id)
     query = (
         Transaction.query

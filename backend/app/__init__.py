@@ -1,11 +1,18 @@
 """WMS application factory."""
 
 import os
+from datetime import datetime, timezone, timedelta
 
 from flask import Flask, send_from_directory
 
 from .config import get_config
 from .extensions import db, jwt, migrate
+
+# ---------------------------------------------------------------------------
+# Automatic revoked-token cleanup state (S-1 / Wave 6 Phase 1)
+# Tracks when cleanup last ran so it fires at most once per hour.
+# ---------------------------------------------------------------------------
+_last_token_cleanup: datetime | None = None
 
 # ---------------------------------------------------------------------------
 # Browser security header constants (F-SEC-011)
@@ -77,7 +84,7 @@ def create_app(config_override=None):
     register_commands(app)
 
     # -----------------------------------------------------------------------
-    # Response-hardening headers (F-SEC-011)
+    # Response-hardening headers (F-SEC-011, K-4 / Wave 6 Phase 1)
     # -----------------------------------------------------------------------
     @app.after_request
     def _add_security_headers(response):
@@ -85,7 +92,29 @@ def create_app(config_override=None):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
         return response
+
+    # -----------------------------------------------------------------------
+    # Automatic revoked-token cleanup (S-1 / Wave 6 Phase 1)
+    # Runs at most once per hour to purge expired revoked_token rows.
+    # -----------------------------------------------------------------------
+    @app.before_request
+    def _auto_purge_revoked_tokens():
+        global _last_token_cleanup
+        now = datetime.now(timezone.utc)
+        if _last_token_cleanup is None or (now - _last_token_cleanup) > timedelta(hours=1):
+            try:
+                from app.models.revoked_token import RevokedToken
+                RevokedToken.query.filter(
+                    RevokedToken.expires_at.isnot(None),
+                    RevokedToken.expires_at < now
+                ).delete(synchronize_session=False)
+                db.session.commit()
+                _last_token_cleanup = now
+            except Exception:
+                db.session.rollback()
 
     # Catch-all: serve React's index.html for any non-API GET request so
     # that React Router can handle client-side routes (/drafts, /login …).

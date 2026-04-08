@@ -427,6 +427,8 @@ def get_stock_overview(
     date_to: Any,
     category: Any = None,
     reorder_only: Any = None,
+    page: int = 1,
+    per_page: int = 100,
 ) -> dict[str, Any]:
     parsed_from, parsed_to, months_in_period = _require_date_range(date_from, date_to)
     reorder_only_enabled = _parse_bool(
@@ -435,6 +437,8 @@ def get_stock_overview(
         default=False,
     )
     normalized_category = _normalize_optional_text(category)
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
 
     query = (
         Article.query
@@ -448,20 +452,21 @@ def get_stock_overview(
     if normalized_category is not None:
         query = query.filter(Category.key == normalized_category)
 
-    articles = query.order_by(Article.article_no.asc(), Article.id.asc()).all()
-    article_ids = [article.id for article in articles]
-    totals_map = article_service._build_article_totals_map(article_ids)
-    supplier_map = _supplier_name_map(article_ids)
+    # Fetch all matching articles to support reorder_only filtering before pagination
+    all_articles = query.order_by(Article.article_no.asc(), Article.id.asc()).all()
+    all_article_ids = [article.id for article in all_articles]
+    totals_map = article_service._build_article_totals_map(all_article_ids)
+    supplier_map = _supplier_name_map(all_article_ids)
     movement_map = _stock_overview_movement_map(
-        article_ids,
+        all_article_ids,
         started_at=_range_start(parsed_from),
         ended_at=_range_end_exclusive(parsed_to),
     )
-    unit_value_map = _resolve_unit_value_map(article_ids)
+    unit_value_map = _resolve_unit_value_map(all_article_ids)
 
-    items: list[dict[str, Any]] = []
+    all_items: list[dict[str, Any]] = []
     warehouse_total_value = Decimal("0")
-    for article in articles:
+    for article in all_articles:
         stock_total, surplus_total = totals_map.get(article.id, (Decimal("0"), Decimal("0")))
         inbound_total, outbound_total = movement_map.get(article.id, (Decimal("0"), Decimal("0")))
         unit_value = unit_value_map.get(article.id)
@@ -477,9 +482,13 @@ def get_stock_overview(
         )
         if reorder_only_enabled and item["reorder_status"] == "NORMAL":
             continue
-        items.append(item)
+        all_items.append(item)
         if unit_value is not None:
             warehouse_total_value += stock_total * unit_value
+
+    total = len(all_items)
+    offset = (page - 1) * per_page
+    items = all_items[offset: offset + per_page]
 
     return {
         "period": {
@@ -488,15 +497,23 @@ def get_stock_overview(
             "months": _as_float(months_in_period, _MONTHS_QUANT),
         },
         "items": items,
-        "total": len(items),
+        "total": total,
+        "page": page,
+        "per_page": per_page,
         "summary": {
             "warehouse_total_value": _as_float(warehouse_total_value, _VALUE_QUANT),
         },
     }
 
 
-def get_surplus_report() -> dict[str, Any]:
-    rows = (
+def get_surplus_report(
+    page: int = 1,
+    per_page: int = 100,
+) -> dict[str, Any]:
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
+
+    base_query = (
         Surplus.query
         .options(
             joinedload(Surplus.article),
@@ -505,8 +522,10 @@ def get_surplus_report() -> dict[str, Any]:
         .join(Article, Article.id == Surplus.article_id)
         .filter(Surplus.quantity > 0)
         .order_by(Article.article_no.asc(), Surplus.created_at.desc(), Surplus.id.asc())
-        .all()
     )
+
+    total = base_query.count()
+    rows = base_query.offset((page - 1) * per_page).limit(per_page).all()
 
     items = [
         {
@@ -523,7 +542,7 @@ def get_surplus_report() -> dict[str, Any]:
         }
         for row in rows
     ]
-    return {"items": items, "total": len(items)}
+    return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
 def _transaction_base_query(
@@ -614,6 +633,8 @@ def get_transaction_log(
         field_name="per_page",
         default=_PER_PAGE_DEFAULT,
     )
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    parsed_per_page = min(parsed_per_page, 200)
 
     query = _transaction_base_query(
         article_id=article_id,

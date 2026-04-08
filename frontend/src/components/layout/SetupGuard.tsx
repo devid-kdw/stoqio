@@ -7,7 +7,7 @@ import { CONNECTION_ERROR_MESSAGE } from '../../utils/http'
 import { showErrorToast } from '../../utils/toasts'
 
 export default function SetupGuard() {
-  const location = useLocation()
+  const location = useLocation()  // still needed for <Navigate state={{ from: location }} />
   const user = useAuthStore((state) => state.user)
   const setupStatus = useAuthStore((state) => state.setupStatus)
   const setSetupStatus = useAuthStore((state) => state.setSetupStatus)
@@ -57,7 +57,7 @@ export default function SetupGuard() {
     return () => {
       cancelled = true
     }
-  }, [location.pathname, retryCount, setSetupStatus, setupStatus])
+  }, [retryCount, setSetupStatus, setupStatus])
 
   useEffect(() => {
     if (setupStatus === 'required' && user && user.role !== 'ADMIN') {

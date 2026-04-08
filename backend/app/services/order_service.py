@@ -765,6 +765,8 @@ def _serialize_receiving_detail(order: Order) -> dict[str, Any]:
 
 def list_orders(page: int, per_page: int, *, status: str | None = None) -> dict[str, Any]:
     """Return the paginated orders list, optionally filtered by status."""
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     ordering = case((Order.status == OrderStatus.OPEN, 0), else_=1)
     query = Order.query
 

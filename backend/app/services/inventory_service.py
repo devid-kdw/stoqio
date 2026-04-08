@@ -297,6 +297,8 @@ def start_count(current_user: User, count_type: InventoryCountType = InventoryCo
 # ---------------------------------------------------------------------------
 
 def list_counts(page: int, per_page: int) -> dict:
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     query = (
         db.session.query(InventoryCount)
         .filter_by(status=InventoryCountStatus.COMPLETED)

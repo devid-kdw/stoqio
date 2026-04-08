@@ -149,6 +149,12 @@ def login():
     if not user.is_active:
         return _error("ACCOUNT_INACTIVE", "Account is inactive.", 401)
 
+    # Lazy hash migration: upgrade legacy pbkdf2 hashes to scrypt on login
+    if user.password_hash.startswith("pbkdf2:"):
+        from werkzeug.security import generate_password_hash as _ghash
+        user.password_hash = _ghash(password, method="scrypt")
+        db.session.commit()
+
     identity = str(user.id)
     extra = {"role": user.role.value, "username": user.username}
 

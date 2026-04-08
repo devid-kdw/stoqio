@@ -765,6 +765,8 @@ def get_order_detail(order_id: int) -> dict[str, Any]:
 
 def list_receiving_history(page: int, per_page: int) -> dict[str, Any]:
     """Return paginated receiving history ordered newest first."""
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     query = Receiving.query.order_by(Receiving.received_at.desc(), Receiving.id.desc())
     total = query.count()
     rows = query.offset((page - 1) * per_page).limit(per_page).all()

@@ -985,6 +985,8 @@ def list_suppliers(
     q: str | None,
     include_inactive: bool,
 ) -> dict[str, Any]:
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     query = db.session.query(Supplier)
     if not include_inactive:
         query = query.filter(Supplier.is_active.is_(True))
@@ -1174,7 +1176,7 @@ def create_user(payload: dict[str, Any]) -> dict[str, Any]:
 
     user = User(
         username=username,
-        password_hash=generate_password_hash(password, method="pbkdf2:sha256"),
+        password_hash=generate_password_hash(password, method="scrypt"),
         role=role,
         is_active=is_active,
     )
@@ -1235,7 +1237,7 @@ def update_user(user_id: int, payload: dict[str, Any], *, acting_user_id: int) -
 
     if "password" in payload:
         password = payload.get("password")
-        user.password_hash = generate_password_hash(password, method="pbkdf2:sha256")
+        user.password_hash = generate_password_hash(password, method="scrypt")
         user.password_changed_at = datetime.now(timezone.utc)
 
     db.session.commit()

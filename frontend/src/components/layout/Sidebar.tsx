@@ -21,8 +21,8 @@ export default function Sidebar() {
       if (refreshToken) {
         await authApi.logout(refreshToken)
       }
-    } catch (e) {
-      console.error('Logout failed', e instanceof Error ? e.message : 'unknown error')
+    } catch {
+      // Logout API call failed — user is still logged out client-side via finally
     } finally {
       logout()
     }

@@ -27,7 +27,7 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-let isRefreshing = false
+let refreshPromise: Promise<string> | null = null
 let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = []
 
 const processQueue = (error: unknown, token: string | null = null) => {
@@ -63,11 +63,12 @@ client.interceptors.response.use(
       }
 
       if (!originalRequest._retry) {
-        if (isRefreshing) {
+        originalRequest._retry = true
+
+        if (refreshPromise !== null) {
+          // A refresh is already in flight — await it instead of starting another
           try {
-            const token = await new Promise<string>((resolve, reject) => {
-              failedQueue.push({ resolve, reject })
-            })
+            const token = await refreshPromise
             originalRequest.headers.Authorization = `Bearer ${token}`
             return client(originalRequest)
           } catch (err) {
@@ -75,14 +76,10 @@ client.interceptors.response.use(
           }
         }
 
-        originalRequest._retry = true
-        isRefreshing = true
-
         const refreshToken = useAuthStore.getState().refreshToken ?? getStoredRefreshToken()
 
         if (!refreshToken) {
           useAuthStore.getState().logout()
-          isRefreshing = false
           forceLoginRedirect()
           return Promise.reject(error)
         }
@@ -91,22 +88,29 @@ client.interceptors.response.use(
           useAuthStore.getState().hydrateRefreshToken(refreshToken)
         }
 
+        refreshPromise = authApi.refresh(refreshToken)
+          .then((data) => {
+            const newAccessToken = data.access_token
+            useAuthStore.getState().setAccessToken(newAccessToken)
+            processQueue(null, newAccessToken)
+            return newAccessToken
+          })
+          .catch((refreshError) => {
+            processQueue(refreshError, null)
+            useAuthStore.getState().logout()
+            forceLoginRedirect()
+            throw refreshError
+          })
+          .finally(() => {
+            refreshPromise = null
+          })
+
         try {
-          const data = await authApi.refresh(refreshToken)
-          const newAccessToken = data.access_token
-          useAuthStore.getState().setAccessToken(newAccessToken)
-
-          processQueue(null, newAccessToken)
+          const newAccessToken = await refreshPromise
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
-
           return client(originalRequest)
         } catch (refreshError) {
-          processQueue(refreshError, null)
-          useAuthStore.getState().logout()
-          forceLoginRedirect()
           return Promise.reject(refreshError)
-        } finally {
-          isRefreshing = false
         }
       }
     }

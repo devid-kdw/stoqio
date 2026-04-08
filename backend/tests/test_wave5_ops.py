@@ -13,7 +13,7 @@ def test_deploy_runs_npm_audit_before_frontend_build():
     lines = deploy_text.splitlines()
 
     audit_line = next(
-        index for index, line in enumerate(lines) if "npm audit --audit-level=high" in line
+        index for index, line in enumerate(lines) if "npm audit --audit-level=moderate" in line
     )
     build_line = next(
         index

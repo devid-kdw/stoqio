@@ -138,4 +138,4 @@ def test_deploy_runs_npm_audit_high_gate():
     """F-SEC-015: deploy script includes the high/critical npm audit gate."""
     deploy_script = DEPLOY_SCRIPT.read_text()
 
-    assert "npm audit --audit-level=high" in deploy_script
+    assert "npm audit --audit-level=moderate" in deploy_script

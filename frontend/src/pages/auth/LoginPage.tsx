@@ -2,12 +2,12 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { TextInput, PasswordInput, Button, Paper, Title, Container, Text } from '@mantine/core'
-import axios from 'axios'
 import AuthLayout from '../../components/auth/AuthLayout'
 import { useAuthStore } from '../../store/authStore'
 import { authApi } from '../../api/auth'
 import { fetchSetupStatus, getAuthenticatedDestination } from '../../utils/setup'
 import { showErrorToast } from '../../utils/toasts'
+import { getDisplayError } from '../../utils/http'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -59,9 +59,7 @@ export default function LoginPage() {
         navigate('/', { replace: true })
       }
     } catch (err: unknown) {
-      const msg = axios.isAxiosError(err)
-        ? err.response?.data?.message || 'Prijava nije uspjela. Pokušaj ponovno.'
-        : 'Prijava nije uspjela. Pokušaj ponovno.'
+      const msg = getDisplayError(err, 'Prijava nije uspjela. Pokušaj ponovno.')
       setError(msg)
       showErrorToast(msg)
     } finally {

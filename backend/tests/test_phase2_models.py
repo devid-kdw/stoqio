@@ -29,6 +29,7 @@ EXPECTED_TABLES = {
     "employee",
     "inventory_count",
     "inventory_count_line",
+    "login_attempt",
     "location",
     "missing_article_report",
     "order",

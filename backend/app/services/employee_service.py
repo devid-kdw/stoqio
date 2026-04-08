@@ -169,6 +169,8 @@ def list_employees(
     q: str | None,
     include_inactive: bool,
 ) -> dict:
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     query = db.session.query(Employee)
     if not include_inactive:
         query = query.filter(Employee.is_active.is_(True))
@@ -424,6 +426,8 @@ def get_quota_overview(employee_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def list_issuances(employee_id: int, page: int, per_page: int) -> dict:
+    # V-3 / Wave 6 Phase 1: cap per_page to prevent DoS via large result sets
+    per_page = min(per_page, 200)
     _employee_or_404(employee_id)
 
     query = (

@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, request, send_file
 from app.extensions import db
 from app.services import report_service
 from app.services.report_service import ReportServiceError
-from app.utils.auth import require_role
+from app.utils.auth import check_rate_limit, require_role
 from app.utils.errors import api_error as _error
 
 reports_bp = Blueprint("reports", __name__)
@@ -19,11 +19,19 @@ reports_bp = Blueprint("reports", __name__)
 @require_role("ADMIN", "MANAGER")
 def get_stock_overview():
     try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 100))
+        if page < 1:
+            page = 1
+        if per_page < 1:
+            per_page = 1
         result = report_service.get_stock_overview(
             date_from=request.args.get("date_from"),
             date_to=request.args.get("date_to"),
             category=request.args.get("category"),
             reorder_only=request.args.get("reorder_only"),
+            page=page,
+            per_page=per_page,
         )
         return jsonify(result), 200
     except ReportServiceError as exc:
@@ -33,6 +41,10 @@ def get_stock_overview():
 @reports_bp.route("/reports/stock-overview/export", methods=["GET"])
 @require_role("ADMIN")
 def export_stock_overview():
+    ip = request.remote_addr or "unknown"
+    allowed = check_rate_limit(f"export:{ip}", max_requests=30, window_seconds=60)
+    if not allowed:
+        return _error("TOO_MANY_REQUESTS", "Too many requests. Please wait.", 429)
     try:
         content, filename, mimetype = report_service.export_stock_overview(
             export_format=request.args.get("format"),
@@ -56,7 +68,13 @@ def export_stock_overview():
 @require_role("ADMIN", "MANAGER")
 def get_surplus_report():
     try:
-        return jsonify(report_service.get_surplus_report()), 200
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 100))
+        if page < 1:
+            page = 1
+        if per_page < 1:
+            per_page = 1
+        return jsonify(report_service.get_surplus_report(page=page, per_page=per_page)), 200
     except ReportServiceError as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
@@ -64,6 +82,10 @@ def get_surplus_report():
 @reports_bp.route("/reports/surplus/export", methods=["GET"])
 @require_role("ADMIN")
 def export_surplus_report():
+    ip = request.remote_addr or "unknown"
+    allowed = check_rate_limit(f"export:{ip}", max_requests=30, window_seconds=60)
+    if not allowed:
+        return _error("TOO_MANY_REQUESTS", "Too many requests. Please wait.", 429)
     try:
         content, filename, mimetype = report_service.export_surplus_report(
             export_format=request.args.get("format"),
@@ -99,6 +121,10 @@ def get_transaction_log():
 @reports_bp.route("/reports/transactions/export", methods=["GET"])
 @require_role("ADMIN")
 def export_transaction_log():
+    ip = request.remote_addr or "unknown"
+    allowed = check_rate_limit(f"export:{ip}", max_requests=30, window_seconds=60)
+    if not allowed:
+        return _error("TOO_MANY_REQUESTS", "Too many requests. Please wait.", 429)
     try:
         content, filename, mimetype = report_service.export_transaction_log(
             export_format=request.args.get("format"),

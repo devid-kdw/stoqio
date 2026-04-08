@@ -614,7 +614,7 @@ class TestNonexistentUserLoginPath:
         from app.utils.auth import get_dummy_hash
 
         h = get_dummy_hash()
-        assert h.startswith("pbkdf2:sha256:")
+        assert h.startswith("scrypt:")
         # The dummy hash must not match an arbitrary password (sanity check)
         assert not check_password_hash(h, "should-not-match")
 

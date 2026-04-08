@@ -51,6 +51,23 @@ export async function getApiErrorBodyAsync(error: unknown): Promise<ApiErrorBody
   return responseData as ApiErrorBody
 }
 
+const TECHNICAL_KEYWORDS = [
+  "constraint", "column", "database", "traceback", "Exception:",
+  "Error:", "sqlalchemy", "psycopg", "integrity", "syntax error",
+  "relation", "DETAIL:", "HINT:"
+]
+
+export function getDisplayError(err: unknown, fallback: string): string {
+  const body = getApiErrorBody(err)
+  const message = body?.message
+  if (!message) return fallback
+  const lowerMsg = message.toLowerCase()
+  if (TECHNICAL_KEYWORDS.some(kw => lowerMsg.includes(kw.toLowerCase()))) {
+    return fallback
+  }
+  return message
+}
+
 export async function runWithRetry<T>(request: () => Promise<T>): Promise<T> {
   try {
     return await request()

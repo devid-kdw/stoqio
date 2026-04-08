@@ -19,7 +19,7 @@ from app.utils.errors import api_error
 # Using pbkdf2:sha256 keeps this aligned with the app's supported hash policy.
 # If the app ever migrates to a different algorithm, update this line and the
 # associated test so the dummy hash stays policy-consistent.
-_DUMMY_HASH: str = generate_password_hash("dummy-placeholder", method="pbkdf2:sha256")
+_DUMMY_HASH: str = generate_password_hash("dummy-placeholder", method="scrypt")
 
 
 def get_dummy_hash() -> str:

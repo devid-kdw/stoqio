@@ -635,3 +635,36 @@
 - Decision: The supported first-run location bootstrap path is now exclusively authenticated `POST /api/v1/setup` after migrations and `backend/seed.py` reference-data seeding. `backend/seed_location.py` is retired and must be treated as historical only in old Phase 3 handoff records.
 - Impact: Future agents should not reintroduce a second location-seeding path or treat `seed_location.py` as a supported install step. Historical handoff artifacts may mention it, but only with explicit supersession language.
 - Docs update required: yes
+
+---
+
+## DEC-SEC-001
+
+- Date: 2026-04-08
+- Phase: phase-01-wave-06-backend-security-core
+- Source: 2026-04-08 multi-agent security code review finding K-1 (JWT algorithm not pinned)
+- Decision: `JWT_ALGORITHM = "HS256"` must be explicitly set in both the `Development` and `Production` Flask config classes in `backend/app/config.py`. Flask-JWT-Extended defaults to HS256 but relying on the library default exposes the application to algorithm-substitution attacks if the library is misconfigured or updated. Explicit pinning is required even though the runtime behavior is currently identical.
+- Impact: All future backend agents must keep `JWT_ALGORITHM = "HS256"` in both config classes and must not remove it during config refactors. Any migration to RS256 (asymmetric signing) must be a deliberate decision logged here.
+- Docs update required: no
+
+---
+
+## DEC-SEC-002
+
+- Date: 2026-04-08
+- Phase: phase-04-wave-06-infrastructure-hardening
+- Source: 2026-04-08 multi-agent security code review finding V-6 (pbkdf2:sha256 too weak)
+- Decision: Password hashing is upgraded from `pbkdf2:sha256` to `scrypt` (werkzeug built-in, no new dependency required). New passwords and password resets use scrypt immediately. Existing pbkdf2 hashes are lazily migrated to scrypt on first successful login (the stored hash is rehashed and persisted). The dummy hash used for timing-safe nonexistent-user comparisons also uses scrypt. `argon2-cffi` is not introduced because scrypt meets the memory-hard requirement without an additional system dependency.
+- Impact: Future agents must not reintroduce `method="pbkdf2:sha256"` in any `generate_password_hash()` call. The lazy migration ensures no forced password reset for existing users. Any new password-related service code must use the scrypt method.
+- Docs update required: no
+
+---
+
+## DEC-SEC-003
+
+- Date: 2026-04-08
+- Phase: phase-02-wave-06-backend-idor-authorization
+- Source: 2026-04-08 multi-agent security code review finding K-2 (IDOR on draft PATCH/DELETE)
+- Decision: Draft PATCH and DELETE operations are restricted to the draft's creator unless the caller has the ADMIN role. OPERATOR and SUPERVISOR callers receive HTTP 403 if `draft.created_by != current_user.id`. ADMIN callers bypass this check entirely (admin oversight). This ownership model applies to the two mutation endpoints only — read endpoints for drafts are not affected.
+- Impact: Future agents adding new draft mutation endpoints must apply the same ownership check pattern. The ADMIN bypass must be preserved; removing it would break supervisor-level corrections and admin data management.
+- Docs update required: no
