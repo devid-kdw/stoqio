@@ -31,12 +31,33 @@ echo "Updating repository from ${GIT_REMOTE}/${GIT_BRANCH}..."
 git pull --ff-only "$GIT_REMOTE" "$GIT_BRANCH"
 
 cd "$BACKEND_DIR"
-echo "Installing backend Python requirements with $BACKEND_PYTHON..."
-"$BACKEND_PYTHON" -m pip install -r requirements.txt
+# Install from the pinned lock file rather than the version-ranged requirements.txt
+# so that production deploys are fully reproducible.
+# IMPORTANT: Regenerate requirements.lock and commit it whenever backend
+# dependencies change (see the comment block at the top of requirements.lock).
+if [ ! -f "$BACKEND_DIR/requirements.lock" ]; then
+  echo "Missing backend/requirements.lock; refusing non-reproducible deploy." >&2
+  echo "Regenerate and commit requirements.lock whenever backend dependencies change." >&2
+  exit 1
+fi
+echo "Installing backend Python requirements from requirements.lock..."
+"$BACKEND_PYTHON" -m pip install -r requirements.lock
 
 cd "$ROOT_DIR"
 echo "Building frontend assets..."
 "$ROOT_DIR/scripts/build.sh"
+
+# Run npm security audit — fail deploy on high/critical findings (F-SEC-015).
+# Low and moderate findings are informational only and do not block deploy.
+echo "Running npm security audit..."
+cd "$ROOT_DIR/frontend"
+if command -v npm >/dev/null 2>&1; then
+  npm audit --audit-level=high
+  echo "npm audit passed (no high/critical vulnerabilities)."
+else
+  echo "WARNING: npm not found; skipping npm audit." >&2
+fi
+cd "$ROOT_DIR"
 
 if [ -f "$BACKEND_DIR/alembic.ini" ]; then
   cd "$BACKEND_DIR"

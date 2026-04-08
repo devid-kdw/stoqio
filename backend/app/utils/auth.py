@@ -3,11 +3,8 @@
 All reusable auth primitives live here so routes stay thin.
 """
 
-from collections import defaultdict, deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import wraps
-from threading import Lock
-from time import time
 
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 from werkzeug.security import generate_password_hash
@@ -88,30 +85,74 @@ def is_token_revoked(_jwt_header: dict, jwt_payload: dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Sliding-window rate limiter (no external dependency)
+# DB-backed sliding-window rate limiter
 # ---------------------------------------------------------------------------
 
-_rate_store: dict[str, deque] = defaultdict(deque)
-_rate_lock = Lock()
+# Per-IP throttle — same limit as the previous in-memory design so existing
+# product behaviour and test contracts are preserved.
+_IP_MAX_REQUESTS: int = 10
+_IP_WINDOW_SECONDS: int = 60
+
+# Per-account throttle — wider window to catch distributed/IP-rotating attacks
+# that target a single username from many source addresses.
+_USERNAME_MAX_REQUESTS: int = 10
+_USERNAME_WINDOW_SECONDS: int = 300  # 5-minute window
 
 
 def check_rate_limit(
-    ip: str, max_requests: int = 10, window_seconds: int = 60
+    bucket_key: str,
+    max_requests: int = _IP_MAX_REQUESTS,
+    window_seconds: int = _IP_WINDOW_SECONDS,
 ) -> bool:
-    """Return True if the request should be allowed, False if rate-limited.
+    """DB-backed sliding-window rate limiter.
 
-    Uses a sliding window: timestamps older than *window_seconds* are pruned
-    on each call, then the current timestamp is appended.
+    Returns True if the request should be allowed, False if rate-limited.
+    Uses the shared database as backing store so throttle state survives
+    process restarts and is consistent across multiple worker processes.
+
+    Fails open (returns True) if the database is temporarily unavailable so
+    that a DB issue does not take down the login endpoint entirely.
+
+    Call once per throttle bucket per login attempt:
+    - IP bucket:       ``check_rate_limit("ip:" + ip)``
+    - Account bucket:  ``check_rate_limit("user:" + username.lower(),
+                           _USERNAME_MAX_REQUESTS, _USERNAME_WINDOW_SECONDS)``
     """
-    now = time()
-    with _rate_lock:
-        timestamps = _rate_store[ip]
-        # Prune entries outside the window
-        while timestamps and timestamps[0] < now - window_seconds:
-            timestamps.popleft()
-        if len(timestamps) >= max_requests:
+    from app.extensions import db  # noqa: PLC0415
+    from app.models.login_attempt import LoginAttempt  # noqa: PLC0415
+
+    now = datetime.now(tz=timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+
+    try:
+        # Prune stale entries for this bucket to prevent unbounded table growth.
+        db.session.query(LoginAttempt).filter(
+            LoginAttempt.bucket_key == bucket_key,
+            LoginAttempt.attempted_at < window_start,
+        ).delete(synchronize_session=False)
+
+        count = (
+            db.session.query(LoginAttempt)
+            .filter(
+                LoginAttempt.bucket_key == bucket_key,
+                LoginAttempt.attempted_at >= window_start,
+            )
+            .count()
+        )
+
+        if count >= max_requests:
+            db.session.commit()  # Persist the pruned deletes.
             return False
-        timestamps.append(now)
+
+        db.session.add(LoginAttempt(bucket_key=bucket_key, attempted_at=now))
+        db.session.commit()
+        return True
+    except Exception:  # pragma: no cover — DB failure path
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        # Fail open: a transient DB error must not block legitimate logins.
         return True
 
 

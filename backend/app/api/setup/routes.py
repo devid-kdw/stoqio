@@ -31,8 +31,18 @@ def _setup_required() -> bool:
 
 
 @setup_bp.route("/setup/status", methods=["GET"])
+@require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF", "VIEWER", "OPERATOR")
 def setup_status():
-    """Report whether first-run setup still needs to run."""
+    """Report whether first-run setup still needs to run.
+
+    Restricted to authenticated users (F-SEC-014).  All current frontend
+    callsites reach this endpoint only after a successful login: LoginPage
+    calls it after login() sets the access token in the auth store;
+    SetupGuard runs inside protected routing; SetupPage redirects to /login
+    before rendering if no token is present.  Restricting this route prevents
+    unauthenticated reconnaissance of the installation's bootstrap state while
+    remaining compatible with the existing frontend flow.
+    """
     return jsonify({"setup_required": _setup_required()}), 200
 
 

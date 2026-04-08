@@ -2,7 +2,23 @@
 __pycache__/
 *.pyc
 
+# Environment and secret-bearing files (F-SEC-013)
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# Diagnostic output and log files
+*.log
+diagnostic_output*.txt
+
+# Backend-specific paths
 backend/.env
+backend/.env.*
 backend/.pytest_cache/
 backend/instance/
 backend/venv/

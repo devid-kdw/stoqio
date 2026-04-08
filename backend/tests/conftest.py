@@ -54,6 +54,25 @@ def db_session(app):
         _db.session.rollback()
 
 
+@pytest.fixture(autouse=True)
+def clear_rate_limit_state(app):
+    """Clear login_attempt rows before every test (F-SEC-010).
+
+    The DB-backed rate limiter commits attempts to the session-scoped SQLite
+    database.  Without this cleanup, login attempts from earlier tests
+    accumulate and trigger the per-IP or per-username limit unexpectedly in
+    later tests.  This is a backend-infrastructure change required to keep the
+    existing rate-limit tests working after the process-local in-memory store
+    was replaced with a shared DB-backed store.
+    """
+    with app.app_context():
+        from app.models.login_attempt import LoginAttempt
+
+        _db.session.query(LoginAttempt).delete()
+        _db.session.commit()
+    yield
+
+
 @pytest.fixture(scope="session")
 def auth_users(app):
     """Create fixed test users for auth tests (once per test session).

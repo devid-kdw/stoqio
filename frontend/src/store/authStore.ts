@@ -17,6 +17,9 @@ const persistRefreshToken = (refreshToken: string | null) => {
 
   try {
     if (refreshToken) {
+      // Deliberate baseline: persist only the refresh token; server-side
+      // hardening headers compensate for this tradeoff. Do not store access
+      // tokens in localStorage.
       window.localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refreshToken)
       return
     }

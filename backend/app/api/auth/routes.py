@@ -25,6 +25,8 @@ from app.extensions import db, jwt
 from app.models.enums import UserRole
 from app.models.user import User
 from app.utils.auth import (
+    _USERNAME_MAX_REQUESTS,
+    _USERNAME_WINDOW_SECONDS,
     add_to_blocklist,
     check_rate_limit,
     get_current_user,
@@ -97,21 +99,39 @@ def _blocklist_check(jwt_header, jwt_payload):
 def login():
     """Exchange username + password for an access / refresh token pair.
 
-    Rate limited to 10 requests per minute per IP.
+    Rate limited per source IP (10 req / 60 s) and per normalised username
+    (10 req / 300 s) so distributed brute-force attacks that rotate IPs but
+    target a single account are also throttled.
     Inactive users are rejected with 401 after password verification
     to avoid leaking account existence via timing.
     """
     ip = request.remote_addr or "unknown"
-    if not check_rate_limit(ip):
+
+    # Parse body before rate-limit checks so both IP and username buckets
+    # can be evaluated in a single pass without re-reading the body.
+    body = request.get_json(silent=True) or {}
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+
+    # Per-IP throttle — always enforced.
+    if not check_rate_limit("ip:" + ip):
         return _error(
             "RATE_LIMITED",
             "Too many login attempts. Please wait a moment before trying again.",
             429,
         )
 
-    body = request.get_json(silent=True) or {}
-    username = (body.get("username") or "").strip()
-    password = body.get("password") or ""
+    # Per-account throttle — enforced when a username is present.
+    if username and not check_rate_limit(
+        "user:" + username.lower(),
+        _USERNAME_MAX_REQUESTS,
+        _USERNAME_WINDOW_SECONDS,
+    ):
+        return _error(
+            "RATE_LIMITED",
+            "Too many login attempts. Please wait a moment before trying again.",
+            429,
+        )
 
     if not username or not password:
         return _error("MISSING_CREDENTIALS", "username and password are required.", 400)

@@ -443,12 +443,18 @@ class TestRateLimit:
         assert data["error"] == "RATE_LIMITED"
 
     def test_different_ips_have_independent_limits(self, client, auth_users):
-        """Requests from different IPs should not share rate limit counters."""
+        """Requests from different IPs should not share per-IP rate limit counters.
+
+        Uses auth_manager (not auth_admin) for the passing assertion so the
+        per-username bucket for auth_admin — which was fully consumed by the
+        10 preceding calls — does not block the final request.  Per-IP counters
+        for each of the 10.99.0.x addresses remain well below the limit.
+        """
         for i in range(10):
             _login(client, "auth_admin", "wrongpass", remote_addr=f"10.99.0.{i + 1}")
 
-        # A fresh IP should still be allowed
-        resp = _login(client, "auth_admin", "adminpass", remote_addr="10.99.1.1")
+        # A fresh IP with a different username should still be allowed
+        resp = _login(client, "auth_manager", "managerpass", remote_addr="10.99.1.1")
         assert resp.status_code == 200
 
 

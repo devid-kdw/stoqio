@@ -37,14 +37,27 @@ def clean_locations(app):
         _db.session.commit()
 
 
-def test_setup_status_returns_true_when_no_location_exists(client):
+def test_setup_status_requires_authentication(client):
+    """/setup/status must reject unauthenticated requests (F-SEC-014)."""
     response = client.get("/api/v1/setup/status")
+    assert response.status_code == 401
+
+
+def test_setup_status_returns_true_when_no_location_exists(client, auth_users):
+    """Authenticated request returns setup_required=True when no location exists."""
+    login_resp = _login(client, "auth_admin", "adminpass", "127.0.10.0")
+    token = login_resp.get_json()["access_token"]
+
+    response = client.get(
+        "/api/v1/setup/status", headers=_auth_header(token)
+    )
 
     assert response.status_code == 200
     assert response.get_json() == {"setup_required": True}
 
 
-def test_setup_status_returns_false_when_location_exists(app, client):
+def test_setup_status_returns_false_when_location_exists(app, client, auth_users):
+    """Authenticated request returns setup_required=False when location exists."""
     from app.extensions import db as _db
     from app.models.location import Location
 
@@ -54,7 +67,12 @@ def test_setup_status_returns_false_when_location_exists(app, client):
         )
         _db.session.commit()
 
-    response = client.get("/api/v1/setup/status")
+    login_resp = _login(client, "auth_admin", "adminpass", "127.0.10.7")
+    token = login_resp.get_json()["access_token"]
+
+    response = client.get(
+        "/api/v1/setup/status", headers=_auth_header(token)
+    )
 
     assert response.status_code == 200
     assert response.get_json() == {"setup_required": False}

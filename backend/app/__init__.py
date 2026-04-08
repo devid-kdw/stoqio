@@ -7,6 +7,35 @@ from flask import Flask, send_from_directory
 from .config import get_config
 from .extensions import db, jwt, migrate
 
+# ---------------------------------------------------------------------------
+# Browser security header constants (F-SEC-011)
+# ---------------------------------------------------------------------------
+
+# Content-Security-Policy baseline for the Vite/React/Mantine SPA.
+# 'unsafe-inline' is required in style-src because Mantine's Emotion-based
+# CSS-in-JS injects runtime <style> blocks that cannot be hashed at build time.
+# Removing 'unsafe-inline' from style-src breaks Mantine component rendering.
+#
+# NOTE — refresh-token storage tradeoff (DEC-FE-006 / F-SEC-011):
+# The frontend deliberately persists the refresh token in window.localStorage
+# (see frontend/src/store/authStore.ts). This is an accepted design baseline
+# for STOQIO's current operator-oriented deployment model. The headers below
+# are the compensating browser hardening control for that tradeoff. They
+# reduce XSS blast radius by restricting script sources, blocking framing, and
+# preventing MIME sniffing. Do not treat this file as permission to start
+# storing additional sensitive values in localStorage.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
 
 def create_app(config_override=None):
     """Create and configure the Flask application.
@@ -46,6 +75,17 @@ def create_app(config_override=None):
     from .commands import register_commands
 
     register_commands(app)
+
+    # -----------------------------------------------------------------------
+    # Response-hardening headers (F-SEC-011)
+    # -----------------------------------------------------------------------
+    @app.after_request
+    def _add_security_headers(response):
+        response.headers["Content-Security-Policy"] = _CSP
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     # Catch-all: serve React's index.html for any non-API GET request so
     # that React Router can handle client-side routes (/drafts, /login …).
