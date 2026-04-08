@@ -178,9 +178,16 @@ def start_count(current_user: User, count_type: InventoryCountType = InventoryCo
                 400,
             )
 
+    # H-3 / Wave 7 Phase 1: use with_for_update() on the IN_PROGRESS check so
+    # concurrent start_count() calls contend on the same row rather than both
+    # seeing no IN_PROGRESS count and both inserting. When no IN_PROGRESS row
+    # exists there is nothing to lock, so a small race window remains; a
+    # DB-level unique constraint on IN_PROGRESS state (Phase 2 scope) would
+    # fully close this window.
     existing = (
         db.session.query(InventoryCount)
         .filter_by(status=InventoryCountStatus.IN_PROGRESS)
+        .with_for_update()
         .first()
     )
     if existing:
@@ -512,7 +519,17 @@ def update_line(count_id: int, line_id: int, data: dict) -> dict:
 
 def complete_count(count_id: int, current_user: User) -> dict:
     """Process all lines and mark count as COMPLETED."""
-    count = db.session.get(InventoryCount, count_id)
+    # H-3 / Wave 7 Phase 1: acquire a row-level lock on the InventoryCount row
+    # BEFORE reading its status or processing any side effects. Without this
+    # lock, two concurrent complete_count() calls can both pass the status check
+    # (seeing IN_PROGRESS) and both proceed to create surplus rows, shortage
+    # drafts, and transactions — doubling side effects.
+    count = (
+        db.session.query(InventoryCount)
+        .filter_by(id=count_id)
+        .with_for_update()
+        .first()
+    )
     if count is None:
         raise InventoryServiceError("COUNT_NOT_FOUND", "Inventory count not found.", 404)
     if count.status != InventoryCountStatus.IN_PROGRESS:

@@ -58,6 +58,22 @@ class InventoryCount(db.Model):
 
 class InventoryCountLine(db.Model):
     __tablename__ = "inventory_count_line"
+    __table_args__ = (
+        # N-5 defensive uniqueness — dual-constraint design:
+        # uq_count_line_count_article_batch covers rows where batch_id IS NOT NULL.
+        # A partial unique index (created in the Wave 7 Phase 2 migration) covers NULL:
+        #   CREATE UNIQUE INDEX uq_count_line_no_batch
+        #   ON inventory_count_line (inventory_count_id, article_id)
+        #   WHERE batch_id IS NULL;
+        # NOTE: This is defensive hardening. The H-3 race (Phase 1) creates two separate
+        # active InventoryCount records, NOT duplicate lines within one count.  This
+        # constraint prevents any future code path from creating such intra-count
+        # duplicates.
+        db.UniqueConstraint(
+            "inventory_count_id", "article_id", "batch_id",
+            name="uq_count_line_count_article_batch",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     inventory_count_id = db.Column(

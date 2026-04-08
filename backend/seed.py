@@ -70,7 +70,7 @@ def _seed_admin() -> str | None:
     password = secrets.token_urlsafe(16)
     admin = User(
         username="admin",
-        password_hash=generate_password_hash(password, method="pbkdf2:sha256"),
+        password_hash=generate_password_hash(password, method="scrypt"),
         role=UserRole.ADMIN,
         is_active=True,
     )

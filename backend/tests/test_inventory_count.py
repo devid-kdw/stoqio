@@ -1438,3 +1438,73 @@ def test_daily_outbound_draft_keeps_inventory_count_null(client, inv_data, app):
         _db.session.delete(fetched)
         _db.session.delete(_db.session.get(DraftGroup, saved_group_id))
         _db.session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Wave 7 Phase 1 — H-3: Inventory count locking
+# ---------------------------------------------------------------------------
+
+class TestInventoryCountLocking:
+    """H-3: complete_count must reject a second concurrent completion attempt."""
+
+    def test_complete_count_idempotent_rejection(self, client, inv_data, app):
+        """H-3: completing an already-COMPLETED count returns COUNT_NOT_IN_PROGRESS (400)."""
+        headers = _admin_headers(client)
+
+        # Start a count
+        resp = client.post("/api/v1/inventory", headers=headers)
+        assert resp.status_code == 201
+        count_id = resp.get_json()["id"]
+
+        # Count all lines
+        detail_resp = client.get(f"/api/v1/inventory/{count_id}", headers=headers)
+        assert detail_resp.status_code == 200
+        lines = detail_resp.get_json()["lines"]
+        for line in lines:
+            client.patch(
+                f"/api/v1/inventory/{count_id}/lines/{line['line_id']}",
+                json={"counted_quantity": float(line["system_quantity"])},
+                headers=headers,
+            )
+
+        # Complete the count once
+        resp1 = client.post(
+            f"/api/v1/inventory/{count_id}/complete",
+            headers=headers,
+        )
+        assert resp1.status_code == 200
+
+        # Try to complete again — must fail cleanly
+        resp2 = client.post(
+            f"/api/v1/inventory/{count_id}/complete",
+            headers=headers,
+        )
+        assert resp2.status_code == 400
+        body = resp2.get_json()
+        assert body["error"] == "COUNT_NOT_IN_PROGRESS"
+
+    def test_start_count_rejects_duplicate(self, client, inv_data, app):
+        """H-3: starting a count when one is already IN_PROGRESS returns COUNT_IN_PROGRESS."""
+        headers = _admin_headers(client)
+
+        # Start first count
+        resp1 = client.post("/api/v1/inventory", headers=headers)
+        assert resp1.status_code == 201
+        first_count_id = resp1.get_json()["id"]
+
+        # Try to start another — must fail with COUNT_IN_PROGRESS
+        resp2 = client.post("/api/v1/inventory", headers=headers)
+        assert resp2.status_code == 400
+        body = resp2.get_json()
+        assert body["error"] == "COUNT_IN_PROGRESS"
+
+        # Cleanup: complete the first count to restore clean state
+        detail_resp = client.get(f"/api/v1/inventory/{first_count_id}", headers=headers)
+        lines = detail_resp.get_json()["lines"]
+        for line in lines:
+            client.patch(
+                f"/api/v1/inventory/{first_count_id}/lines/{line['line_id']}",
+                json={"counted_quantity": float(line["system_quantity"])},
+                headers=headers,
+            )
+        client.post(f"/api/v1/inventory/{first_count_id}/complete", headers=headers)

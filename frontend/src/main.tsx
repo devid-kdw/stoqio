@@ -53,10 +53,12 @@ async function bootstrapAuth() {
   const refreshToken = getStoredRefreshToken()
 
   if (!refreshToken) {
+    useAuthStore.getState().setAuthStatus('unauthenticated')
     return
   }
 
   useAuthStore.getState().hydrateRefreshToken(refreshToken)
+  useAuthStore.getState().setAuthStatus('loading')
 
   try {
     const { access_token } = await authApi.refresh(refreshToken)
@@ -71,8 +73,10 @@ async function bootstrapAuth() {
       access_token,
       refreshToken,
     )
+    // setAuth sets authStatus to 'authenticated'
   } catch {
     useAuthStore.getState().logout()
+    // logout resets authStatus to 'unauthenticated' via getLoggedOutState()
 
     if (window.location.pathname !== '/login') {
       window.history.replaceState(null, '', '/login')

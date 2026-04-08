@@ -113,6 +113,34 @@ class TestSeedHardening:
         assert "Running seed..." in output
         assert "deterministic-random-password-2026" not in output
 
+    @patch("seed.User")
+    @patch("seed.db.session")
+    @patch("seed.secrets.token_urlsafe")
+    def test_seed_admin_hashes_password_with_scrypt(
+        self, mock_token, mock_session, mock_user
+    ):
+        """Seeded admin password hash must use scrypt (DEC-SEC-002)."""
+        from seed import _seed_admin
+
+        mock_token.return_value = "test-password-scrypt-check"
+        mock_user.query.filter_by.return_value.first.return_value = None
+
+        captured_kwargs = {}
+
+        def capture_user(**kwargs):
+            captured_kwargs.update(kwargs)
+            return MagicMock()
+
+        mock_user.side_effect = capture_user
+
+        _seed_admin()
+
+        assert "password_hash" in captured_kwargs, "User must be created with password_hash"
+        assert captured_kwargs["password_hash"].startswith("scrypt:"), (
+            "Seeded admin hash must use scrypt per DEC-SEC-002, "
+            f"got: {captured_kwargs['password_hash'][:20]}..."
+        )
+
     def test_seed_script_no_longer_contains_admin123_literal(self):
         """seed.py must no longer contain the legacy fixed bootstrap password."""
         seed_path = Path(__file__).resolve().parents[1] / "seed.py"

@@ -1062,3 +1062,94 @@ class TestPartialStatusPersistence:
         assert resp.status_code == 200
         pending_ids = {item["draft_group_id"] for item in resp.get_json().get("items", [])}
         assert group_id in pending_ids, "Group with remaining DRAFT lines must remain in the pending list"
+
+
+# ---------------------------------------------------------------------------
+# Wave 7 Phase 1 — Concurrency Hardening (H-1, N-1)
+# ---------------------------------------------------------------------------
+
+class TestConcurrencyHardening:
+    """Tests covering H-1 (status guard) and N-1 (approve_all group lock)."""
+
+    def test_h1_edit_rejected_group_returns_409(self, client, app, app_data):
+        """H-1: edit_aggregated_line on a REJECTED group must return 409."""
+        _insert_balances(app, app_data["loc"].id, [])
+        group_id, draft_ids = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+
+        # Reject the group first
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/reject",
+            json={"reason": "test"},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        # Now try to edit the override — must be blocked
+        resp = client.patch(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}",
+            json={"quantity": 5.0},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["error"] == "GROUP_ALREADY_RESOLVED"
+
+    def test_h1_edit_approved_group_returns_409(self, client, app, app_data):
+        """H-1: edit_aggregated_line on an APPROVED group must return 409."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"}
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+
+        # Approve the group
+        resp = client.post(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}/approve",
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+        # Now try to edit — must be blocked
+        resp = client.patch(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}",
+            json={"quantity": 3.0},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["error"] == "GROUP_ALREADY_RESOLVED"
+
+    def test_h1_edit_pending_group_still_allowed(self, client, app, app_data):
+        """H-1: edit_aggregated_line on a PENDING group must still succeed."""
+        _insert_balances(app, app_data["loc"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "stock": 10.0, "surplus": 0.0, "uom": "akg"}
+        ])
+        group_id, _ = _create_drafts(app, app_data["loc"].id, app_data["operator"].id, [
+            {"article_id": app_data["art_no_batch"].id, "batch_id": None, "quantity": 2.0, "uom": "akg"}
+        ])
+        token = _login(client, "appr_admin")
+        line_id = _get_line_id(client, token, group_id, app_data["art_no_batch"].id, None)
+
+        resp = client.patch(
+            f"/api/v1/approvals/{group_id}/lines/{line_id}",
+            json={"quantity": 5.0},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+
+    def test_n1_approve_all_nonexistent_group_raises_error(self, client, app, app_data):
+        """N-1: approve_all on a non-existent group_id returns an error."""
+        token = _login(client, "appr_admin")
+        resp = client.post(
+            "/api/v1/approvals/999999/approve",
+            headers=_auth_header(token),
+        )
+        # Should not be a 200 (group does not exist)
+        assert resp.status_code != 200

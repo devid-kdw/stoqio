@@ -7,6 +7,18 @@ from app.extensions import db
 
 class Surplus(db.Model):
     __tablename__ = "surplus"
+    __table_args__ = (
+        # M-1 surplus uniqueness — dual-constraint design (mirrors stock pattern):
+        # uq_surplus_location_article_batch covers rows where batch_id IS NOT NULL.
+        # A partial unique index (created in the Wave 7 Phase 2 migration) covers NULL:
+        #   CREATE UNIQUE INDEX uq_surplus_no_batch ON surplus (location_id, article_id)
+        #   WHERE batch_id IS NULL;
+        # Both are required for full uniqueness across the nullable batch_id.
+        db.UniqueConstraint(
+            "location_id", "article_id", "batch_id",
+            name="uq_surplus_location_article_batch",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     location_id = db.Column(

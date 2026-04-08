@@ -4,6 +4,7 @@ from decimal import Decimal
 from flask import Blueprint, jsonify, request
 
 from app.services import approval_service
+from app.services.approval_service import ApprovalServiceError
 from app.utils.auth import get_current_user, require_role
 from app.utils.errors import api_error as _error
 
@@ -53,7 +54,10 @@ def edit_aggregated_line(group_id: int, line_id: int):
     except (ValueError, TypeError):
         return _error("VALIDATION_ERROR", "quantity must be a number.", 400)
 
-    updated_detail = approval_service.edit_aggregated_line(group_id, line_id, quantity)
+    try:
+        updated_detail = approval_service.edit_aggregated_line(group_id, line_id, quantity)
+    except ApprovalServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
     if not updated_detail:
         return _error("NOT_FOUND", "Line or group not found.", 404)
 
@@ -80,7 +84,13 @@ def approve_single_line(group_id: int, line_id: int):
 @require_role("ADMIN")
 def approve_all(group_id: int):
     user = get_current_user()
-    result = approval_service.approve_all(user.id, group_id)
+    try:
+        result = approval_service.approve_all(user.id, group_id)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            return _error("NOT_FOUND", msg, 404)
+        return _error("BAD_REQUEST", msg, 400)
     return jsonify(result), 200
 
 

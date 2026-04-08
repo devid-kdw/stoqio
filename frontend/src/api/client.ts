@@ -89,9 +89,22 @@ client.interceptors.response.use(
         }
 
         refreshPromise = authApi.refresh(refreshToken)
-          .then((data) => {
+          .then(async (data) => {
             const newAccessToken = data.access_token
             useAuthStore.getState().setAccessToken(newAccessToken)
+            // M-5: After a successful token refresh, re-fetch user from /auth/me
+            // so that authStore.user.role reflects any changes made since last login.
+            // Failure here is non-fatal — the token is still valid for the retry.
+            try {
+              const freshUser = await authApi.me(newAccessToken)
+              useAuthStore.getState().updateUser({
+                id: freshUser.id,
+                username: freshUser.username,
+                role: freshUser.role,
+              })
+            } catch (meError) {
+              console.warn('[auth] Failed to refresh user state after token refresh:', meError)
+            }
             processQueue(null, newAccessToken)
             return newAccessToken
           })

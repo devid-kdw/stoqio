@@ -16,7 +16,7 @@ from app.utils.errors import api_error
 # ---------------------------------------------------------------------------
 
 # Generated once at module load so the route pays no per-request cost.
-# Using pbkdf2:sha256 keeps this aligned with the app's supported hash policy.
+# Using scrypt keeps this aligned with the app's password hash policy (DEC-SEC-002).
 # If the app ever migrates to a different algorithm, update this line and the
 # associated test so the dummy hash stays policy-consistent.
 _DUMMY_HASH: str = generate_password_hash("dummy-placeholder", method="scrypt")

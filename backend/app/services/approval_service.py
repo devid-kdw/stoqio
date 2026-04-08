@@ -20,6 +20,27 @@ from app.models.transaction import Transaction
 from app.models.user import User
 
 
+# ---------------------------------------------------------------------------
+# Structured error (mirrors InventoryServiceError / EmployeeServiceError)
+# ---------------------------------------------------------------------------
+
+class ApprovalServiceError(Exception):
+    """Maps directly to an API error response."""
+
+    def __init__(
+        self,
+        error: str,
+        message: str,
+        status_code: int,
+        details: Dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error = error
+        self.message = message
+        self.status_code = status_code
+        self.details = details or {}
+
+
 class AggregatedRowDict(TypedDict):
     line_id: int
     article_id: int
@@ -276,6 +297,21 @@ def edit_aggregated_line(group_id: int, line_id: int, new_quantity: Decimal) -> 
     if not draft or draft.draft_group_id != group_id:
         return None
 
+    # H-1 / Wave 7 Phase 1: reject edits on groups that are no longer actionable.
+    # Load the DraftGroup and check its status. Only PENDING groups may be edited.
+    group = db.session.get(DraftGroup, group_id)
+    if group is None:
+        return None
+    non_actionable = {DraftGroupStatus.APPROVED, DraftGroupStatus.REJECTED, DraftGroupStatus.PARTIAL}
+    if group.status in non_actionable:
+        raise ApprovalServiceError(
+            "GROUP_ALREADY_RESOLVED",
+            f"Draft group is already resolved (status: {group.status.value}). "
+            "Override edits are not permitted after resolution.",
+            409,
+            {"group_id": group_id, "status": group.status.value},
+        )
+
     # Upsert the override
     override = _get_override_for_bucket(group_id, draft.article_id, draft.batch_id)
 
@@ -298,24 +334,32 @@ def edit_aggregated_line(group_id: int, line_id: int, new_quantity: Decimal) -> 
 
 def _approve_pending_bucket(user_id: int, group_id: int, line_id: int) -> dict:
     """Approve one pending aggregated bucket without committing the session."""
-    # K-3 / Wave 6 Phase 1: acquire a row-level lock on the representative draft
-    # BEFORE reading status or computing quantities to prevent double-spend race.
-    draft = db.session.query(Draft).filter_by(
-        id=line_id
-    ).with_for_update().first()
-    if not draft or draft.draft_group_id != group_id:
+    # H-2 / Wave 7 Phase 1: lock ALL pending (DRAFT status) rows in the bucket
+    # ordered by id ASC to ensure deterministic lock order and prevent deadlocks
+    # between two concurrent requests that might use different draft IDs from
+    # the same bucket. The old single-row lock on the representative draft was
+    # insufficient: a concurrent request using a different draft_id would not
+    # contend on the same row and could pass the status check independently.
+    #
+    # First, resolve the article/batch key from the representative line WITHOUT
+    # a lock (so we can build the bucket query), then lock the full bucket.
+    draft_ref = db.session.get(Draft, line_id)
+    if not draft_ref or draft_ref.draft_group_id != group_id:
         raise ValueError("Line not found in this group.")
 
-    # Get all drafts in this bucket
-    bucket_drafts = db.session.query(Draft).filter_by(
-        draft_group_id=group_id,
-        article_id=draft.article_id,
-        batch_id=draft.batch_id,
-        status=DraftStatus.DRAFT
-    ).all()
+    # Lock all DRAFT-status rows in this (article_id, batch_id) bucket.
+    bucket_drafts = db.session.query(Draft).filter(
+        Draft.draft_group_id == group_id,
+        Draft.article_id == draft_ref.article_id,
+        Draft.batch_id == draft_ref.batch_id,
+        Draft.status == DraftStatus.DRAFT,
+    ).order_by(Draft.id.asc()).with_for_update().all()
 
     if not bucket_drafts:
         raise ValueError("This line has already been approved or rejected.")
+
+    # Use the first locked draft as the canonical representative.
+    draft = bucket_drafts[0]
 
     # Is there an override?
     override = _get_override_for_bucket(group_id, draft.article_id, draft.batch_id)
@@ -450,6 +494,19 @@ def approve_all(user_id: int, group_id: int) -> dict:
     Skips insufficient-stock buckets, but keeps the whole request atomic for
     unexpected failures by committing only once after the full loop finishes.
     """
+    # N-1 / Wave 7 Phase 1: acquire a group-level lock on the DraftGroup row
+    # BEFORE entering the bucket loop. Without this lock, two concurrent
+    # approve_all() calls on the same group could interleave bucket processing.
+    # The per-bucket with_for_update() locks would still contend, making the
+    # likely outcome a deadlock or one request failing with a lock timeout —
+    # not a clean double-approval — but the risk must be closed at the group
+    # level to serialize concurrent calls cleanly.
+    group = db.session.query(DraftGroup).filter_by(
+        id=group_id
+    ).with_for_update().first()
+    if group is None:
+        raise ValueError("Group not found.")
+
     # 1. find all representative lines
     drafts = db.session.query(Draft).filter_by(
         draft_group_id=group_id,

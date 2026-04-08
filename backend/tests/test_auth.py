@@ -607,8 +607,8 @@ class TestNonexistentUserLoginPath:
 
         assert len(calls) == 1, "check_password_hash must be called exactly once"
 
-    def test_get_dummy_hash_returns_valid_pbkdf2_hash(self):
-        """get_dummy_hash() must return a hash that check_password_hash can verify."""
+    def test_get_dummy_hash_returns_valid_scrypt_hash(self):
+        """get_dummy_hash() must return a scrypt hash that check_password_hash can verify (DEC-SEC-002)."""
         from werkzeug.security import check_password_hash
 
         from app.utils.auth import get_dummy_hash

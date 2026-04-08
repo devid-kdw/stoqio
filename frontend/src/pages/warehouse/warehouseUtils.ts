@@ -562,7 +562,13 @@ export function validateArticleForm(
   return errors
 }
 
-export function buildArticlePayload(form: WarehouseArticleFormState): ArticleMutationPayload {
+// H-5: Pass isEdit=true for UPDATE operations to omit density from the payload.
+// The backend preserves existing density when the field is absent from a PATCH body.
+// For CREATE operations (isEdit=false, the default), density: 1 is sent as the initial value.
+export function buildArticlePayload(
+  form: WarehouseArticleFormState,
+  isEdit = false,
+): ArticleMutationPayload {
   return {
     article_no: form.articleNo.trim().toUpperCase(),
     description: form.description.trim(),
@@ -575,7 +581,9 @@ export function buildArticlePayload(form: WarehouseArticleFormState): ArticleMut
     has_batch: form.hasBatch,
     reorder_threshold: parseOptionalNumber(form.reorderThreshold),
     reorder_coverage_days: parseOptionalInteger(form.reorderCoverageDays),
-    density: 1,
+    // Omit density for updates — backend preserves existing density when absent.
+    // For creates, send density: 1 as the default initial value.
+    ...(isEdit ? {} : { density: 1 }),
     is_active: form.isActive,
     suppliers: form.suppliers.map((supplier) => ({
       supplier_id: Number(supplier.supplierId),

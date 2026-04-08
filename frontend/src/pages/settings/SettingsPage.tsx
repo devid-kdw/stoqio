@@ -59,6 +59,7 @@ import {
   type UpdateSettingsUserPayload,
   type SettingsPrinterModel,
 } from '../../api/settings'
+import { authApi } from '../../api/auth'
 import FullPageState from '../../components/shared/FullPageState'
 import { getActiveLocale } from '../../utils/locale'
 import { useAuthStore } from '../../store/authStore'
@@ -1373,6 +1374,23 @@ export default function SettingsPage() {
             : replaceItemById(current, response)
         return sortUsers(nextUsers)
       })
+
+      // M-6: If the user just edited their own account, re-fetch auth state
+      // so that ProtectedRoute re-evaluates role access immediately.
+      if (userModalMode === 'edit' && editingUserId === currentUser?.id) {
+        const currentToken = useAuthStore.getState().accessToken
+        try {
+          const freshUser = await authApi.me(currentToken ?? undefined)
+          useAuthStore.getState().updateUser({
+            id: freshUser.id,
+            username: freshUser.username,
+            role: freshUser.role,
+          })
+        } catch (meError) {
+          console.warn('[auth] Failed to refresh self user state after settings update:', meError)
+        }
+      }
+
       setUserModalOpen(false)
       showSuccessToast(
         userModalMode === 'create'

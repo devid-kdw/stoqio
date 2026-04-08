@@ -7,6 +7,7 @@ export interface User {
 }
 
 export type SetupStatus = 'unknown' | 'required' | 'complete'
+export type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated'
 
 export const REFRESH_TOKEN_STORAGE_KEY = 'stoqio_refresh_token'
 
@@ -48,6 +49,7 @@ const getLoggedOutState = () => ({
   refreshToken: null,
   isAuthenticated: false,
   setupStatus: 'unknown' as const,
+  authStatus: 'unauthenticated' as AuthStatus,
 })
 
 interface AuthState {
@@ -56,6 +58,7 @@ interface AuthState {
   refreshToken: string | null
   isAuthenticated: boolean
   setupStatus: SetupStatus
+  authStatus: AuthStatus
 
   hydrateRefreshToken: (refreshToken: string | null) => void
   login: (user: User, accessToken: string, refreshToken: string) => void
@@ -65,6 +68,8 @@ interface AuthState {
   setSetupStatus: (setupRequired: boolean) => void
   resetSetupStatus: () => void
   clearAuth: () => void
+  setAuthStatus: (status: AuthStatus) => void
+  updateUser: (user: User) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -83,6 +88,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       refreshToken,
       isAuthenticated: true,
       setupStatus: 'unknown',
+      authStatus: 'authenticated',
     })
   },
 
@@ -99,6 +105,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       refreshToken,
       isAuthenticated: true,
       setupStatus: 'unknown',
+      authStatus: 'authenticated',
     })
   },
 
@@ -113,4 +120,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     persistRefreshToken(null)
     set(getLoggedOutState())
   },
+
+  setAuthStatus: (status) => set({ authStatus: status }),
+
+  updateUser: (user) =>
+    set({
+      user,
+      isAuthenticated: true,
+      authStatus: 'authenticated',
+    }),
 }))

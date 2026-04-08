@@ -42,10 +42,17 @@ export interface StockOverviewSummary {
   warehouse_total_value: number
 }
 
+// NOTE: Backend paginates stock overview at page=1, per_page=100 by default.
+// The export endpoint also returns only the first page (100 rows maximum) — it calls
+// get_stock_overview() with default pagination and does NOT stream all matching rows.
+// This is a known limitation (M-4). Full-export support requires a dedicated backend
+// endpoint that bypasses pagination — tracked as a follow-up.
 export interface StockOverviewResponse {
   period: StockOverviewPeriod
   items: StockOverviewItem[]
   total: number
+  page: number
+  per_page: number
   summary: StockOverviewSummary
 }
 

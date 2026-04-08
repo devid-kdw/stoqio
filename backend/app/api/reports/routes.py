@@ -11,6 +11,7 @@ from app.services import report_service
 from app.services.report_service import ReportServiceError
 from app.utils.auth import check_rate_limit, require_role
 from app.utils.errors import api_error as _error
+from app.utils.validators import QueryValidationError, parse_positive_int
 
 reports_bp = Blueprint("reports", __name__)
 
@@ -19,12 +20,10 @@ reports_bp = Blueprint("reports", __name__)
 @require_role("ADMIN", "MANAGER")
 def get_stock_overview():
     try:
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 100))
-        if page < 1:
-            page = 1
-        if per_page < 1:
-            per_page = 1
+        page = parse_positive_int(request.args.get("page") or None, field_name="page", default=1)
+        per_page = parse_positive_int(
+            request.args.get("per_page") or None, field_name="per_page", default=100
+        )
         result = report_service.get_stock_overview(
             date_from=request.args.get("date_from"),
             date_to=request.args.get("date_to"),
@@ -34,7 +33,7 @@ def get_stock_overview():
             per_page=per_page,
         )
         return jsonify(result), 200
-    except ReportServiceError as exc:
+    except (ReportServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
@@ -68,14 +67,12 @@ def export_stock_overview():
 @require_role("ADMIN", "MANAGER")
 def get_surplus_report():
     try:
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 100))
-        if page < 1:
-            page = 1
-        if per_page < 1:
-            per_page = 1
+        page = parse_positive_int(request.args.get("page") or None, field_name="page", default=1)
+        per_page = parse_positive_int(
+            request.args.get("per_page") or None, field_name="per_page", default=100
+        )
         return jsonify(report_service.get_surplus_report(page=page, per_page=per_page)), 200
-    except ReportServiceError as exc:
+    except (ReportServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 
@@ -105,16 +102,20 @@ def export_surplus_report():
 @require_role("ADMIN", "MANAGER")
 def get_transaction_log():
     try:
+        page = parse_positive_int(request.args.get("page") or None, field_name="page", default=1)
+        per_page = parse_positive_int(
+            request.args.get("per_page") or None, field_name="per_page", default=50
+        )
         result = report_service.get_transaction_log(
             article_id=request.args.get("article_id"),
             date_from=request.args.get("date_from"),
             date_to=request.args.get("date_to"),
             tx_types=request.args.getlist("tx_type"),
-            page=request.args.get("page"),
-            per_page=request.args.get("per_page"),
+            page=page,
+            per_page=per_page,
         )
         return jsonify(result), 200
-    except ReportServiceError as exc:
+    except (ReportServiceError, QueryValidationError) as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)
 
 

@@ -347,7 +347,7 @@ export default function ArticleDetailPage() {
 
       try {
         const updatedArticle = await runWithRetry(() =>
-          articlesApi.update(article.id, buildArticlePayload(editForm))
+          articlesApi.update(article.id, buildArticlePayload(editForm, true))
         )
         applyArticleState(updatedArticle)
         showSuccessToast('Artikl je ažuriran.')

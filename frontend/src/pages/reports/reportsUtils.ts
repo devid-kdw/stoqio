@@ -4,12 +4,16 @@ import { INTEGER_UOMS } from '../../utils/uom'
 import { getActiveLocale } from '../../utils/locale'
 
 export function getTodayIsoDate(): string {
+  // Uses UTC date intentionally to match server-side UTC date calculations.
+  // Do not change to local date without updating backend report date handling.
   return new Date().toISOString().slice(0, 10)
 }
 
 export function getMonthStartIsoDate(): string {
+  // Uses UTC date intentionally to match server-side UTC date calculations.
+  // Do not change to local date without updating backend report date handling.
   const value = new Date()
-  value.setDate(1)
+  value.setUTCDate(1)
   return value.toISOString().slice(0, 10)
 }
 

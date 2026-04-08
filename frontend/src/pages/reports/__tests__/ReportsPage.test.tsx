@@ -44,6 +44,8 @@ describe('ReportsPage', () => {
       period: { date_from: '', date_to: '', months: 1 },
       items: [],
       total: 0,
+      page: 1,
+      per_page: 100,
       summary: {
         warehouse_total_value: 0
       }

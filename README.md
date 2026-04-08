@@ -63,7 +63,9 @@ venv/bin/flask purge-revoked-tokens --dry-run
 venv/bin/flask purge-revoked-tokens
 ```
 
-The command deletes only `revoked_token` rows whose `expires_at` is already in the past. It does not remove active revocations, does not touch `expires_at IS NULL` rows, and is never run automatically on requests, startup, or logout.
+The command deletes only `revoked_token` rows whose `expires_at` is already in the past. It does not remove active revocations and does not touch `expires_at IS NULL` rows.
+
+Automatic cleanup also runs via a `before_request` hook registered in `app/__init__.py`. It executes at most once per hour (guarded by a process-level timestamp) and removes the same expired rows. This means the table self-cleans on active instances without any operator intervention. The manual CLI command remains useful for immediate cleanup or for instances that receive infrequent traffic.
 
 Run it after the deploy that introduces this phase and then on a periodic local-server schedule if the instance keeps long-lived refresh-token history. The standard `./scripts/deploy.sh` flow already applies backend migrations; if you deploy manually, apply backend migrations before the first cleanup run.
 

@@ -2,7 +2,21 @@
 
 set -euo pipefail
 
-trap 'echo "deploy.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
+# Placeholders — will be populated after ROOT_DIR is resolved (before any mutating step)
+PRE_DEPLOY_GIT_HEAD=""
+PRE_DEPLOY_ALEMBIC_HEAD=""
+PREDEPLOY_LOG=""
+
+trap '
+  echo "ERROR: deploy.sh failed at: $BASH_COMMAND" >&2
+  echo "" >&2
+  echo "Manual rollback instructions:" >&2
+  echo "  Git:        git reset --hard '"'"'$PRE_DEPLOY_GIT_HEAD'"'"'" >&2
+  echo "  Migrations: venv/bin/alembic downgrade '"'"'$PRE_DEPLOY_ALEMBIC_HEAD'"'"'" >&2
+  echo "  WARNING:    Destructive migrations cannot be safely reversed. Review migration state before downgrading." >&2
+  echo "  Service:    sudo systemctl status wms" >&2
+  echo "  Pre-deploy state saved to: $PREDEPLOY_LOG" >&2
+' ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
@@ -27,6 +41,20 @@ if [ ! -x "$BACKEND_PYTHON" ]; then
 fi
 
 cd "$ROOT_DIR"
+
+# Capture pre-deploy state for manual rollback reference
+PRE_DEPLOY_GIT_HEAD=$(git rev-parse HEAD)
+PRE_DEPLOY_ALEMBIC_HEAD=$(venv/bin/alembic current 2>/dev/null | head -1 || echo "unknown")
+PREDEPLOY_LOG="/tmp/stoqio_predeploy_$(date +%Y%m%d_%H%M%S).txt"
+{
+  echo "PRE_DEPLOY_GIT_HEAD=$PRE_DEPLOY_GIT_HEAD"
+  echo "PRE_DEPLOY_ALEMBIC_HEAD=$PRE_DEPLOY_ALEMBIC_HEAD"
+  echo "DEPLOY_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "$PREDEPLOY_LOG"
+echo "Pre-deploy state saved to $PREDEPLOY_LOG"
+echo "  Git HEAD: $PRE_DEPLOY_GIT_HEAD"
+echo "  Alembic head: $PRE_DEPLOY_ALEMBIC_HEAD"
+
 echo "Updating repository from ${GIT_REMOTE}/${GIT_BRANCH}..."
 git pull --ff-only "$GIT_REMOTE" "$GIT_BRANCH"
 

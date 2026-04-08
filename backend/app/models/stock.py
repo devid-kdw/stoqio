@@ -8,6 +8,15 @@ from app.extensions import db
 class Stock(db.Model):
     __tablename__ = "stock"
     __table_args__ = (
+        # M-1 dual-constraint design:
+        # uq_stock_location_article_batch covers rows where batch_id IS NOT NULL.
+        # In PostgreSQL, UNIQUE constraints treat each NULL as distinct, so multiple
+        # no-batch rows for the same (location_id, article_id) would be permitted by
+        # this constraint alone.  A partial unique index (created in the Wave 7 Phase 2
+        # migration) covers the NULL case:
+        #   CREATE UNIQUE INDEX uq_stock_no_batch ON stock (location_id, article_id)
+        #   WHERE batch_id IS NULL;
+        # Both constraints are required for full uniqueness across the nullable batch_id.
         db.UniqueConstraint(
             "location_id", "article_id", "batch_id",
             name="uq_stock_location_article_batch",

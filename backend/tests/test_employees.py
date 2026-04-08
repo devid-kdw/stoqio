@@ -1137,3 +1137,112 @@ class TestIssuanceCreate:
         assert len(items) == 1
         assert items[0]["batch_code"] == "EMP-B001"
         assert items[0]["batch_id"] == emp_data["batch"].id
+
+
+# ---------------------------------------------------------------------------
+# Wave 7 Phase 1 — M-3 UOM validation + H-4 stock locking
+# ---------------------------------------------------------------------------
+
+class TestIssuanceUOMValidation:
+    """M-3: check_issuance and create_issuance must reject mismatched UOM."""
+
+    def _create_emp(self, client, token, employee_id: str) -> int:
+        resp = client.post(
+            "/api/v1/employees",
+            json={"employee_id": employee_id, "first_name": "UOM", "last_name": "Test"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201
+        return resp.get_json()["id"]
+
+    def test_create_issuance_wrong_uom_returns_400(self, client, emp_data, app):
+        """M-3: create_issuance with a UOM that doesn't match article base UOM -> 400 UOM_MISMATCH."""
+        token = _login(client, "emp_admin")
+        emp_id = self._create_emp(client, token, "M3-CREATE-001")
+
+        resp = client.post(
+            f"/api/v1/employees/{emp_id}/issuances",
+            json={
+                "article_id": emp_data["art"].id,
+                "quantity": 1,
+                "uom": "wrong_uom",
+            },
+            headers=_auth(token),
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["error"] == "UOM_MISMATCH"
+        assert "emp_kom" in body["message"]
+
+    def test_check_issuance_wrong_uom_returns_400(self, client, emp_data, app):
+        """M-3: check_issuance with a UOM that doesn't match article base UOM -> 400 UOM_MISMATCH."""
+        token = _login(client, "emp_admin")
+        emp_id = self._create_emp(client, token, "M3-CHECK-001")
+
+        resp = client.post(
+            f"/api/v1/employees/{emp_id}/issuances/check",
+            json={
+                "article_id": emp_data["art"].id,
+                "quantity": 1,
+                "uom": "wrong_uom",
+            },
+            headers=_auth(token),
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["error"] == "UOM_MISMATCH"
+
+    def test_create_issuance_correct_uom_succeeds(self, client, emp_data, app):
+        """M-3: create_issuance with the correct base UOM succeeds."""
+        token = _login(client, "emp_admin")
+        emp_id = self._create_emp(client, token, "M3-CREATE-OK-001")
+        # Use a dedicated article to avoid shared-stock depletion from earlier tests.
+        fresh = _seed_personal_issue_article_with_stock(
+            app, emp_data, article_no="M3-ART-OK", description="M3 UOM test article", quantity=Decimal("10")
+        )
+        resp = client.post(
+            f"/api/v1/employees/{emp_id}/issuances",
+            json={
+                "article_id": fresh["article_id"],
+                "quantity": 1,
+                "uom": "emp_kom",
+            },
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201
+
+    def test_create_issuance_no_uom_falls_back_to_base(self, client, emp_data, app):
+        """M-3: create_issuance with no uom field falls back to article base UOM."""
+        token = _login(client, "emp_admin")
+        emp_id = self._create_emp(client, token, "M3-CREATE-NOOM-001")
+        # Use a dedicated article to avoid shared-stock depletion from earlier tests.
+        fresh = _seed_personal_issue_article_with_stock(
+            app, emp_data, article_no="M3-ART-NOOM", description="M3 no-UOM test article", quantity=Decimal("10")
+        )
+        resp = client.post(
+            f"/api/v1/employees/{emp_id}/issuances",
+            json={
+                "article_id": fresh["article_id"],
+                "quantity": 1,
+            },
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["uom"] == "emp_kom"
+
+    def test_check_issuance_no_uom_falls_back_to_base(self, client, emp_data, app):
+        """M-3: check_issuance with no uom does not raise UOM_MISMATCH."""
+        token = _login(client, "emp_admin")
+        emp_id = self._create_emp(client, token, "M3-CHECK-NOOM-001")
+
+        resp = client.post(
+            f"/api/v1/employees/{emp_id}/issuances/check",
+            json={
+                "article_id": emp_data["art"].id,
+                "quantity": 1,
+            },
+            headers=_auth(token),
+        )
+        # Should not be a UOM_MISMATCH (could be NO_QUOTA or OK)
+        if resp.status_code == 400:
+            assert resp.get_json().get("error") != "UOM_MISMATCH"

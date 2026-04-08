@@ -43,3 +43,10 @@ Next Recommended Step
 - User installs eslint-plugin-security manually and uncomments the two lines in eslint.config.js
 - User runs `npm run lint` to verify no new ESLint configuration errors
 - User runs `npm run build` to confirm sourcemap: false is accepted by Vite
+
+## [2026-04-08] Wave 7 Phase 3 — Correction Note
+Status: correction
+The eslint-plugin-security manual install referenced above was completed after the Wave 6 Phase 4
+agent run. As of the Wave 7 review (2026-04-08), eslint-plugin-security is installed (package.json)
+and active (eslint.config.js imports and applies security.configs.recommended). The "pending manual
+install" and "commented-out" references in the original entry no longer reflect repo state.

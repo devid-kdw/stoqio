@@ -21,6 +21,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models.annual_quota import AnnualQuota
@@ -112,6 +113,7 @@ def _issuance_stock_row(
     *,
     location: Location | None,
     batch_id: int | None,
+    for_update: bool = False,
 ) -> Stock | None:
     if location is None:
         return None
@@ -124,6 +126,8 @@ def _issuance_stock_row(
         query = query.filter(Stock.batch_id == batch_id)
     else:
         query = query.filter(Stock.batch_id.is_(None))
+    if for_update:
+        query = query.with_for_update()
     return query.first()
 
 
@@ -666,7 +670,21 @@ def check_issuance(employee_id: int, data: dict) -> dict:
         raise EmployeeServiceError("VALIDATION_ERROR", "'quantity' must be greater than 0.", 400)
 
     base_uom_obj = db.session.get(UomCatalog, article.base_uom)
-    uom = (str(data.get("uom") or "").strip() or (base_uom_obj.code if base_uom_obj else "kom"))
+    authoritative_uom = base_uom_obj.code if base_uom_obj else "kom"
+    # M-3 / Wave 7 Phase 1: validate client-supplied UOM against article base UOM.
+    # Mirrors the pattern in receiving_service.py (lines 318-329, 417-428).
+    requested_uom = str(data.get("uom") or "").strip()
+    if requested_uom and requested_uom != authoritative_uom:
+        raise EmployeeServiceError(
+            "UOM_MISMATCH",
+            f"uom must match article base UOM '{authoritative_uom}'.",
+            400,
+            {
+                "expected_uom": authoritative_uom,
+                "received_uom": requested_uom,
+            },
+        )
+    uom = requested_uom or authoritative_uom
     location = _get_default_location()
 
     # Batch validation
@@ -767,15 +785,33 @@ def create_issuance(employee_id: int, data: dict, issued_by_user: User) -> tuple
     if quantity <= 0:
         raise EmployeeServiceError("VALIDATION_ERROR", "'quantity' must be greater than 0.", 400)
 
-    # UOM — use provided or fall back to article's base uom code
-    uom = str(data.get("uom") or "").strip()
-    if not uom:
-        base_uom_obj = db.session.get(UomCatalog, article.base_uom)
-        uom = base_uom_obj.code if base_uom_obj else "kom"
+    # UOM — use provided or fall back to article's base uom code.
+    # M-3 / Wave 7 Phase 1: validate client-supplied UOM against article base UOM.
+    # Mirrors the pattern in receiving_service.py (lines 318-329, 417-428).
+    base_uom_obj = db.session.get(UomCatalog, article.base_uom)
+    authoritative_uom = base_uom_obj.code if base_uom_obj else "kom"
+    requested_uom = str(data.get("uom") or "").strip()
+    if requested_uom and requested_uom != authoritative_uom:
+        raise EmployeeServiceError(
+            "UOM_MISMATCH",
+            f"uom must match article base UOM '{authoritative_uom}'.",
+            400,
+            {
+                "expected_uom": authoritative_uom,
+                "received_uom": requested_uom,
+            },
+        )
+    uom = requested_uom or authoritative_uom
 
     batch_id = data.get("batch_id")
     batch = None
     location = _get_default_location()
+
+    # H-4 / Wave 7 Phase 1: lock the stock row with with_for_update() at the
+    # point of the availability check and hold the lock through the decrement.
+    # Do NOT re-query the stock row unlocked between the check and the update.
+    # Any IntegrityError from a CHECK constraint race (quantity < 0) is mapped
+    # to the same "insufficient stock" business error so users see a clean message.
     if article.has_batch:
         if not batch_id:
             raise EmployeeServiceError(
@@ -788,6 +824,7 @@ def create_issuance(employee_id: int, data: dict, issued_by_user: User) -> tuple
             article,
             location=location,
             batch_id=batch_id,
+            for_update=True,
         )
         if stock_row is None or stock_row.quantity <= 0:
             raise EmployeeServiceError(
@@ -808,6 +845,7 @@ def create_issuance(employee_id: int, data: dict, issued_by_user: User) -> tuple
             article,
             location=location,
             batch_id=None,
+            for_update=True,
         )
         available = Decimal(str(stock_row.quantity)) if stock_row is not None else Decimal("0")
         if available < quantity:
@@ -850,38 +888,21 @@ def create_issuance(employee_id: int, data: dict, issued_by_user: User) -> tuple
     db.session.flush()  # get iso.id before commit
 
     # ── Stock decrement (see module docstring, DEC-EMP-001) ──────────────────
-    if location:
-        if article.has_batch and batch_id:
-            stock_row = _issuance_stock_row(
-                article,
-                location=location,
-                batch_id=batch_id,
-            )
-            if stock_row is None or Decimal(str(stock_row.quantity)) < quantity:
-                raise _insufficient_stock_error(
-                    article=article,
-                    available=Decimal(str(stock_row.quantity)) if stock_row else Decimal("0"),
-                    requested=quantity,
-                    uom=uom,
-                    batch=batch,
-                )
+    # stock_row is already locked from the availability check above; reuse it.
+    if location and stock_row is not None:
+        try:
             stock_row.quantity -= quantity
             stock_row.last_updated = now
-        else:
-            stock_row = _issuance_stock_row(
-                article,
-                location=location,
-                batch_id=None,
+            db.session.flush()  # flush to trigger CHECK constraint early
+        except IntegrityError:
+            db.session.rollback()
+            raise _insufficient_stock_error(
+                article=article,
+                available=Decimal("0"),
+                requested=quantity,
+                uom=uom,
+                batch=batch if article.has_batch else None,
             )
-            if stock_row is None or Decimal(str(stock_row.quantity)) < quantity:
-                raise _insufficient_stock_error(
-                    article=article,
-                    available=Decimal(str(stock_row.quantity)) if stock_row else Decimal("0"),
-                    requested=quantity,
-                    uom=uom,
-                )
-            stock_row.quantity -= quantity
-            stock_row.last_updated = now
 
         # ── Transaction audit trail ──────────────────────────────────────────
         tx = Transaction(

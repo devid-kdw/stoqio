@@ -280,7 +280,10 @@ export default function WarehousePage() {
         await articlesApi.create(buildArticlePayload(createForm))
         showSuccessToast('Artikl je kreiran.')
         handleCloseCreate()
-        navigate('/warehouse')
+        // L-2: Call loadArticles() directly so the new article appears in the list
+        // immediately. navigate('/warehouse') is redundant since the user is already
+        // on this route — it would not trigger a re-mount or re-fetch.
+        void loadArticles()
       } catch (error) {
         if (isNetworkOrServerError(error)) {
           setFatalError(true)
@@ -301,7 +304,7 @@ export default function WarehousePage() {
         setCreateSubmitting(false)
       }
     },
-    [createForm, handleCloseCreate, navigate]
+    [createForm, handleCloseCreate, loadArticles]
   )
 
   const handleRetry = useCallback(() => {
