@@ -352,23 +352,21 @@ export default function OrderDetailPage() {
     setAddLineSubmitting(true)
 
     try {
-      const response = await runWithRetry(() =>
-        ordersApi.addLine(order.id, {
-          article_id: addLineDraft.articleId!,
-          supplier_article_code: normalizeOptionalText(addLineDraft.supplierArticleCode),
-          ordered_qty:
-            typeof addLineDraft.orderedQty === 'string'
-              ? Number.parseFloat(addLineDraft.orderedQty)
-              : addLineDraft.orderedQty,
-          uom: addLineDraft.uom,
-          unit_price:
-            typeof addLineDraft.unitPrice === 'string'
-              ? Number.parseFloat(addLineDraft.unitPrice)
-              : addLineDraft.unitPrice,
-          delivery_date: normalizeOptionalText(addLineDraft.deliveryDate),
-          note: normalizeOptionalText(addLineDraft.note),
-        })
-      )
+      const response = await ordersApi.addLine(order.id, {
+        article_id: addLineDraft.articleId!,
+        supplier_article_code: normalizeOptionalText(addLineDraft.supplierArticleCode),
+        ordered_qty:
+          typeof addLineDraft.orderedQty === 'string'
+            ? Number.parseFloat(addLineDraft.orderedQty)
+            : addLineDraft.orderedQty,
+        uom: addLineDraft.uom,
+        unit_price:
+          typeof addLineDraft.unitPrice === 'string'
+            ? Number.parseFloat(addLineDraft.unitPrice)
+            : addLineDraft.unitPrice,
+        delivery_date: normalizeOptionalText(addLineDraft.deliveryDate),
+        note: normalizeOptionalText(addLineDraft.note),
+      })
       applyUpdatedOrder(response)
       showSuccessToast('Stavka je dodana.')
     } catch (error) {

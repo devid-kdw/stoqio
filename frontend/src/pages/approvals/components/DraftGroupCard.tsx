@@ -157,11 +157,9 @@ export default function DraftGroupCard({
 
     setIsSavingEdit(true)
     try {
-      const updated = await runWithRetry(() =>
-        approvalsApi.updateLine(summary.draft_group_id, editingRow.id, {
-          quantity: qty,
-        })
-      )
+      const updated = await approvalsApi.updateLine(summary.draft_group_id, editingRow.id, {
+        quantity: qty,
+      })
       setDetail(updated)
       setEditingRow(null)
       showSuccessToast('Količina ažurirana.')
@@ -183,7 +181,7 @@ export default function DraftGroupCard({
     setIsApprovingLine(lineId)
     setRowErrors(prev => ({ ...prev, [lineId]: '' }))
     try {
-      const res = await runWithRetry(() => approvalsApi.approveLine(summary.draft_group_id, lineId))
+      const res = await approvalsApi.approveLine(summary.draft_group_id, lineId)
       if (res.reorder_warning) {
         showWarningToast(`Zaliha za ${res.article_no ?? 'ovaj artikl'} past ce ispod minimalne razine nakon ovog odobrenja.`)
       }
@@ -210,7 +208,7 @@ export default function DraftGroupCard({
     setIsApprovingAll(true)
     setRowErrors({})
     try {
-      const res = await runWithRetry(() => approvalsApi.approveAll(summary.draft_group_id))
+      const res = await approvalsApi.approveAll(summary.draft_group_id)
       const warnings = res.approved.filter(r => r.reorder_warning).length
       if (warnings > 0) {
         showWarningToast(`Zaliha za ${warnings} artikala past ce ispod minimalne razine nakon ovog odobrenja.`)
@@ -258,13 +256,9 @@ export default function DraftGroupCard({
     setIsRejecting(true)
     try {
       if (rejectTarget === 'line' && rejectLineId !== null) {
-        await runWithRetry(() =>
-          approvalsApi.rejectLine(summary.draft_group_id, rejectLineId, { reason: rejectReason })
-        )
+        await approvalsApi.rejectLine(summary.draft_group_id, rejectLineId, { reason: rejectReason })
       } else {
-        await runWithRetry(() =>
-          approvalsApi.rejectDraft(summary.draft_group_id, { reason: rejectReason })
-        )
+        await approvalsApi.rejectDraft(summary.draft_group_id, { reason: rejectReason })
       }
       setRejectModalOpen(false)
       showSuccessToast('Uspješno odbijeno.')

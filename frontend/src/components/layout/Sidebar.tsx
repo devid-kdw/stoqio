@@ -22,7 +22,7 @@ export default function Sidebar() {
         await authApi.logout(refreshToken)
       }
     } catch (e) {
-      console.error('Logout failed', e)
+      console.error('Logout failed', e instanceof Error ? e.message : 'unknown error')
     } finally {
       logout()
     }

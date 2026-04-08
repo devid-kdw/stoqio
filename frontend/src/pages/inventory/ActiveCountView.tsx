@@ -178,7 +178,7 @@ export function ActiveCountView({ count, onCompleted, onFatalError }: ActiveCoun
     setCompleting(true)
     setConfirmOpen(false)
     try {
-      const result = await runWithRetry(() => inventoryApi.complete(count.id))
+      const result = await inventoryApi.complete(count.id)
       onCompleted(result.id)
     } catch (err) {
       if (isNetworkOrServerError(err)) {

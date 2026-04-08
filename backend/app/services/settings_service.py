@@ -844,6 +844,23 @@ def get_barcode_settings() -> dict[str, Any]:
     }
 
 
+def get_validated_label_printer_config() -> tuple[str, int, str]:
+    """Return persisted label-printer settings after revalidating use-time inputs.
+
+    Settings writes already enforce the allowed IP and port rules, but direct
+    printer use must still recheck stored values so legacy or manually edited
+    configuration cannot bypass the network guardrails.
+    """
+    cfg = get_barcode_settings()
+    label_printer_ip = _normalize_optional_text(cfg.get("label_printer_ip")) or ""
+    _validate_label_printer_ip(label_printer_ip)
+    label_printer_port = _parse_label_printer_port(cfg.get("label_printer_port"))
+    label_printer_model = (
+        _normalize_optional_text(cfg.get("label_printer_model")) or _DEFAULT_LABEL_PRINTER_MODEL
+    )
+    return label_printer_ip, label_printer_port, label_printer_model
+
+
 def _parse_label_printer_port(value: Any) -> int:
     try:
         port = int(value)
@@ -1186,22 +1203,38 @@ def update_user(user_id: int, payload: dict[str, Any], *, acting_user_id: int) -
             400,
         )
 
+    next_is_active = user.is_active
     if "is_active" in payload:
-        is_active = _parse_bool(payload.get("is_active"), field_name="is_active")
-        if not is_active and user.id == acting_user_id:
+        next_is_active = _parse_bool(payload.get("is_active"), field_name="is_active")
+        if not next_is_active and user.id == acting_user_id:
             raise SettingsServiceError(
                 "SELF_DEACTIVATION_FORBIDDEN",
                 "You cannot deactivate your own account.",
                 400,
             )
-        user.is_active = is_active
 
+    next_role = user.role
     if "role" in payload:
-        user.role = _parse_user_role(payload.get("role"))
+        next_role = _parse_user_role(payload.get("role"))
+        if (
+            next_role == UserRole.ADMIN
+            and user.role != UserRole.ADMIN
+            and "password" not in payload
+        ):
+            raise SettingsServiceError(
+                "VALIDATION_ERROR",
+                "Promoting a user to ADMIN requires a password reset that meets the ADMIN minimum.",
+                400,
+            )
+
+    if "password" in payload:
+        _validate_password_length(payload.get("password"), next_role)
+
+    user.is_active = next_is_active
+    user.role = next_role
 
     if "password" in payload:
         password = payload.get("password")
-        _validate_password_length(password, user.role)
         user.password_hash = generate_password_hash(password, method="pbkdf2:sha256")
         user.password_changed_at = datetime.now(timezone.utc)
 

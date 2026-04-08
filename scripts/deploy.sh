@@ -44,9 +44,6 @@ echo "Installing backend Python requirements from requirements.lock..."
 "$BACKEND_PYTHON" -m pip install -r requirements.lock
 
 cd "$ROOT_DIR"
-echo "Building frontend assets..."
-"$ROOT_DIR/scripts/build.sh"
-
 # Run npm security audit — fail deploy on high/critical findings (F-SEC-015).
 # Low and moderate findings are informational only and do not block deploy.
 echo "Running npm security audit..."
@@ -58,6 +55,9 @@ else
   echo "WARNING: npm not found; skipping npm audit." >&2
 fi
 cd "$ROOT_DIR"
+
+echo "Building frontend assets..."
+"$ROOT_DIR/scripts/build.sh"
 
 if [ -f "$BACKEND_DIR/alembic.ini" ]; then
   cd "$BACKEND_DIR"

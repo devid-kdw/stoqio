@@ -546,9 +546,7 @@ export default function ArticleDetailPage() {
     setAliasError(null)
 
     try {
-      const created = await runWithRetry(() =>
-        articlesApi.createAlias(article.id, aliasInput.trim())
-      )
+      const created = await articlesApi.createAlias(article.id, aliasInput.trim())
       setArticle((prev): WarehouseArticleDetail | null =>
         prev ? { ...prev, aliases: [...prev.aliases, created] } : prev
       )

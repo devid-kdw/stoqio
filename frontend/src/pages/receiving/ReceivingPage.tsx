@@ -642,7 +642,7 @@ export default function ReceivingPage() {
     setLinkedSubmitting(true)
 
     try {
-      await runWithRetry(() => receivingApi.submit(payload))
+      await receivingApi.submit(payload)
       showSuccessToast('Zaprimanje evidentirano.')
       await refreshCurrentOrder()
       await refreshHistoryAfterSuccess()
@@ -742,7 +742,7 @@ export default function ReceivingPage() {
     setAdhocSubmitting(true)
 
     try {
-      await runWithRetry(() => receivingApi.submit(payload))
+      await receivingApi.submit(payload)
       showSuccessToast('Zaprimanje evidentirano.')
       clearAdhocForm()
       await refreshHistoryAfterSuccess()

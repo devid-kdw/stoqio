@@ -369,11 +369,9 @@ export default function IdentifierPage() {
       setReportSubmitting(true)
 
       try {
-        await runWithRetry(() =>
-          identifierApi.submitReport({
-            search_term: normalizedTerm,
-          })
-        )
+        await identifierApi.submitReport({
+          search_term: normalizedTerm,
+        })
         showSuccessToast('Prijava nedostajućeg artikla je poslana.')
         setReportModalOpen(false)
         setReportTermError(null)
@@ -422,11 +420,9 @@ export default function IdentifierPage() {
       setResolveSubmitting(true)
 
       try {
-        await runWithRetry(() =>
-          identifierApi.resolveReport(reportToResolve.id, {
-            resolution_note: normalizeOptionalText(resolutionNote),
-          })
-        )
+        await identifierApi.resolveReport(reportToResolve.id, {
+          resolution_note: normalizeOptionalText(resolutionNote),
+        })
         showSuccessToast('Prijava je riješena.')
         closeResolveModal()
         await loadReportQueue('open', { force: true })

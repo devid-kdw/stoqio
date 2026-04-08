@@ -11,6 +11,10 @@ from app.services.barcode_service import (
 )
 
 
+def _zpl_hex(value: str) -> str:
+    return "".join(f"\\{byte:02X}" for byte in value.encode("utf-8"))
+
+
 def test_generate_zpl_includes_required_commands():
     result_bytes = _generate_zpl(
         article_no="ART-123",
@@ -22,9 +26,10 @@ def test_generate_zpl_includes_required_commands():
 
     assert "^XA" in result
     assert "^XZ" in result
-    assert "ART-123" in result
-    assert "A simple article" in result
-    assert "123456789" in result
+    assert result.count("^FH\\^FD") == 3
+    assert _zpl_hex("ART-123") in result
+    assert _zpl_hex("A simple article") in result
+    assert _zpl_hex("123456789") in result
 
 
 def test_generate_zpl_truncates_long_description():
@@ -38,8 +43,8 @@ def test_generate_zpl_truncates_long_description():
     result = result_bytes.decode("utf-8")
 
     truncated = long_desc[:30]
-    assert truncated in result
-    assert long_desc not in result
+    assert _zpl_hex(truncated) in result
+    assert _zpl_hex(long_desc) not in result
 
 
 def test_generate_zpl_includes_batch_line_when_present():
@@ -51,7 +56,8 @@ def test_generate_zpl_includes_batch_line_when_present():
     )
     result = result_bytes.decode("utf-8")
 
-    assert "Batch: BATCH-99" in result
+    assert "Batch: " in result
+    assert _zpl_hex("BATCH-99") in result
 
 
 def test_generate_zpl_excludes_batch_line_when_absent():
@@ -64,6 +70,7 @@ def test_generate_zpl_excludes_batch_line_when_absent():
     result = result_bytes.decode("utf-8")
 
     assert "Batch:" not in result
+    assert result.count("^FH\\^FD") == 3
 
 
 def test_generate_label_dispatches_to_zpl_generator():
@@ -77,7 +84,8 @@ def test_generate_label_dispatches_to_zpl_generator():
     result = result_bytes.decode("utf-8")
 
     assert "^XA" in result
-    assert "ART-000" in result
+    assert result.count("^FH\\^FD") == 3
+    assert _zpl_hex("ART-000") in result
 
 
 def test_generate_label_raises_400_for_unknown_model():

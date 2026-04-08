@@ -61,7 +61,7 @@ export function HistoryView({
     setStartError(null)
     setTypeModalError(null)
     try {
-      await runWithRetry(() => inventoryApi.start(type))
+      await inventoryApi.start(type)
       const active = await runWithRetry(() => inventoryApi.getActive())
       if (active) {
         setTypeModalOpen(false)

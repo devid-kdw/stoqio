@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from typing import Any
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -1169,20 +1170,28 @@ def generate_order_pdf(order_id: int) -> tuple[bytes, str]:
     styles = getSampleStyleSheet()
 
     story = [
-        Paragraph(f"Purchase Order {detail['order_number']}", styles["Title"]),
+        Paragraph(escape(f"Purchase Order {detail['order_number']}"), styles["Title"]),
         Spacer(1, 4 * mm),
-        Paragraph(f"Date: {detail['created_at'] or 'N/A'}", styles["BodyText"]),
-        Paragraph(f"Status: {detail['status']}", styles["BodyText"]),
+        Paragraph(escape(f"Date: {detail['created_at'] or 'N/A'}"), styles["BodyText"]),
+        Paragraph(escape(f"Status: {detail['status']}"), styles["BodyText"]),
         Spacer(1, 4 * mm),
         Paragraph("Supplier", styles["Heading3"]),
-        Paragraph(detail["supplier_name"] or "N/A", styles["BodyText"]),
-        Paragraph(detail["supplier_address"] or "Address not provided.", styles["BodyText"]),
+        Paragraph(
+            escape(detail["supplier_name"] or "N/A"),
+            styles["BodyText"],
+        ),
+        Paragraph(
+            escape(detail["supplier_address"] or "Address not provided."),
+            styles["BodyText"],
+        ),
     ]
 
     if detail["supplier_confirmation_number"]:
         story.append(
             Paragraph(
-                f"Supplier confirmation number: {detail['supplier_confirmation_number']}",
+                escape(
+                    f"Supplier confirmation number: {detail['supplier_confirmation_number']}"
+                ),
                 styles["BodyText"],
             )
         )
@@ -1259,7 +1268,7 @@ def generate_order_pdf(order_id: int) -> tuple[bytes, str]:
             [
                 Spacer(1, 6 * mm),
                 Paragraph("Note", styles["Heading3"]),
-                Paragraph(detail["note"], styles["BodyText"]),
+                Paragraph(escape(detail["note"]), styles["BodyText"]),
             ]
         )
 

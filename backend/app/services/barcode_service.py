@@ -65,6 +65,12 @@ def _trim_text(value: str, *, max_length: int = 56) -> str:
     return f"{value[: max_length - 3]}..."
 
 
+def _zpl_field_data(value: Any) -> str:
+    """Return field data encoded so raw ZPL control delimiters stay inert."""
+    text = "" if value is None else str(value)
+    return "".join(f"\\{byte:02X}" for byte in text.encode("utf-8"))
+
+
 def _safe_filename_part(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_") or "barcode"
 
@@ -355,15 +361,15 @@ def _generate_zpl(
     - Article number
     - Batch line only when batch_code is present
     """
-    desc_line = description[:_ZPL_DESCRIPTION_MAX]
+    desc_line = _zpl_field_data(description[:_ZPL_DESCRIPTION_MAX])
     lines = [
         "^XA",
-        f"^FO50,30^BY2^BCN,100,Y,N,N^FD{barcode_value}^FS",
-        f"^FO50,150^A0N,25,25^FD{desc_line}^FS",
-        f"^FO50,185^A0N,20,20^FD{article_no}^FS",
+        f"^FO50,30^BY2^BCN,100,Y,N,N^FH\\^FD{_zpl_field_data(barcode_value)}^FS",
+        f"^FO50,150^A0N,25,25^FH\\^FD{desc_line}^FS",
+        f"^FO50,185^A0N,20,20^FH\\^FD{_zpl_field_data(article_no)}^FS",
     ]
     if batch_code:
-        lines.append(f"^FO50,215^A0N,20,20^FDBatch: {batch_code}^FS")
+        lines.append(f"^FO50,215^A0N,20,20^FH\\^FDBatch: {_zpl_field_data(batch_code)}^FS")
     lines.append("^XZ")
     return "\n".join(lines).encode("utf-8")
 
@@ -431,10 +437,15 @@ def _get_validated_printer_config() -> tuple[str, int, str]:
     - ``PRINTER_NOT_CONFIGURED`` (400) — IP is blank
     - ``PRINTER_MODEL_UNKNOWN`` (400) — stored model not in supported set
     """
-    cfg = settings_service.get_barcode_settings()
-    ip: str = (cfg.get("label_printer_ip") or "").strip()
-    port: int = cfg.get("label_printer_port") or 9100
-    model: str = (cfg.get("label_printer_model") or "").strip()
+    try:
+        ip, port, model = settings_service.get_validated_label_printer_config()
+    except settings_service.SettingsServiceError as exc:
+        raise BarcodeServiceError(
+            exc.error,
+            exc.message,
+            exc.status_code,
+            exc.details,
+        ) from exc
 
     if not ip:
         raise BarcodeServiceError(
@@ -451,7 +462,7 @@ def _get_validated_printer_config() -> tuple[str, int, str]:
             {"model": model},
         )
 
-    return ip, int(port), model
+    return ip, port, model
 
 
 def print_article_label(article_id: int) -> dict[str, Any]:

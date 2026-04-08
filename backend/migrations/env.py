@@ -5,11 +5,17 @@ import os
 import sys
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 _BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_ENV_FILE = os.path.join(_BACKEND_DIR, ".env")
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
+
+# Load the checked-in backend/.env for local Alembic runs before app config is
+# resolved. Production still fails fast if the required variables are missing.
+load_dotenv(_ENV_FILE, override=False)
 
 from app import create_app
 from app.extensions import db

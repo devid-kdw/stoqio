@@ -438,6 +438,10 @@ function toUserUpdatePayload(form: UserFormState): UpdateSettingsUserPayload {
   }
 }
 
+function getUserPasswordMinLength(role: SystemRole): number {
+  return role === 'ADMIN' ? 12 : 8
+}
+
 function quotaArticleLabel(article: OrderArticleLookupItem): string {
   return `${article.article_no} — ${article.description}`
 }
@@ -783,7 +787,7 @@ export default function SettingsPage() {
     setGeneralSaving(true)
 
     try {
-      const response = await runWithRetry(() => settingsApi.updateGeneral(generalForm))
+      const response = await settingsApi.updateGeneral(generalForm)
       setGeneralForm(response)
       await applyGeneralSettings(response)
       showSuccessToast('Opće postavke su spremljene.')
@@ -811,7 +815,7 @@ export default function SettingsPage() {
     }))
 
     try {
-      const response = await runWithRetry(() => settingsApi.updateRoles(payload))
+      const response = await settingsApi.updateRoles(payload)
       setRoles(response)
       setRolesForm(roleDisplayNameMap(response))
       applyRoleDisplayNames(response)
@@ -854,7 +858,7 @@ export default function SettingsPage() {
     }
 
     try {
-      const response = await runWithRetry(() => settingsApi.createUom(payload))
+      const response = await settingsApi.createUom(payload)
       setUoms((current) => sortUoms([...current, response]))
       setUomLookupOptions((current) =>
         sortUomLookupOptions([
@@ -896,13 +900,11 @@ export default function SettingsPage() {
     setCategorySavingId(categoryId)
 
     try {
-      const response = await runWithRetry(() =>
-        settingsApi.updateCategory(categoryId, {
-          label_hr: category.label_hr,
-          label_en: normalizeOptionalText(category.label_en ?? ''),
-          is_personal_issue: category.is_personal_issue,
-        })
-      )
+      const response = await settingsApi.updateCategory(categoryId, {
+        label_hr: category.label_hr,
+        label_en: normalizeOptionalText(category.label_en ?? ''),
+        is_personal_issue: category.is_personal_issue,
+      })
 
       setCategories((current) => replaceItemById(current, response))
       setCategoryLookupOptions((current) =>
@@ -1052,8 +1054,8 @@ export default function SettingsPage() {
     try {
       const response =
         quotaModalMode === 'create'
-          ? await runWithRetry(() => settingsApi.createQuota(payload))
-          : await runWithRetry(() => settingsApi.updateQuota(editingQuotaId!, payload))
+          ? await settingsApi.createQuota(payload)
+          : await settingsApi.updateQuota(editingQuotaId!, payload)
 
       setQuotas((current) => {
         const nextQuotas =
@@ -1090,7 +1092,7 @@ export default function SettingsPage() {
     setQuotaDeleteLoading(true)
 
     try {
-      await runWithRetry(() => settingsApi.deleteQuota(quotaDeleteTarget.id))
+      await settingsApi.deleteQuota(quotaDeleteTarget.id)
       setQuotas((current) => current.filter((quota) => quota.id !== quotaDeleteTarget.id))
       setQuotaDeleteTarget(null)
       showSuccessToast('Kvota je obrisana.')
@@ -1128,7 +1130,7 @@ export default function SettingsPage() {
     setBarcodeSaving(true)
 
     try {
-      const response = await runWithRetry(() => settingsApi.updateBarcode(barcodeForm))
+      const response = await settingsApi.updateBarcode(barcodeForm)
       setBarcodeForm(response)
       showSuccessToast('Barcode postavke su spremljene.')
     } catch (error) {
@@ -1148,7 +1150,7 @@ export default function SettingsPage() {
     setExportSaving(true)
 
     try {
-      const response = await runWithRetry(() => settingsApi.updateExport(exportForm))
+      const response = await settingsApi.updateExport(exportForm)
       setExportForm(response)
       showSuccessToast('Export postavke su spremljene.')
     } catch (error) {
@@ -1225,15 +1227,13 @@ export default function SettingsPage() {
 
     try {
       if (supplierModalMode === 'create') {
-        await runWithRetry(() => settingsApi.createSupplier(toSupplierPayload(supplierForm)))
+        await settingsApi.createSupplier(toSupplierPayload(supplierForm))
         setSupplierModalOpen(false)
         setSupplierPage(1)
         await refreshSuppliers(1)
         showSuccessToast('Dobavljač je kreiran.')
       } else {
-        await runWithRetry(() =>
-          settingsApi.updateSupplier(editingSupplierId!, toSupplierUpdatePayload(supplierForm))
-        )
+        await settingsApi.updateSupplier(editingSupplierId!, toSupplierUpdatePayload(supplierForm))
         setSupplierModalOpen(false)
         await refreshSuppliers()
         showSuccessToast('Dobavljač je spremljen.')
@@ -1263,9 +1263,7 @@ export default function SettingsPage() {
     setSupplierDeactivateLoading(true)
 
     try {
-      await runWithRetry(() =>
-        settingsApi.deactivateSupplier(supplierDeactivateTarget.id)
-      )
+      await settingsApi.deactivateSupplier(supplierDeactivateTarget.id)
       setSupplierDeactivateTarget(null)
       await refreshSuppliers()
       showSuccessToast('Dobavljač je deaktiviran.')
@@ -1302,6 +1300,15 @@ export default function SettingsPage() {
     setUserModalOpen(true)
   }
 
+  const editingUser = editingUserId === null
+    ? null
+    : users.find((user) => user.id === editingUserId) ?? null
+  const isAdminPromotion =
+    userModalMode === 'edit'
+    && userForm.role === 'ADMIN'
+    && editingUser !== null
+    && editingUser.role !== 'ADMIN'
+
   const validateUserForm = (): UserFormErrors => {
     const nextErrors: UserFormErrors = {}
 
@@ -1317,12 +1324,18 @@ export default function SettingsPage() {
       nextErrors.role = 'Rola je obavezna.'
     }
 
+    const passwordMinLength = getUserPasswordMinLength(userForm.role ?? 'OPERATOR')
+
+    const hasPasswordReset = userForm.password.trim().length > 0
+
     if (userModalMode === 'create') {
-      if (userForm.password.length < 4) {
-        nextErrors.password = 'Lozinka mora imati najmanje 4 znaka.'
+      if (userForm.password.length < passwordMinLength) {
+        nextErrors.password = `Lozinka mora imati najmanje ${passwordMinLength} znakova.`
       }
-    } else if (userForm.password && userForm.password.length < 4) {
-      nextErrors.password = 'Nova lozinka mora imati najmanje 4 znaka.'
+    } else if (isAdminPromotion && !hasPasswordReset) {
+      nextErrors.password = 'Promocija u admin rolu zahtijeva novu lozinku od najmanje 12 znakova.'
+    } else if (hasPasswordReset && userForm.password.length < passwordMinLength) {
+      nextErrors.password = `Nova lozinka mora imati najmanje ${passwordMinLength} znakova.`
     }
 
     return nextErrors
@@ -1342,10 +1355,8 @@ export default function SettingsPage() {
     try {
       const response =
         userModalMode === 'create'
-          ? await runWithRetry(() => settingsApi.createUser(toUserPayload(userForm)))
-          : await runWithRetry(() =>
-              settingsApi.updateUser(editingUserId!, toUserUpdatePayload(userForm))
-            )
+          ? await settingsApi.createUser(toUserPayload(userForm))
+          : await settingsApi.updateUser(editingUserId!, toUserUpdatePayload(userForm))
 
       setUsers((current) => {
         const nextUsers =
@@ -1387,9 +1398,7 @@ export default function SettingsPage() {
     setUserDeactivateLoading(true)
 
     try {
-      const response = await runWithRetry(() =>
-        settingsApi.deactivateUser(userDeactivateTarget.id)
-      )
+      const response = await settingsApi.deactivateUser(userDeactivateTarget.id)
       setUsers((current) => sortUsers(replaceItemById(current, response)))
       setUserDeactivateTarget(null)
       showSuccessToast('Korisnički račun je deaktiviran.')
@@ -2468,12 +2477,14 @@ export default function SettingsPage() {
                 }))
               }
               description={
-                userModalMode === 'edit'
-                  ? 'Ostavite prazno ako lozinku ne želite mijenjati.'
-                  : undefined
+                isAdminPromotion
+                  ? 'Promocija u admin rolu zahtijeva novu lozinku.'
+                  : userModalMode === 'edit'
+                  ? `Ostavite prazno ako lozinku ne želite mijenjati. Ako je mijenjate, za odabranu rolu mora imati najmanje ${getUserPasswordMinLength(userForm.role ?? 'OPERATOR')} znakova.`
+                  : `Lozinka mora imati najmanje ${getUserPasswordMinLength(userForm.role ?? 'OPERATOR')} znakova.`
               }
               error={userErrors.password}
-              required={userModalMode === 'create'}
+              required={userModalMode === 'create' || isAdminPromotion}
             />
 
             <Select

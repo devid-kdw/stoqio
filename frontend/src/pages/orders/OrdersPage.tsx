@@ -462,7 +462,7 @@ export default function OrdersPage() {
     }
 
     try {
-      const response = await runWithRetry(() => ordersApi.create(payload))
+      const response = await ordersApi.create(payload)
       showSuccessToast('Narudžbenica je kreirana.')
       navigate(`/orders/${response.id}`)
     } catch (error) {
