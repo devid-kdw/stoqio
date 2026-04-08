@@ -1,7 +1,4 @@
-// Security plugin — install manually before enabling (DEC-FE-001):
-//   cd /Users/grzzi/Desktop/STOQIO/frontend && npm install --save-dev eslint-plugin-security
-// Then uncomment the import and the spread below:
-// import security from 'eslint-plugin-security'
+import security from 'eslint-plugin-security'
 
 import js from '@eslint/js'
 import globals from 'globals'
@@ -19,7 +16,7 @@ export default defineConfig([
       tseslint.configs.recommended,
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
-      // security.configs.recommended,  // uncomment after npm install --save-dev eslint-plugin-security
+      security.configs.recommended,
     ],
     languageOptions: {
       ecmaVersion: 2020,
