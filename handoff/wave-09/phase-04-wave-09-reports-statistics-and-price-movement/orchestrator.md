@@ -84,6 +84,39 @@ Acceptance Criteria
 
 Validation Notes
 - 2026-04-11: Orchestrator opened Wave 9 Phase 4 from the finalized Wave 9 feedback intake.
+- 2026-04-11: Orchestrator reviewed `backend.md`, `frontend.md`, and `testing.md` against the
+  committed code changes.
+- 2026-04-11: Orchestrator re-ran validation:
+  - `backend/venv/bin/python -m pytest backend/tests/test_reports.py -q --tb=short`
+    → `67 passed`
+  - `cd frontend && npx vitest run src/pages/reports/__tests__/ReportsPage.test.tsx`
+    → `10 passed`
+  - `cd frontend && npm run lint` → passed
+  - `cd frontend && npm run build` → passed
+- 2026-04-11: Orchestrator found one blocking integration issue during review:
+  - backend `get_reorder_drilldown_statistics()` does not return `coverage_months`
+  - frontend `ReorderDrilldownItem` requires `coverage_months`
+  - `ReportsPage.tsx` renders `formatCoverageMonths(item.coverage_months)` in the local Statistics
+    drilldown table
+  - because `formatCoverageMonths(undefined)` renders `NaN`, the Statistics drilldown can show
+    broken coverage values even though backend/frontend tests still pass
+- 2026-04-11: Orchestrator remediation implemented the fix directly:
+  - removed the unsupported `coverage_months` dependency from the Statistics reorder-drilldown UI
+    in `frontend/src/pages/reports/ReportsPage.tsx`
+  - aligned `ReorderDrilldownItem` in `frontend/src/api/reports.ts` with the real backend
+    response shape
+  - hardened `formatCoverageMonths()` in `frontend/src/pages/reports/reportsUtils.ts` so missing
+    values no longer degrade into `NaN`
+  - updated `frontend/src/pages/reports/__tests__/ReportsPage.test.tsx` to use a backend-realistic
+    drilldown mock without `coverage_months` and assert that no `NaN` leaks into the UI
+- 2026-04-11: Orchestrator remediation validation:
+  - `backend/venv/bin/python -m pytest backend/tests/test_reports.py -q --tb=short`
+    → `67 passed`
+  - `cd frontend && npx vitest run src/pages/reports/__tests__/ReportsPage.test.tsx`
+    → `10 passed`
+  - `cd frontend && npm run lint` → passed
+  - `cd frontend && npm run build` → passed
+- 2026-04-11: Phase 4 accepted by orchestrator after remediation and re-validation.
 
 Next Action
-- Backend, frontend, and testing workers implement and record their handoffs.
+- Proceed to Phase 5.

@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Checkbox,
+  Collapse,
   Group,
   Loader,
   MultiSelect,
@@ -19,12 +20,16 @@ import {
   Text,
   TextInput,
   Title,
+  UnstyledButton,
   useMantineColorScheme,
   useMantineTheme,
 } from '@mantine/core'
 import {
   IconChartBar,
   IconChartLine,
+  IconChevronDown,
+  IconChevronRight,
+  IconCurrencyEuro,
   IconFileSpreadsheet,
   IconFileTypePdf,
   IconListDetails,
@@ -39,10 +44,13 @@ import {
 } from '../../api/articles'
 import {
   reportsApi,
+  type MovementFilter,
   type MovementRange,
   type MovementStatisticsItem,
   type MovementStatisticsResponse,
   type PersonalIssuanceStatisticsItem,
+  type PriceMovementResponse,
+  type ReorderDrilldownItem,
   type ReportExportFormat,
   type ReportReorderStatus,
   type ReportTransactionType,
@@ -383,6 +391,8 @@ export default function ReportsPage() {
   const isDark = colorScheme === 'dark'
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'ADMIN'
+  const isManager = user?.role === 'MANAGER'
+  const canViewPriceMovement = isAdmin || isManager
 
   const initialDateTo = useMemo(() => getTodayIsoDate(), [])
   const initialDateFrom = useMemo(() => getMonthStartIsoDate(), [])
@@ -467,6 +477,33 @@ export default function ReportsPage() {
   const [personalIssuances, setPersonalIssuances] = useState<PersonalIssuanceStatisticsItem[]>([])
   const [personalIssuancesLoading, setPersonalIssuancesLoading] = useState(false)
   const [personalIssuancesError, setPersonalIssuancesError] = useState<string | null>(null)
+
+  // Wave 9: Statistics subsection collapsed state (W9-F-008)
+  const [topOpen, setTopOpen] = useState(false)
+  const [movementOpen, setMovementOpen] = useState(false)
+  const [reorderOpen, setReorderOpen] = useState(false)
+  const [personalOpen, setPersonalOpen] = useState(false)
+  const [priceMovementOpen, setPriceMovementOpen] = useState(false)
+
+  // Wave 9: Movement article/category filter (W9-F-010)
+  const [movementArticleId, setMovementArticleId] = useState<number | null>(null)
+  const [movementCategory, setMovementCategory] = useState<string | null>(null)
+  const [movementArticleSearch, setMovementArticleSearch] = useState('')
+  const [movementArticleOptions, setMovementArticleOptions] = useState<TransactionArticleOption[]>([])
+  const [movementArticleLoading, setMovementArticleLoading] = useState(false)
+  const [selectedMovementArticle, setSelectedMovementArticle] = useState<TransactionArticleOption | null>(null)
+
+  // Wave 9: Reorder drilldown inside Statistics (W9-F-009)
+  const [drilldownZone, setDrilldownZone] = useState<ZoneFilter>(null)
+  const [drilldownItems, setDrilldownItems] = useState<ReorderDrilldownItem[]>([])
+  const [drilldownLoading, setDrilldownLoading] = useState(false)
+  const [drilldownError, setDrilldownError] = useState<string | null>(null)
+  const [drilldownOpen, setDrilldownOpen] = useState(false)
+
+  // Wave 9: Price movement (W9-F-005)
+  const [priceMovement, setPriceMovement] = useState<PriceMovementResponse | null>(null)
+  const [priceMovementLoading, setPriceMovementLoading] = useState(false)
+  const [priceMovementError, setPriceMovementError] = useState<string | null>(null)
 
   const uomMap = useMemo(() => buildUomMap(uoms), [uoms])
 
@@ -650,13 +687,13 @@ export default function ReportsPage() {
     }
   }, [])
 
-  const loadMovementStatistics = useCallback(async (range: MovementRange) => {
+  const loadMovementStatistics = useCallback(async (filter: MovementFilter) => {
     setMovementLoading(true)
     setMovementError(null)
     setFatalError(false)
 
     try {
-      const response = await runWithRetry(() => reportsApi.getMovementStatistics(range))
+      const response = await runWithRetry(() => reportsApi.getMovementStatistics(filter))
       setMovementStatistics(response)
     } catch (error) {
       if (isNetworkOrServerError(error)) {
@@ -713,6 +750,52 @@ export default function ReportsPage() {
     }
   }, [])
 
+  const loadReorderDrilldown = useCallback(async (status: ZoneFilter) => {
+    if (!status) {
+      return
+    }
+
+    setDrilldownLoading(true)
+    setDrilldownError(null)
+    setFatalError(false)
+
+    try {
+      const response = await runWithRetry(() => reportsApi.getReorderDrilldown(status))
+      setDrilldownItems(response.items)
+      setDrilldownZone(status)
+      setDrilldownOpen(true)
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        setFatalError(true)
+        return
+      }
+
+      setDrilldownError(getApiErrorBody(error)?.message ?? 'Drilldown zona nije dostupan.')
+    } finally {
+      setDrilldownLoading(false)
+    }
+  }, [])
+
+  const loadPriceMovement = useCallback(async () => {
+    setPriceMovementLoading(true)
+    setPriceMovementError(null)
+    setFatalError(false)
+
+    try {
+      const response = await runWithRetry(() => reportsApi.getPriceMovement())
+      setPriceMovement(response)
+    } catch (error) {
+      if (isNetworkOrServerError(error)) {
+        setFatalError(true)
+        return
+      }
+
+      setPriceMovementError(getApiErrorBody(error)?.message ?? 'Kretanje cijena nije dostupno.')
+    } finally {
+      setPriceMovementLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     void loadInitialData({
       dateFrom: initialDateFrom,
@@ -754,19 +837,65 @@ export default function ReportsPage() {
 
     setStatisticsInitialized(true)
     void loadTopConsumption(topPeriod)
-    void loadMovementStatistics(movementRange)
+    void loadMovementStatistics({ range: movementRange, articleId: movementArticleId, category: movementCategory })
     void loadReorderSummary()
     void loadPersonalIssuances()
+    if (canViewPriceMovement) {
+      void loadPriceMovement()
+    }
   }, [
     activeTab,
+    canViewPriceMovement,
     loadMovementStatistics,
     loadPersonalIssuances,
+    loadPriceMovement,
     loadReorderSummary,
     loadTopConsumption,
+    movementArticleId,
+    movementCategory,
     movementRange,
     statisticsInitialized,
     topPeriod,
   ])
+
+  // Wave 9: Movement article search (W9-F-010) — reuses the same article lookup pattern as Transactions
+  useEffect(() => {
+    if (activeTab !== 'statistics') {
+      return
+    }
+
+    const searchQuery = movementArticleSearch.trim()
+    if (searchQuery.length < 2 || searchQuery === selectedMovementArticle?.label) {
+      if (!selectedMovementArticle) {
+        setMovementArticleOptions([])
+      }
+      setMovementArticleLoading(false)
+      return
+    }
+
+    const timer = window.setTimeout(async () => {
+      setMovementArticleLoading(true)
+
+      try {
+        const response = await runWithRetry(() =>
+          articlesApi.listWarehouse({
+            page: 1,
+            perPage: 10,
+            q: searchQuery,
+            includeInactive: false,
+          })
+        )
+
+        setMovementArticleOptions(response.items.map(mapArticleOption))
+      } catch {
+        // Silently fail article lookup in movement filter — non-blocking
+      } finally {
+        setMovementArticleLoading(false)
+      }
+    }, 300)
+
+    return () => window.clearTimeout(timer)
+  }, [activeTab, movementArticleSearch, selectedMovementArticle])
 
   useEffect(() => {
     if (activeTab !== 'transactions') {
@@ -971,11 +1100,24 @@ export default function ReportsPage() {
       const nextRange = value as MovementRange
       setMovementRange(nextRange)
       if (activeTab === 'statistics') {
-        void loadMovementStatistics(nextRange)
+        void loadMovementStatistics({ range: nextRange, articleId: movementArticleId, category: movementCategory })
       }
     },
-    [activeTab, loadMovementStatistics]
+    [activeTab, loadMovementStatistics, movementArticleId, movementCategory]
   )
+
+  const handleMovementFilterApply = useCallback(() => {
+    void loadMovementStatistics({ range: movementRange, articleId: movementArticleId, category: movementCategory })
+  }, [loadMovementStatistics, movementArticleId, movementCategory, movementRange])
+
+  const handleMovementFilterReset = useCallback(() => {
+    setMovementArticleId(null)
+    setMovementCategory(null)
+    setSelectedMovementArticle(null)
+    setMovementArticleSearch('')
+    setMovementArticleOptions([])
+    void loadMovementStatistics({ range: movementRange })
+  }, [loadMovementStatistics, movementRange])
 
   const handleTopConsumptionSelect = useCallback(
     (item: TopConsumptionItem) => {
@@ -1021,10 +1163,9 @@ export default function ReportsPage() {
       return
     }
 
-    setStockZoneFilter(status)
-    setStockReorderOnly(false)
-    setActiveTab('stock')
-  }, [])
+    // Wave 9 (W9-F-009): Stay inside Statistics — load drilldown inline
+    void loadReorderDrilldown(status)
+  }, [loadReorderDrilldown])
 
   if (fatalError) {
     return (
@@ -1611,21 +1752,22 @@ export default function ReportsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="statistics" pt="md">
-          <Stack gap="lg">
-            <SimpleGrid cols={{ base: 1, md: 2 }}>
-              <Paper withBorder radius="lg" p="lg">
-                <Stack gap="md">
-                  <Group justify="space-between" align="flex-start">
-                    <div>
-                      <Group gap="xs">
-                        <IconChartBar size={18} />
-                        <Title order={3}>Top 10 po potrošnji</Title>
-                      </Group>
-                      <Text c="dimmed" mt={4}>
-                        Najviše trošeni artikli u odabranom razdoblju.
-                      </Text>
-                    </div>
+          <Stack gap="md">
+            {/* ── Section A: Top 10 by consumption (collapsible, W9-F-008) ── */}
+            <Paper withBorder radius="lg" p="lg">
+              <UnstyledButton onClick={() => setTopOpen((v) => !v)} style={{ width: '100%' }} aria-label="Top 10 po potrošnji">
+                <Group justify="space-between" align="center">
+                  <Group gap="xs">
+                    <IconChartBar size={18} />
+                    <Title order={3}>Top 10 po potrošnji</Title>
+                  </Group>
+                  {topOpen ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
+                </Group>
+              </UnstyledButton>
 
+              <Collapse in={topOpen}>
+                <Stack gap="md" mt="md">
+                  <Group justify="flex-end">
                     <SegmentedControl
                       value={topPeriod}
                       onChange={handleTopPeriodChange}
@@ -1651,7 +1793,7 @@ export default function ReportsPage() {
                   ) : topConsumption && topConsumption.items.length > 0 ? (
                     <>
                       <Text size="sm" c="dimmed">
-                        Razdoblje: {formatDate(topConsumption.date_from)} -{' '}
+                        Razdoblje: {formatDate(topConsumption.date_from)} –{' '}
                         {formatDate(topConsumption.date_to)}
                       </Text>
                       <ConsumptionBarChart
@@ -1666,20 +1808,106 @@ export default function ReportsPage() {
                     </Text>
                   )}
                 </Stack>
-              </Paper>
+              </Collapse>
+            </Paper>
 
-              <Paper withBorder radius="lg" p="lg">
-                <Stack gap="md">
-                  <Group justify="space-between" align="flex-start">
-                    <div>
+            {/* ── Section B: Movement over time (collapsible, W9-F-008 + W9-F-010) ── */}
+            <Paper withBorder radius="lg" p="lg">
+              <UnstyledButton onClick={() => setMovementOpen((v) => !v)} style={{ width: '100%' }} aria-label="Ulaz i izlaz kroz vrijeme">
+                <Group justify="space-between" align="center">
+                  <Group gap="xs">
+                    <IconChartLine size={18} />
+                    <Title order={3}>Ulaz i izlaz kroz vrijeme</Title>
+                  </Group>
+                  {movementOpen ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
+                </Group>
+              </UnstyledButton>
+
+              <Collapse in={movementOpen}>
+                <Stack gap="md" mt="md">
+                  <Group justify="space-between" align="flex-end">
+                    <Group gap="sm" align="flex-end" wrap="wrap">
+                      {/* Wave 9 (W9-F-010): Article filter */}
+                      <Select
+                        label="Artikl"
+                        placeholder="Cijelo skladište"
+                        searchable
+                        clearable
+                        data={[
+                          ...(selectedMovementArticle
+                            ? [{ value: String(selectedMovementArticle.id), label: selectedMovementArticle.label }]
+                            : []),
+                          ...movementArticleOptions
+                            .filter((o) => o.id !== selectedMovementArticle?.id)
+                            .map((o) => ({ value: String(o.id), label: o.label })),
+                        ]}
+                        searchValue={movementArticleSearch}
+                        onSearchChange={(value) => {
+                          setMovementArticleSearch(value)
+                          if (selectedMovementArticle && value !== selectedMovementArticle.label) {
+                            setSelectedMovementArticle(null)
+                            setMovementArticleId(null)
+                          }
+                        }}
+                        value={selectedMovementArticle ? String(selectedMovementArticle.id) : null}
+                        onChange={(value) => {
+                          if (!value) {
+                            setSelectedMovementArticle(null)
+                            setMovementArticleId(null)
+                            setMovementArticleSearch('')
+                            setMovementArticleOptions([])
+                            // Clear category too since article filter is exclusive
+                            return
+                          }
+                          const found = [...(selectedMovementArticle ? [selectedMovementArticle] : []), ...movementArticleOptions]
+                            .find((o) => o.id === Number(value))
+                          if (found) {
+                            setSelectedMovementArticle(found)
+                            setMovementArticleId(found.id)
+                            setMovementArticleSearch(found.label)
+                            setMovementCategory(null) // mutually exclusive
+                          }
+                        }}
+                        nothingFoundMessage={movementArticleSearch.trim().length < 2 ? 'Upišite najmanje 2 znaka.' : 'Nema rezultata.'}
+                        rightSection={movementArticleLoading ? <Loader size="xs" /> : null}
+                        disabled={!!movementCategory}
+                        style={{ minWidth: 220 }}
+                      />
+
+                      {/* Wave 9 (W9-F-010): Category filter */}
+                      <Select
+                        label="Kategorija"
+                        placeholder="Sve kategorije"
+                        clearable
+                        searchable
+                        nothingFoundMessage="Nema rezultata."
+                        data={categories.map((c) => ({ value: c.key, label: c.label_hr }))}
+                        value={movementCategory}
+                        onChange={(value) => {
+                          setMovementCategory(value)
+                          if (value) {
+                            // mutually exclusive with article filter
+                            setSelectedMovementArticle(null)
+                            setMovementArticleId(null)
+                            setMovementArticleSearch('')
+                            setMovementArticleOptions([])
+                          }
+                        }}
+                        disabled={!!movementArticleId}
+                        style={{ minWidth: 180 }}
+                      />
+
                       <Group gap="xs">
-                        <IconChartLine size={18} />
-                        <Title order={3}>Ulaz i izlaz kroz vrijeme</Title>
+                        <Button size="sm" onClick={handleMovementFilterApply} loading={movementLoading}>
+                          Primijeni
+                        </Button>
+                        {(movementArticleId || movementCategory) ? (
+                          <Button size="sm" variant="subtle" onClick={handleMovementFilterReset}>
+                            Poništi
+                          </Button>
+                        ) : null}
                       </Group>
-                      <Text c="dimmed" mt={4}>
-                        Trendovi ulaza i izlaza po tjednima ili mjesecima.
-                      </Text>
-                    </div>
+                    </Group>
 
                     <SegmentedControl
                       value={movementRange}
@@ -1706,8 +1934,9 @@ export default function ReportsPage() {
                   ) : movementStatistics ? (
                     <>
                       <MovementLineChart items={movementStatistics.items} />
-                      <Text size="sm" c="dimmed">
-                        {movementStatistics.note}
+                      {/* Wave 9 (W9-F-010): Croatian helper note — rendered client-side */}
+                      <Text size="sm" c="dimmed" data-testid="movement-note-hr">
+                        Količine su zbrojene po svim mjernim jedinicama. Grafikon prikazuje trendove, a ne precizne ukupne iznose.
                       </Text>
                     </>
                   ) : (
@@ -1716,15 +1945,22 @@ export default function ReportsPage() {
                     </Text>
                   )}
                 </Stack>
-              </Paper>
-            </SimpleGrid>
+              </Collapse>
+            </Paper>
 
-            <SimpleGrid cols={{ base: 1, md: 3 }}>
-              <Paper withBorder radius="lg" p="lg">
-                <Stack gap="md">
+            {/* ── Section C: Reorder zone summary (collapsible, W9-F-008) ── */}
+            <Paper withBorder radius="lg" p="lg">
+              <UnstyledButton onClick={() => setReorderOpen((v) => !v)} style={{ width: '100%' }} aria-label="Sažetak zona naručivanja">
+                <Group justify="space-between" align="center">
                   <Title order={3}>Sažetak zona naručivanja</Title>
+                  {reorderOpen ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
+                </Group>
+              </UnstyledButton>
+
+              <Collapse in={reorderOpen}>
+                <Stack gap="md" mt="md">
                   <Text c="dimmed">
-                    Klik na zonu otvara Doseg zaliha s lokalnim drilldown filtrom.
+                    Klik na zonu otvara popis artikala unutar Statistika.
                   </Text>
 
                   {reorderSummaryError ? (
@@ -1775,12 +2011,89 @@ export default function ReportsPage() {
                       ))}
                     </Stack>
                   )}
-                </Stack>
-              </Paper>
 
-              <Paper withBorder radius="lg" p="lg" style={{ gridColumn: 'span 2' }}>
-                <Stack gap="md">
+                  {/* Wave 9 (W9-F-009): Reorder drilldown block inside Statistics */}
+                  {drilldownLoading ? (
+                    <Group justify="center" py="md">
+                      <Loader size="sm" />
+                      <Text size="sm" c="dimmed">Učitavanje drilldown podataka…</Text>
+                    </Group>
+                  ) : null}
+
+                  {drilldownError ? (
+                    <Alert color="red" title="Drilldown zona nije dostupan">
+                      {drilldownError}
+                    </Alert>
+                  ) : null}
+
+                  {drilldownZone && drilldownItems.length > 0 ? (
+                    <Paper withBorder radius="md" p="md" mt="sm">
+                      <UnstyledButton onClick={() => setDrilldownOpen((v) => !v)} style={{ width: '100%' }}>
+                        <Group justify="space-between" align="center">
+                          <Group gap="sm">
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: '50%',
+                                background: getReorderStatusColor(drilldownZone),
+                                display: 'inline-block',
+                              }}
+                            />
+                            <Title order={4}>
+                              {getReorderStatusLabel(drilldownZone)} — {drilldownItems.length} artikala
+                            </Title>
+                          </Group>
+                          {drilldownOpen ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+                        </Group>
+                      </UnstyledButton>
+
+                      <Collapse in={drilldownOpen}>
+                        <ScrollArea mt="sm">
+                          <Table withTableBorder striped highlightOnHover verticalSpacing="sm">
+                            <Table.Thead>
+                              <Table.Tr>
+                                <Table.Th>Broj artikla</Table.Th>
+                                <Table.Th>Opis</Table.Th>
+                                <Table.Th>Zaliha</Table.Th>
+                                <Table.Th>Prag naručivanja</Table.Th>
+                              </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                              {drilldownItems.map((item) => (
+                                <Table.Tr key={item.article_id}>
+                                  <Table.Td>{item.article_no}</Table.Td>
+                                  <Table.Td>{item.description}</Table.Td>
+                                  <Table.Td>{formatQuantity(item.stock, item.uom, uomMap)}</Table.Td>
+                                  <Table.Td>
+                                    {item.reorder_threshold === null
+                                      ? '—'
+                                      : formatQuantity(item.reorder_threshold, item.uom, uomMap)}
+                                  </Table.Td>
+                                </Table.Tr>
+                              ))}
+                            </Table.Tbody>
+                          </Table>
+                        </ScrollArea>
+                      </Collapse>
+                    </Paper>
+                  ) : null}
+                </Stack>
+              </Collapse>
+            </Paper>
+
+            {/* ── Section D: Personal issuances (collapsible, W9-F-008) ── */}
+            <Paper withBorder radius="lg" p="lg">
+              <UnstyledButton onClick={() => setPersonalOpen((v) => !v)} style={{ width: '100%' }} aria-label="Osobna izdavanja">
+                <Group justify="space-between" align="center">
                   <Title order={4}>Osobna izdavanja</Title>
+                  {personalOpen ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
+                </Group>
+              </UnstyledButton>
+
+              <Collapse in={personalOpen}>
+                <Stack gap="md" mt="md">
                   <Text c="dimmed">
                     {personalIssuancesYear
                       ? `Pregled izdanja po zaposleniku za ${personalIssuancesYear}.`
@@ -1855,8 +2168,103 @@ export default function ReportsPage() {
                     </ScrollArea>
                   )}
                 </Stack>
+              </Collapse>
+            </Paper>
+
+            {/* ── Section E: Price Movement (collapsible, W9-F-005) ── */}
+            {canViewPriceMovement ? (
+              <Paper withBorder radius="lg" p="lg">
+                <UnstyledButton onClick={() => setPriceMovementOpen((v) => !v)} style={{ width: '100%' }} aria-label="Kretanje cijena">
+                  <Group justify="space-between" align="center">
+                    <Group gap="xs">
+                      <IconCurrencyEuro size={18} />
+                      <Title order={3}>Kretanje cijena</Title>
+                    </Group>
+                    {priceMovementOpen ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
+                  </Group>
+                </UnstyledButton>
+
+                <Collapse in={priceMovementOpen}>
+                  <Stack gap="md" mt="md">
+                    <Text c="dimmed">
+                      Pregled najnovijih promjena cijena za sve aktivne artikle skladišta.
+                    </Text>
+
+                    {priceMovementError ? (
+                      <Alert color="red" title="Kretanje cijena nije dostupno">
+                        {priceMovementError}
+                      </Alert>
+                    ) : null}
+
+                    {priceMovementLoading && !priceMovement ? (
+                      <Group justify="center" py="xl">
+                        <Loader />
+                      </Group>
+                    ) : priceMovement && priceMovement.items.length > 0 ? (
+                      <>
+                        <Text size="sm" c="dimmed">
+                          Ukupno artikala: {priceMovement.total}
+                        </Text>
+                        <ScrollArea>
+                          <Table withTableBorder striped highlightOnHover verticalSpacing="sm">
+                            <Table.Thead>
+                              <Table.Tr>
+                                <Table.Th>Broj artikla</Table.Th>
+                                <Table.Th>Opis</Table.Th>
+                                <Table.Th>Kategorija</Table.Th>
+                                <Table.Th>Zadnja cijena</Table.Th>
+                                <Table.Th>Prethodna cijena</Table.Th>
+                                <Table.Th>Datum promjene</Table.Th>
+                                <Table.Th>Razlika</Table.Th>
+                                <Table.Th>Razlika %</Table.Th>
+                              </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                              {priceMovement.items.map((item) => (
+                                <Table.Tr key={item.article_id}>
+                                  <Table.Td>{item.article_no}</Table.Td>
+                                  <Table.Td>{item.description}</Table.Td>
+                                  <Table.Td>{item.category ?? '—'}</Table.Td>
+                                  <Table.Td>{formatCurrency(item.latest_price)}</Table.Td>
+                                  <Table.Td>{formatCurrency(item.previous_price)}</Table.Td>
+                                  <Table.Td>{formatDate(item.last_change_date)}</Table.Td>
+                                  <Table.Td>
+                                    {item.delta !== null ? (
+                                      <Text
+                                        size="sm"
+                                        c={item.delta > 0 ? 'red' : item.delta < 0 ? 'green' : undefined}
+                                        fw={item.delta !== 0 ? 600 : undefined}
+                                      >
+                                        {item.delta > 0 ? '+' : ''}{formatDecimal(item.delta, 2)} €
+                                      </Text>
+                                    ) : '—'}
+                                  </Table.Td>
+                                  <Table.Td>
+                                    {item.delta_pct !== null ? (
+                                      <Text
+                                        size="sm"
+                                        c={item.delta_pct > 0 ? 'red' : item.delta_pct < 0 ? 'green' : undefined}
+                                        fw={item.delta_pct !== 0 ? 600 : undefined}
+                                      >
+                                        {item.delta_pct > 0 ? '+' : ''}{formatDecimal(item.delta_pct, 1)}%
+                                      </Text>
+                                    ) : '—'}
+                                  </Table.Td>
+                                </Table.Tr>
+                              ))}
+                            </Table.Tbody>
+                          </Table>
+                        </ScrollArea>
+                      </>
+                    ) : (
+                      <Text c="dimmed" ta="center" py="xl">
+                        Nema podataka o kretanju cijena.
+                      </Text>
+                    )}
+                  </Stack>
+                </Collapse>
               </Paper>
-            </SimpleGrid>
+            ) : null}
           </Stack>
         </Tabs.Panel>
       </Tabs>

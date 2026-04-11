@@ -1576,6 +1576,8 @@ def test_admin_and_manager_can_access_non_export_reports_endpoints(
         f"/api/v1/reports/transactions?article_id={reports_data['article_yellow_id']}&page=1&per_page=5",
         "/api/v1/reports/statistics/top-consumption?period=month",
         "/api/v1/reports/statistics/movement?range=6m",
+        "/api/v1/reports/statistics/price-movement",
+        "/api/v1/reports/statistics/reorder-drilldown?status=NORMAL",
         "/api/v1/reports/statistics/reorder-summary",
         "/api/v1/reports/statistics/personal-issuances",
     ]
@@ -1617,8 +1619,8 @@ def test_movement_statistics_return_seeded_month_delta(client, reports_data):
     assert payload["granularity"] == "month"
     assert len(payload["items"]) == 6
     assert payload["note"] == (
-        "Quantities are summed across all units of measure. "
-        "This chart shows trends, not precise totals."
+        "Količine su zbrojene po svim mjernim jedinicama. "
+        "Grafikon prikazuje trendove, a ne precizne ukupne iznose."
     )
 
     march_bucket = next(item for item in payload["items"] if item["bucket"] == "2026-03")
@@ -1643,6 +1645,243 @@ def test_reorder_summary_statistics_return_locked_uppercase_status_counts(client
     assert counts["RED"] == reports_data["baseline_reorder"]["RED"] + SEEDED_REORDER_INCREMENT["RED"]
     assert counts["YELLOW"] == reports_data["baseline_reorder"]["YELLOW"] + SEEDED_REORDER_INCREMENT["YELLOW"]
     assert counts["NORMAL"] == reports_data["baseline_reorder"]["NORMAL"] + SEEDED_REORDER_INCREMENT["NORMAL"]
+
+
+# ---------------------------------------------------------------------------
+# W9-F-010 — Movement statistics: Croatian note + article/category filtering
+# ---------------------------------------------------------------------------
+
+# Known seeded values for targeted assertions (see reports_data fixture).
+_YELLOW_MARCH_INBOUND = 50.0   # one STOCK_RECEIPT for REP13-001
+_YELLOW_MARCH_OUTBOUND = 16.0  # STOCK_CONSUMED 12 + SURPLUS_CONSUMED 3 + OUTBOUND 1
+_GENERAL_MARCH_INBOUND = 1260.0  # yellow 50 + red 10 + stats 1200
+_GENERAL_MARCH_OUTBOUND = 1016.0  # yellow 16 + stats 1000 (PPE excluded)
+
+
+def test_movement_statistics_note_is_croatian(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/movement?range=3m",
+        headers=_manager_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert payload["note"] == (
+        "Količine su zbrojene po svim mjernim jedinicama. "
+        "Grafikon prikazuje trendove, a ne precizne ukupne iznose."
+    )
+
+
+def test_movement_statistics_filter_by_article_id(client, reports_data):
+    article_id = reports_data["article_yellow_id"]
+    response = client.get(
+        f"/api/v1/reports/statistics/movement?range=6m&article_id={article_id}",
+        headers=_manager_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert payload["range"] == "6m"
+    assert len(payload["items"]) == 6
+
+    march_bucket = next(item for item in payload["items"] if item["bucket"] == "2026-03")
+    assert march_bucket["inbound"] == pytest.approx(_YELLOW_MARCH_INBOUND)
+    assert march_bucket["outbound"] == pytest.approx(_YELLOW_MARCH_OUTBOUND)
+
+
+def test_movement_statistics_filter_by_category(client, reports_data):
+    response = client.get(
+        f"/api/v1/reports/statistics/movement?range=6m&category={REPORT_GENERAL_CATEGORY}",
+        headers=_manager_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert payload["range"] == "6m"
+    assert len(payload["items"]) == 6
+
+    march_bucket = next(item for item in payload["items"] if item["bucket"] == "2026-03")
+    assert march_bucket["inbound"] == pytest.approx(_GENERAL_MARCH_INBOUND)
+    assert march_bucket["outbound"] == pytest.approx(_GENERAL_MARCH_OUTBOUND)
+
+
+def test_movement_statistics_unknown_article_id_returns_404(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/movement?range=6m&article_id=999999",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "NOT_FOUND"
+
+
+def test_movement_statistics_unknown_category_returns_404(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/movement?range=6m&category=does_not_exist",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "NOT_FOUND"
+
+
+def test_movement_statistics_invalid_article_id_returns_400(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/movement?range=6m&article_id=notanint",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+
+# ---------------------------------------------------------------------------
+# W9-F-005 — Price-movement statistics
+# ---------------------------------------------------------------------------
+
+
+def test_price_movement_statistics_manager_can_access(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/price-movement",
+        headers=_manager_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert "items" in payload
+    assert "total" in payload
+    assert payload["total"] == len(payload["items"])
+
+
+def test_price_movement_statistics_article_with_change_leads_list(
+    client, reports_data, reports_value_data
+):
+    """REP13-001 has two Receiving rows with different prices — it must appear first."""
+    response = client.get(
+        "/api/v1/reports/statistics/price-movement",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    items = payload["items"]
+    assert items, "Expected at least one item in price-movement report"
+
+    first_item = items[0]
+    assert first_item["article_no"] == "REP13-001"
+    assert first_item["latest_price"] == pytest.approx(20.0)
+    assert first_item["previous_price"] == pytest.approx(12.5)
+    assert first_item["last_change_date"] == "2026-03-01"
+    assert first_item["delta"] == pytest.approx(7.5)
+    assert first_item["delta_pct"] == pytest.approx(60.0)
+
+
+def test_price_movement_statistics_unchanged_articles_follow_changed(
+    client, reports_data, reports_value_data
+):
+    """Articles whose prices never changed should appear after REP13-001."""
+    response = client.get(
+        "/api/v1/reports/statistics/price-movement",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    items = response.get_json()["items"]
+
+    yellow_pos = next(i for i, it in enumerate(items) if it["article_no"] == "REP13-001")
+    no_change_positions = [
+        i for i, it in enumerate(items)
+        if it["last_change_date"] is None and it["latest_price"] is not None
+    ]
+    no_price_positions = [
+        i for i, it in enumerate(items)
+        if it["latest_price"] is None
+    ]
+    for pos in no_change_positions:
+        assert pos > yellow_pos, (
+            f"Unchanged article at position {pos} must come after changed article at {yellow_pos}"
+        )
+    for pos in no_price_positions:
+        if no_change_positions:
+            assert pos > min(no_change_positions), (
+                f"No-price article at position {pos} must come after unchanged articles"
+            )
+
+
+def test_price_movement_statistics_item_shape(client, reports_data, reports_value_data):
+    response = client.get(
+        "/api/v1/reports/statistics/price-movement",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    items = response.get_json()["items"]
+    required_keys = {
+        "article_id", "article_no", "description", "category",
+        "latest_price", "previous_price", "last_change_date", "delta", "delta_pct",
+    }
+    for item in items:
+        assert required_keys.issubset(item.keys()), (
+            f"Missing keys in price-movement item: {required_keys - item.keys()}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# W9-F-009 — Reorder-zone drilldown (stays inside Statistics)
+# ---------------------------------------------------------------------------
+
+
+def test_reorder_drilldown_returns_red_articles(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/reorder-drilldown?status=RED",
+        headers=_manager_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert payload["status"] == "RED"
+    assert isinstance(payload["items"], list)
+    assert isinstance(payload["total"], int)
+    # REP13-002 has stock 4 but threshold 5 → RED
+    article_nos = [it["article_no"] for it in payload["items"]]
+    assert "REP13-002" in article_nos
+
+
+def test_reorder_drilldown_returns_yellow_articles(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/reorder-drilldown?status=YELLOW",
+        headers=_manager_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert payload["status"] == "YELLOW"
+    article_nos = [it["article_no"] for it in payload["items"]]
+    assert "REP13-001" in article_nos
+
+
+def test_reorder_drilldown_item_shape(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/reorder-drilldown?status=NORMAL",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 200, response.get_json()
+    items = response.get_json()["items"]
+    required_keys = {
+        "article_id", "article_no", "description", "category",
+        "stock", "surplus", "reorder_threshold", "uom", "reorder_status",
+    }
+    for item in items:
+        assert required_keys.issubset(item.keys()), (
+            f"Missing keys in reorder-drilldown item: {required_keys - item.keys()}"
+        )
+        assert item["reorder_status"] == "NORMAL"
+
+
+def test_reorder_drilldown_invalid_status_returns_400(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/reorder-drilldown?status=INVALID",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"
+
+
+def test_reorder_drilldown_missing_status_returns_400(client, reports_data):
+    response = client.get(
+        "/api/v1/reports/statistics/reorder-drilldown",
+        headers=_admin_headers(client, reports_data),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "VALIDATION_ERROR"
 
 
 def test_personal_issuances_statistics_return_current_year_seeded_row(client, reports_data):

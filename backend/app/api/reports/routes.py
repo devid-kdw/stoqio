@@ -163,7 +163,33 @@ def get_top_consumption_statistics():
 def get_movement_statistics():
     try:
         return jsonify(
-            report_service.get_movement_statistics(request.args.get("range"))
+            report_service.get_movement_statistics(
+                request.args.get("range"),
+                article_id=request.args.get("article_id"),
+                category=request.args.get("category"),
+            )
+        ), 200
+    except ReportServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@reports_bp.route("/reports/statistics/price-movement", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_price_movement_statistics():
+    try:
+        return jsonify(report_service.get_price_movement_statistics()), 200
+    except ReportServiceError as exc:
+        return _error(exc.error, exc.message, exc.status_code, exc.details)
+
+
+@reports_bp.route("/reports/statistics/reorder-drilldown", methods=["GET"])
+@require_role("ADMIN", "MANAGER")
+def get_reorder_drilldown_statistics():
+    try:
+        return jsonify(
+            report_service.get_reorder_drilldown_statistics(
+                status=request.args.get("status"),
+            )
         ), 200
     except ReportServiceError as exc:
         return _error(exc.error, exc.message, exc.status_code, exc.details)

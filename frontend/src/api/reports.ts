@@ -126,6 +126,12 @@ export interface MovementStatisticsResponse {
   note: string
 }
 
+export interface MovementFilter {
+  range: MovementRange
+  articleId?: number | null
+  category?: string | null
+}
+
 export interface ReorderSummaryItem {
   reorder_status: ReportReorderStatus
   count: number
@@ -133,6 +139,39 @@ export interface ReorderSummaryItem {
 
 export interface ReorderSummaryResponse {
   items: ReorderSummaryItem[]
+  total: number
+}
+
+export interface ReorderDrilldownItem {
+  article_id: number
+  article_no: string
+  description: string
+  stock: number
+  uom: string | null
+  reorder_threshold: number | null
+  reorder_status: ReportReorderStatus
+}
+
+export interface ReorderDrilldownResponse {
+  status: ReportReorderStatus
+  items: ReorderDrilldownItem[]
+  total: number
+}
+
+export interface PriceMovementItem {
+  article_id: number
+  article_no: string
+  description: string
+  category: string | null
+  latest_price: number | null
+  previous_price: number | null
+  last_change_date: string | null
+  delta: number | null
+  delta_pct: number | null
+}
+
+export interface PriceMovementResponse {
+  items: PriceMovementItem[]
   total: number
 }
 
@@ -331,9 +370,16 @@ export const reportsApi = {
     return response.data
   },
 
-  getMovementStatistics: async (range: MovementRange): Promise<MovementStatisticsResponse> => {
+  getMovementStatistics: async (filter: MovementFilter): Promise<MovementStatisticsResponse> => {
+    const params: Record<string, string | number> = { range: filter.range }
+    if (filter.articleId) {
+      params.article_id = filter.articleId
+    }
+    if (filter.category) {
+      params.category = filter.category
+    }
     const response = await client.get<MovementStatisticsResponse>('/reports/statistics/movement', {
-      params: { range },
+      params,
     })
     return response.data
   },
@@ -346,6 +392,21 @@ export const reportsApi = {
   getPersonalIssuancesStatistics: async (): Promise<PersonalIssuancesStatisticsResponse> => {
     const response = await client.get<PersonalIssuancesStatisticsResponse>(
       '/reports/statistics/personal-issuances'
+    )
+    return response.data
+  },
+
+  getReorderDrilldown: async (status: ReportReorderStatus): Promise<ReorderDrilldownResponse> => {
+    const response = await client.get<ReorderDrilldownResponse>(
+      '/reports/statistics/reorder-drilldown',
+      { params: { status } }
+    )
+    return response.data
+  },
+
+  getPriceMovement: async (): Promise<PriceMovementResponse> => {
+    const response = await client.get<PriceMovementResponse>(
+      '/reports/statistics/price-movement'
     )
     return response.data
   },

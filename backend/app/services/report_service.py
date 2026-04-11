@@ -58,8 +58,8 @@ _OUTBOUND_TX_TYPES = (
 )
 _INBOUND_TX_TYPES = (TxType.STOCK_RECEIPT,)
 _MOVEMENT_NOTE = (
-    "Quantities are summed across all units of measure. "
-    "This chart shows trends, not precise totals."
+    "Količine su zbrojene po svim mjernim jedinicama. "
+    "Grafikon prikazuje trendove, a ne precizne ukupne iznose."
 )
 
 
@@ -804,7 +804,12 @@ def _add_months(value: date, months: int) -> date:
     return date(year, month, 1)
 
 
-def get_movement_statistics(range_key: Any) -> dict[str, Any]:
+def get_movement_statistics(
+    range_key: Any,
+    *,
+    article_id: Any = None,
+    category: Any = None,
+) -> dict[str, Any]:
     normalized_range = (_normalize_optional_text(range_key) or "6m").lower()
     today = datetime.now(timezone.utc).date()
 
@@ -833,6 +838,49 @@ def get_movement_statistics(range_key: Any) -> dict[str, Any]:
             {"field": "range", "value": range_key},
         )
 
+    # --- Resolve optional article/category filter ---
+    filter_article_ids: list[int] | None = None
+
+    normalized_article_id = _normalize_optional_text(article_id)
+    normalized_category = _normalize_optional_text(category)
+
+    if normalized_article_id is not None:
+        try:
+            parsed_article_id = int(normalized_article_id)
+            if parsed_article_id <= 0:
+                raise ValueError()
+        except (ValueError, TypeError):
+            raise ReportServiceError(
+                "VALIDATION_ERROR",
+                "article_id must be a positive integer.",
+                400,
+                {"field": "article_id", "value": article_id},
+            )
+        if db.session.get(Article, parsed_article_id) is None:
+            raise ReportServiceError(
+                "NOT_FOUND",
+                "Article not found.",
+                404,
+                {"article_id": parsed_article_id},
+            )
+        filter_article_ids = [parsed_article_id]
+    elif normalized_category is not None:
+        cat = Category.query.filter_by(key=normalized_category).first()
+        if cat is None:
+            raise ReportServiceError(
+                "NOT_FOUND",
+                "Category not found.",
+                404,
+                {"category": normalized_category},
+            )
+        filter_article_ids = [
+            row.id
+            for row in Article.query.filter(
+                Article.category_id == cat.id,
+            ).with_entities(Article.id).all()
+        ]
+
+    # --- Build time buckets ---
     items: list[dict[str, Any]] = []
     bucket_index: dict[date, dict[str, Any]] = {}
     for bucket_start in bucket_starts:
@@ -856,16 +904,27 @@ def get_movement_statistics(range_key: Any) -> dict[str, Any]:
         items.append(item)
         bucket_index[bucket_start] = item
 
-    rows = (
+    # --- Short-circuit when a category has no articles ---
+    if filter_article_ids is not None and not filter_article_ids:
+        return {
+            "range": normalized_range,
+            "granularity": granularity,
+            "items": items,
+            "note": _MOVEMENT_NOTE,
+        }
+
+    tx_query = (
         db.session.query(Transaction.occurred_at, Transaction.tx_type, Transaction.quantity)
         .filter(
             Transaction.occurred_at >= _range_start(bucket_starts[0]),
             Transaction.occurred_at < end_exclusive,
             Transaction.tx_type.in_(_INBOUND_TX_TYPES + _OUTBOUND_TX_TYPES),
         )
-        .order_by(Transaction.occurred_at.asc(), Transaction.id.asc())
-        .all()
     )
+    if filter_article_ids is not None:
+        tx_query = tx_query.filter(Transaction.article_id.in_(filter_article_ids))
+
+    rows = tx_query.order_by(Transaction.occurred_at.asc(), Transaction.id.asc()).all()
 
     for occurred_at, tx_type, quantity in rows:
         tx_date = occurred_at.date()
@@ -918,6 +977,192 @@ def get_reorder_summary_statistics() -> dict[str, Any]:
         {"reorder_status": "NORMAL", "count": counts["NORMAL"]},
     ]
     return {"items": items, "total": len(article_ids)}
+
+
+def _build_price_movement_item(
+    article: Article,
+    latest_price: Decimal | None,
+    previous_price: Decimal | None,
+    last_change_date: date | None,
+) -> dict[str, Any]:
+    delta: float | None = None
+    delta_pct: float | None = None
+    if latest_price is not None and previous_price is not None:
+        raw_delta = latest_price - previous_price
+        delta = _as_float(raw_delta, _VALUE_QUANT)
+        if previous_price != Decimal("0"):
+            raw_pct = raw_delta / previous_price * Decimal("100")
+            delta_pct = float(_quantize(raw_pct, Decimal("0.01")))
+
+    # Normalise to a plain ISO date string regardless of whether the
+    # value is a date, a datetime, or a string returned by some DB drivers.
+    if last_change_date is None:
+        lcd_iso: str | None = None
+    else:
+        lcd_iso = str(last_change_date)[:10]
+
+    return {
+        "article_id": article.id,
+        "article_no": article.article_no,
+        "description": article.description,
+        "category": article.category.key if article.category else None,
+        "latest_price": _as_float(latest_price, _VALUE_QUANT),
+        "previous_price": _as_float(previous_price, _VALUE_QUANT),
+        "last_change_date": lcd_iso,
+        "delta": delta,
+        "delta_pct": delta_pct,
+    }
+
+
+def get_price_movement_statistics() -> dict[str, Any]:
+    """Return warehouse-wide article price-movement report sorted by most recent
+    actual price change first.  Unchanged and no-price articles follow at the end."""
+    articles = (
+        Article.query
+        .options(joinedload(Article.category))
+        .filter(Article.is_active.is_(True))
+        .order_by(Article.id.asc())
+        .all()
+    )
+    article_ids = [a.id for a in articles]
+
+    if not article_ids:
+        return {"items": [], "total": 0}
+
+    # One query for all Receiving rows with non-null unit_price, chronological.
+    rows = (
+        db.session.query(
+            Receiving.article_id,
+            Receiving.unit_price,
+            Receiving.received_at,
+        )
+        .filter(
+            Receiving.article_id.in_(article_ids),
+            Receiving.unit_price.isnot(None),
+        )
+        .order_by(
+            Receiving.article_id.asc(),
+            Receiving.received_at.asc(),
+            Receiving.id.asc(),
+        )
+        .all()
+    )
+
+    # Walk rows once to detect per-article price changes.
+    price_info: dict[int, dict[str, Any]] = {}
+    cur_article_id: int | None = None
+    cur_price: Decimal | None = None
+    prev_before_change: Decimal | None = None
+    last_change_date_: date | None = None
+
+    for article_id, unit_price, received_at in rows:
+        price = _decimal_from_model(unit_price)
+
+        if article_id != cur_article_id:
+            if cur_article_id is not None:
+                price_info[cur_article_id] = {
+                    "latest_price": cur_price,
+                    "previous_price": prev_before_change,
+                    "last_change_date": last_change_date_,
+                }
+            cur_article_id = article_id
+            cur_price = price
+            prev_before_change = None
+            last_change_date_ = None
+        else:
+            if price != cur_price:
+                prev_before_change = cur_price
+                last_change_date_ = (
+                    received_at.date()
+                    if isinstance(received_at, datetime)
+                    else received_at
+                )
+                cur_price = price
+
+    if cur_article_id is not None:
+        price_info[cur_article_id] = {
+            "latest_price": cur_price,
+            "previous_price": prev_before_change,
+            "last_change_date": last_change_date_,
+        }
+
+    # Partition into three groups for deterministic ordering.
+    changed: list[tuple[date, dict[str, Any]]] = []
+    unchanged: list[dict[str, Any]] = []
+    no_price: list[dict[str, Any]] = []
+
+    for article in articles:
+        info = price_info.get(article.id)
+        if info is None:
+            no_price.append(_build_price_movement_item(article, None, None, None))
+        elif info["last_change_date"] is None:
+            unchanged.append(
+                _build_price_movement_item(article, info["latest_price"], None, None)
+            )
+        else:
+            item = _build_price_movement_item(
+                article,
+                info["latest_price"],
+                info["previous_price"],
+                info["last_change_date"],
+            )
+            changed.append((info["last_change_date"], item))
+
+    changed.sort(key=lambda x: x[0], reverse=True)
+
+    result_items = [item for _, item in changed] + unchanged + no_price
+    return {"items": result_items, "total": len(result_items)}
+
+
+def get_reorder_drilldown_statistics(status: Any) -> dict[str, Any]:
+    """Return active articles belonging to the given reorder zone (RED/YELLOW/NORMAL)."""
+    normalized_status = (_normalize_optional_text(status) or "").upper()
+    if normalized_status not in {"RED", "YELLOW", "NORMAL"}:
+        raise ReportServiceError(
+            "VALIDATION_ERROR",
+            "status must be one of: RED, YELLOW, NORMAL.",
+            400,
+            {"field": "status", "value": status},
+        )
+
+    articles = (
+        Article.query
+        .options(joinedload(Article.category), joinedload(Article.base_uom_ref))
+        .filter(Article.is_active.is_(True))
+        .order_by(Article.article_no.asc())
+        .all()
+    )
+    article_ids = [article.id for article in articles]
+    totals_map = article_service._build_article_totals_map(article_ids)
+
+    matching: list[dict[str, Any]] = []
+    for article in articles:
+        stock_total, surplus_total = totals_map.get(article.id, (Decimal("0"), Decimal("0")))
+        article_status = article_service._get_reorder_status(
+            stock_total, surplus_total, article.reorder_threshold
+        )
+        if article_status == normalized_status:
+            threshold = (
+                _as_float(_decimal_from_model(article.reorder_threshold), _QTY_QUANT)
+                if article.reorder_threshold is not None
+                else None
+            )
+            matching.append(
+                {
+                    "article_id": article.id,
+                    "article_no": article.article_no,
+                    "description": article.description,
+                    "category": article.category.key if article.category else None,
+                    "stock": _as_float(stock_total, _QTY_QUANT),
+                    "surplus": _as_float(surplus_total, _QTY_QUANT),
+                    "reorder_threshold": threshold,
+                    "uom": article.base_uom_ref.code if article.base_uom_ref else None,
+                    "reorder_status": article_status,
+                }
+            )
+
+    return {"status": normalized_status, "items": matching, "total": len(matching)}
+
 
 def get_personal_issuances_statistics() -> dict[str, Any]:
     current_year = datetime.now(timezone.utc).date().year

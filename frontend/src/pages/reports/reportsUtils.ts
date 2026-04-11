@@ -131,7 +131,11 @@ export function formatCurrency(value: number | null): string {
   return `${formatNumber(value, 2)} €`
 }
 
-export function formatCoverageMonths(value: number | null): string {
+export function formatCoverageMonths(value: number | null | undefined): string {
+  if (value === undefined) {
+    return '—'
+  }
+
   if (value === null) {
     return '∞'
   }

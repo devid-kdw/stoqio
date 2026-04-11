@@ -173,9 +173,12 @@ Four visual sections on a single screen. No filters shared across sections — e
 - **Chart type**: Line chart (two lines — inbound and outbound).
 - **Shows**: Total inbound and outbound quantities aggregated by week or month over the selected period.
 - **Period selector**: Last 3 months / Last 6 months / Last 12 months (default: Last 6 months).
+- **Filters** (optional, default: whole warehouse):
+  - Exact article (search/select field); mutually exclusive with category filter.
+  - Article category (dropdown).
 - **X axis**: Time (weeks or months).
 - **Y axis**: Quantity (summed across all articles, all UOMs — note: mixed UOMs mean this is an indicative trend view, not a precise total).
-- A note is displayed below the chart: `"Quantities are summed across all units of measure. This chart shows trends, not precise totals."`
+- A note is displayed below the chart in Croatian: `"Količine su zbrojene po svim mjernim jedinicama. Grafikon prikazuje trendove, a ne precizne ukupne iznose."`
 
 ---
 
@@ -186,11 +189,35 @@ Four visual sections on a single screen. No filters shared across sections — e
   - 🔴 Red zone: X articles
   - 🟡 Yellow zone: X articles
   - ✅ Normal: X articles
-- Each zone count is a clickable link that opens the Stock Overview tab pre-filtered to show only that zone.
+- Each zone count is clickable. Clicking opens a separate collapsible block within the Statistics tab that lists articles belonging to that zone. The user does **not** leave the Statistics tab.
 
 ---
 
-### 6.6 Section D: Personal Issuances (secondary)
+### 6.6 Section E: Price Movement (Kretanje cijena)
+
+Visible to **ADMIN** and **MANAGER** only.
+
+- **Shows**: Warehouse-wide article price-change report, one row per active article.
+- **Default sort**: Articles with the most recent actual price change appear first (most recent change date DESC). Articles whose price never changed appear next. Articles with no price history appear last.
+- **"Actual price change"**: A real difference between consecutive Receiving unit prices. A newer Receiving row with the same price does not count as a change.
+
+| Column | Notes |
+|--------|-------|
+| Article No. | Article number |
+| Description | Article description |
+| Category | Article category key |
+| Latest price | Most recent known price from Receiving records |
+| Previous price | Price before the most recent change; `—` if price never changed |
+| Last change date | Date of the most recent actual price change; `—` if never changed |
+| Delta | Absolute price difference (latest − previous); `—` if no change |
+| Delta % | Percentage change; `—` if no change |
+
+- No export in v1 — view only.
+- No filter in v1 — always shows full active article set.
+
+---
+
+### 6.7 Section D: Personal Issuances (secondary)
 
 Displayed below the main three sections — visually de-emphasised (smaller heading, less prominent placement).
 
@@ -202,7 +229,13 @@ Displayed below the main three sections — visually de-emphasised (smaller head
 
 ---
 
-### 6.7 Actions
+### 6.8 Layout Behaviour (Wave 9)
+
+- All Statistics subsections start **collapsed** by default.
+- The user opens only the section they want to inspect.
+- Clicking a reorder zone count opens a drilldown block **within** the Statistics tab — no tab switch to Stock Overview.
+
+### 6.9 Actions
 
 - No export from the Statistics tab in v1 — view only.
 
@@ -239,6 +272,12 @@ Displayed below the main three sections — visually de-emphasised (smaller head
 | Get stock overview | GET | `/api/v1/reports/stock-overview?date_from={}&date_to={}&category={}&reorder_only={bool}` |
 | Get surplus list | GET | `/api/v1/reports/surplus` |
 | Get transaction log | GET | `/api/v1/reports/transactions?article_id={}&date_from={}&date_to={}&tx_type={}&page=1&per_page=50` |
+| Get top consumption | GET | `/api/v1/reports/statistics/top-consumption?period=week\|month\|year` |
+| Get movement statistics | GET | `/api/v1/reports/statistics/movement?range=3m\|6m\|12m&article_id={}&category={}` |
+| Get price movement | GET | `/api/v1/reports/statistics/price-movement` |
+| Get reorder drilldown | GET | `/api/v1/reports/statistics/reorder-drilldown?status=RED\|YELLOW\|NORMAL` |
+| Get reorder summary | GET | `/api/v1/reports/statistics/reorder-summary` |
+| Get personal issuances | GET | `/api/v1/reports/statistics/personal-issuances` |
 | Export stock overview Excel | GET | `/api/v1/reports/stock-overview/export?format=xlsx&date_from={}&date_to={}` |
 | Export stock overview PDF | GET | `/api/v1/reports/stock-overview/export?format=pdf&date_from={}&date_to={}` |
 | Export surplus Excel | GET | `/api/v1/reports/surplus/export?format=xlsx` |
