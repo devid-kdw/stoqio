@@ -1,7 +1,8 @@
 """Employees API routes (Phase 11).
 
 RBAC:
-  ADMIN        — full access (all verbs)
+  ADMIN           — full access (all verbs)
+  MANAGER         — GET-only (list, detail, quotas, issuances)  [Wave 9]
   WAREHOUSE_STAFF — GET-only (list, detail, quotas, issuances)
   Issuance lookup + check + create — ADMIN only
 """
@@ -44,7 +45,7 @@ def lookup_articles():
 # ---------------------------------------------------------------------------
 
 @employees_bp.route("/employees", methods=["GET"])
-@require_role("ADMIN", "WAREHOUSE_STAFF")
+@require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF")
 def list_employees():
     try:
         page = parse_positive_int(request.args.get("page"), field_name="page", default=1)
@@ -83,7 +84,7 @@ def create_employee():
 # ---------------------------------------------------------------------------
 
 @employees_bp.route("/employees/<int:employee_id>", methods=["GET"])
-@require_role("ADMIN", "WAREHOUSE_STAFF")
+@require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF")
 def get_employee(employee_id: int):
     try:
         return jsonify(employee_service.get_employee(employee_id)), 200
@@ -119,7 +120,7 @@ def deactivate_employee(employee_id: int):
 # ---------------------------------------------------------------------------
 
 @employees_bp.route("/employees/<int:employee_id>/quotas", methods=["GET"])
-@require_role("ADMIN", "WAREHOUSE_STAFF")
+@require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF")
 def get_quotas(employee_id: int):
     try:
         return jsonify(employee_service.get_quota_overview(employee_id)), 200
@@ -132,7 +133,7 @@ def get_quotas(employee_id: int):
 # ---------------------------------------------------------------------------
 
 @employees_bp.route("/employees/<int:employee_id>/issuances", methods=["GET"])
-@require_role("ADMIN", "WAREHOUSE_STAFF")
+@require_role("ADMIN", "MANAGER", "WAREHOUSE_STAFF")
 def list_issuances(employee_id: int):
     try:
         page = parse_positive_int(request.args.get("page"), field_name="page", default=1)

@@ -73,6 +73,26 @@ Acceptance Criteria
 
 Validation Notes
 - 2026-04-11: Orchestrator opened Wave 9 Phase 2 from the finalized Wave 9 feedback intake.
+- 2026-04-11: Orchestrator reviewed `backend.md`, `frontend.md`, and `testing.md` plus the actual
+  repo diff across:
+  - `backend/app/api/employees/routes.py`
+  - `backend/tests/test_employees.py`
+  - `frontend/src/routes.tsx`
+  - `frontend/src/components/layout/Sidebar.tsx`
+  - `stoqio_docs/03_RBAC.md`
+  - `stoqio_docs/15_UI_EMPLOYEES.md`
+- 2026-04-11: Orchestrator re-ran validation:
+  - `backend/venv/bin/python -m pytest backend/tests/test_employees.py -q --tb=short` — passed
+    (`61 passed in 1.23s`)
+  - `cd frontend && npm run lint` — passed
+  - `cd frontend && npm run build` — passed
+- 2026-04-11: Accepted work:
+  - backend read-only RBAC was widened to include `MANAGER` only on Employees GET endpoints
+  - ADMIN-only mutation paths remained unchanged
+  - frontend sidebar and route guards now expose Employees to `MANAGER`
+  - employee mutation UI remains effectively ADMIN-only through existing `isAdmin` guards
+  - RBAC and Employees docs were aligned to the accepted behavior
+- 2026-04-11: No blocking findings remained after orchestrator review. Phase 2 is complete.
 
 Next Action
-- Backend, frontend, and testing workers implement and record their handoffs.
+- Proceed to the next Wave 9 implementation phase.

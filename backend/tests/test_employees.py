@@ -360,10 +360,14 @@ class TestEmployeeCRUD:
         resp = client.get("/api/v1/employees?page=1&per_page=50", headers=_auth(token))
         assert resp.status_code == 200
 
-    def test_list_employees_manager_forbidden(self, client, emp_data):
+    def test_list_employees_manager(self, client, emp_data):
+        """Wave 9: MANAGER can read the employees list."""
         token = _login(client, "emp_manager")
         resp = client.get("/api/v1/employees?page=1&per_page=50", headers=_auth(token))
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "items" in data
+        assert "total" in data
 
     def test_list_employees_search(self, client, emp_data):
         token = _login(client, "emp_admin")
@@ -1246,3 +1250,122 @@ class TestIssuanceUOMValidation:
         # Should not be a UOM_MISMATCH (could be NO_QUOTA or OK)
         if resp.status_code == 400:
             assert resp.get_json().get("error") != "UOM_MISMATCH"
+
+
+# ---------------------------------------------------------------------------
+# Wave 9 Phase 2 — MANAGER read-only access to Employees
+# ---------------------------------------------------------------------------
+
+class TestManagerRBAC:
+    """W9-F-004: MANAGER gains read-only Employees access.
+
+    Read endpoints (list, detail, quotas, issuance history) → 200.
+    Mutation endpoints (create, update, deactivate, lookup, check, issue) → 403.
+    """
+
+    _counter = 0
+
+    @pytest.fixture(autouse=True)
+    def _seed_employee(self, client, emp_data):
+        """Create a target employee for detail/quota/issuance tests."""
+        TestManagerRBAC._counter += 1
+        token = _login(client, "emp_admin")
+        r = client.post(
+            "/api/v1/employees",
+            json={
+                "employee_id": f"EMP-MGR-T{TestManagerRBAC._counter}",
+                "first_name": "Manager",
+                "last_name": "Target",
+                "department": "Test",
+                "job_title": "TestJob",
+            },
+            headers=_auth(token),
+        )
+        assert r.status_code == 201, r.get_json()
+        self.target_id = r.get_json()["id"]
+
+    # ---- read access (should succeed) ----
+
+    def test_manager_list_employees(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.get("/api/v1/employees", headers=_auth(token))
+        assert resp.status_code == 200
+        assert "items" in resp.get_json()
+
+    def test_manager_get_employee_detail(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.get(
+            f"/api/v1/employees/{self.target_id}", headers=_auth(token)
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["id"] == self.target_id
+
+    def test_manager_get_quotas(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.get(
+            f"/api/v1/employees/{self.target_id}/quotas", headers=_auth(token)
+        )
+        assert resp.status_code == 200
+        assert "quotas" in resp.get_json()
+
+    def test_manager_list_issuances(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.get(
+            f"/api/v1/employees/{self.target_id}/issuances", headers=_auth(token)
+        )
+        assert resp.status_code == 200
+        assert "items" in resp.get_json()
+
+    # ---- mutation denial (must stay 403) ----
+
+    def test_manager_create_employee_forbidden(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.post(
+            "/api/v1/employees",
+            json={"employee_id": "EMP-NOPE", "first_name": "No", "last_name": "Way"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 403
+
+    def test_manager_update_employee_forbidden(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.put(
+            f"/api/v1/employees/{self.target_id}",
+            json={"first_name": "Hacked"},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 403
+
+    def test_manager_deactivate_employee_forbidden(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.patch(
+            f"/api/v1/employees/{self.target_id}/deactivate",
+            headers=_auth(token),
+        )
+        assert resp.status_code == 403
+
+    def test_manager_lookup_articles_forbidden(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.get(
+            "/api/v1/employees/lookups/articles?q=x", headers=_auth(token)
+        )
+        assert resp.status_code == 403
+
+    def test_manager_check_issuance_forbidden(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.post(
+            f"/api/v1/employees/{self.target_id}/issuances/check",
+            json={"article_id": emp_data["art"].id, "quantity": 1},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 403
+
+    def test_manager_create_issuance_forbidden(self, client, emp_data):
+        token = _login(client, "emp_manager")
+        resp = client.post(
+            f"/api/v1/employees/{self.target_id}/issuances",
+            json={"article_id": emp_data["art"].id, "quantity": 1},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 403
+

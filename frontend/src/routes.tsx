@@ -170,7 +170,7 @@ export default function AppRoutes() {
               />
             </Route>
 
-            <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE_STAFF']} />}>
+            <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'WAREHOUSE_STAFF']} />}>
               <Route
                 path="/employees"
                 element={

@@ -54,7 +54,7 @@ Sustav koristi **fiksne sistemske role** u kodu i bazi. Svaki kupac može konfig
 | **Identifikator — pretraživanje** | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Identifikator — missing report** | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Identifikator — obrada reportova** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Dosijei zaposlenika — pregled** | ✅ | ❌ | ✅ | ❌ | ❌ |
+| **Dosijei zaposlenika — pregled** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Dosijei zaposlenika — uređivanje** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Osobna izdavanja** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Izvještaji i statistike** | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -72,6 +72,7 @@ Svi moduli.
 ### MANAGER
 - Pregled skladišta (read-only)
 - Narudžbenice (read-only)
+- Dosijei zaposlenika (read-only)
 - Izvještaji i statistike
 
 ### WAREHOUSE_STAFF

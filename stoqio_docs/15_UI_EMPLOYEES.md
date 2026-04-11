@@ -4,7 +4,7 @@
 **Version**: v1
 **Audience**: AI coding agents
 **Module**: Employees (`/employees`)
-**Accessible by roles**: ADMIN (full), WAREHOUSE_STAFF (read-only)
+**Accessible by roles**: ADMIN (full), MANAGER (read-only), WAREHOUSE_STAFF (read-only)
 
 ---
 
@@ -157,7 +157,16 @@ Quota priority (highest to lowest):
 
 ---
 
-## 8. WAREHOUSE_STAFF Read-only View
+## 8. MANAGER Read-only View
+
+- MANAGER can view the employee list and employee detail screens.
+- Quota overview and issuance history are visible.
+- No create, edit, deactivate, or issue actions are available.
+- Issuance article lookup, issuance check, and issuance create are not accessible.
+
+---
+
+## 9. WAREHOUSE_STAFF Read-only View
 
 - WAREHOUSE_STAFF can view the employee list and employee detail screens.
 - Quota overview and issuance history are visible.
@@ -165,7 +174,7 @@ Quota priority (highest to lowest):
 
 ---
 
-## 9. API Endpoints Used
+## 10. API Endpoints Used
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
@@ -180,7 +189,7 @@ Quota priority (highest to lowest):
 
 ---
 
-## 10. Request / Response Shapes
+## 11. Request / Response Shapes
 
 ### POST `/api/v1/employees` — Create employee
 
@@ -263,7 +272,7 @@ Quota priority (highest to lowest):
 
 ---
 
-## 11. Edge Cases
+## 12. Edge Cases
 
 | Situation | Behaviour |
 |-----------|-----------|
@@ -276,3 +285,4 @@ Quota priority (highest to lowest):
 | No quotas configured for job title | Issuance proceeds without quota check. Message shown in quota section. |
 | Deactivating employee with issuance history | Allowed. History preserved. |
 | WAREHOUSE_STAFF tries to issue | Action button not visible. |
+| MANAGER tries to issue | Action button not visible. Backend returns 403. |

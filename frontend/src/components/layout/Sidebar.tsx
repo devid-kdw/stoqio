@@ -39,7 +39,7 @@ export default function Sidebar() {
   const canSeeOrders = ['ADMIN', 'MANAGER'].includes(role)
   const canSeeWarehouse = ['ADMIN', 'MANAGER'].includes(role)
   const canSeeIdentifier = ['ADMIN', 'MANAGER', 'WAREHOUSE_STAFF', 'VIEWER'].includes(role)
-  const canSeeEmployees = ['ADMIN', 'WAREHOUSE_STAFF'].includes(role)
+  const canSeeEmployees = ['ADMIN', 'MANAGER', 'WAREHOUSE_STAFF'].includes(role)
   const canSeeInventory = ['ADMIN'].includes(role)
   const canSeeReports = ['ADMIN', 'MANAGER'].includes(role)
   const canSeeSettings = ['ADMIN'].includes(role)
