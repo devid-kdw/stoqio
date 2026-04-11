@@ -354,7 +354,12 @@ export default function ArticleDetailPage() {
           articlesApi.update(article.id, buildArticlePayload(editForm, true))
         )
         applyArticleState(updatedArticle)
-        window.scrollTo({ top: 0, behavior: 'smooth' })
+        const shellMain = document.getElementById('app-shell-main-scroll')
+        if (shellMain) {
+          shellMain.scrollTo({ top: 0, behavior: 'smooth' })
+        } else {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }
         showSuccessToast('Artikl je ažuriran.')
       } catch (error) {
         if (isNetworkOrServerError(error)) {

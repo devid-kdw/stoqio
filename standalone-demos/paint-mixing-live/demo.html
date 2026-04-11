@@ -32,65 +32,109 @@
           radial-gradient(circle at top, rgba(59, 130, 246, 0.18), transparent 32%),
           linear-gradient(180deg, #0b1220 0%, var(--bg) 100%);
         color: var(--text);
+        overflow-x: hidden;
       }
 
       .app-shell {
-        max-width: 1400px;
+        max-width: 1440px;
         margin: 0 auto;
-        padding: 24px;
+        padding: 16px 18px 18px;
       }
 
       .header {
         display: flex;
         justify-content: space-between;
-        gap: 24px;
+        gap: 18px;
         align-items: flex-start;
-        margin-bottom: 20px;
+        margin-bottom: 14px;
       }
 
       .header-copy h1 {
         margin: 0;
-        font-size: 34px;
+        font-size: 28px;
         line-height: 1.1;
       }
 
       .header-copy p {
-        margin: 8px 0 0;
+        margin: 6px 0 0;
         color: var(--muted);
-        font-size: 15px;
+        font-size: 13px;
       }
 
       .eyebrow {
         color: #93c5fd;
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
 
       .header-right {
         display: flex;
         flex-direction: column;
         align-items: flex-end;
-        gap: 12px;
+        gap: 10px;
+      }
+
+      .variant-picker {
+        display: grid;
+        gap: 6px;
+        justify-items: end;
+      }
+
+      .variant-picker-label {
+        color: #93c5fd;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .variant-picker-buttons {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .variant-btn {
+        background: rgba(15, 23, 42, 0.9);
+        color: var(--text);
+        border-color: rgba(148, 163, 184, 0.2);
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      .variant-btn-active {
+        background: rgba(59, 130, 246, 0.18);
+        border-color: rgba(59, 130, 246, 0.42);
+        color: #dbeafe;
+      }
+
+      .variant-picker-note {
+        max-width: 280px;
+        font-size: 11px;
+        color: var(--muted);
+        text-align: right;
+        line-height: 1.35;
       }
 
       .connection {
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 14px;
+        padding: 8px 12px;
         border: 1px solid var(--border);
         border-radius: 8px;
         background: rgba(15, 23, 42, 0.8);
         color: var(--muted);
-        font-size: 14px;
+        font-size: 13px;
       }
 
       .badge-row {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
         justify-content: flex-end;
       }
@@ -100,8 +144,8 @@
         align-items: center;
         gap: 6px;
         border-radius: 999px;
-        padding: 8px 12px;
-        font-size: 13px;
+        padding: 6px 10px;
+        font-size: 12px;
         font-weight: 700;
         border: 1px solid transparent;
       }
@@ -120,49 +164,66 @@
 
       .layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.9fr);
-        gap: 20px;
+        grid-template-columns: minmax(248px, 0.82fr) minmax(0, 1.46fr) minmax(285px, 0.92fr);
+        grid-template-areas: "shortcuts main side";
+        gap: 14px;
+        align-items: start;
       }
 
       .stack {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .stack-main {
+        grid-area: main;
+      }
+
+      .stack-shortcuts {
+        grid-area: shortcuts;
+      }
+
+      .stack-side {
+        grid-area: side;
       }
 
       .panel {
         background: rgba(24, 33, 47, 0.86);
         border: 1px solid var(--border);
         border-radius: 8px;
-        padding: 20px;
+        padding: 16px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
       }
 
       .panel h2 {
-        margin: 0 0 8px;
-        font-size: 18px;
+        margin: 0 0 6px;
+        font-size: 17px;
       }
 
       .panel p {
         margin: 0;
         color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
       }
 
       .scale-panel {
-        min-height: 340px;
+        min-height: 250px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
         text-align: center;
-        gap: 18px;
+        gap: 14px;
         background:
           linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(24, 33, 47, 0.95)),
           rgba(24, 33, 47, 0.86);
       }
 
       .scale-value {
-        font-size: clamp(64px, 10vw, 118px);
+        font-size: clamp(56px, 6vw, 98px);
         line-height: 1;
         font-weight: 800;
         letter-spacing: 0.02em;
@@ -173,7 +234,7 @@
         align-items: center;
         gap: 10px;
         color: var(--muted);
-        font-size: 18px;
+        font-size: 16px;
       }
 
       .dot {
@@ -214,30 +275,76 @@
         }
       }
 
-      .instruction {
-        font-size: clamp(28px, 3.2vw, 40px);
+      .step-panel {
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .step-kicker {
+        color: #93c5fd;
+        font-size: 11px;
         font-weight: 700;
-        line-height: 1.2;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 8px;
+      }
+
+      .instruction {
+        font-size: clamp(28px, 2.8vw, 42px);
+        font-weight: 700;
+        line-height: 1.08;
         margin: 0;
+        max-width: 14ch;
+      }
+
+      .instruction-meta {
+        margin-top: 10px;
+        color: #cbd5e1;
+        font-size: 14px;
+        line-height: 1.4;
+        max-width: 48ch;
+      }
+
+      .step-panel-attention {
+        min-height: 210px;
+      }
+
+      .step-panel-attention .instruction {
+        font-size: clamp(31px, 2.7vw, 46px);
+        line-height: 1.04;
+        max-width: none;
+        white-space: nowrap;
+      }
+
+      .step-panel-attention .instruction-meta {
+        margin-top: 8px;
+        color: var(--text);
+        font-size: clamp(18px, 1.7vw, 26px);
+        font-weight: 700;
+        line-height: 1.15;
+        max-width: none;
+        white-space: nowrap;
       }
 
       .countdown {
-        margin-top: 14px;
-        font-size: 16px;
+        margin-top: 12px;
+        font-size: 14px;
         color: #93c5fd;
       }
 
       .feedback {
-        margin-top: 18px;
+        margin-top: 14px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
       }
 
       .message {
         border-radius: 8px;
-        padding: 14px 16px;
-        font-size: 15px;
+        padding: 12px 14px;
+        font-size: 14px;
         border: 1px solid transparent;
       }
 
@@ -261,33 +368,34 @@
 
       .breakdown {
         display: grid;
-        gap: 12px;
-        margin-top: 14px;
+        gap: 10px;
+        margin-top: 12px;
       }
 
       .breakdown-row {
         display: grid;
         grid-template-columns: 1.2fr 1fr auto;
-        gap: 12px;
+        gap: 10px;
         align-items: center;
-        padding: 14px 16px;
+        padding: 11px 13px;
         border-radius: 8px;
         background: rgba(15, 23, 42, 0.55);
         border: 1px solid rgba(59, 130, 246, 0.08);
       }
 
       .breakdown-row strong {
-        font-size: 16px;
+        font-size: 15px;
       }
 
       .breakdown-row .detail {
         color: var(--muted);
-        font-size: 14px;
+        font-size: 12px;
+        line-height: 1.35;
       }
 
       .breakdown-row .status {
         font-weight: 700;
-        font-size: 14px;
+        font-size: 12px;
         white-space: nowrap;
       }
 
@@ -304,13 +412,13 @@
       }
 
       .scanner-form {
-        margin-top: 16px;
+        margin-top: 12px;
       }
 
       .scanner-label {
         display: block;
-        font-size: 14px;
-        margin-bottom: 10px;
+        font-size: 13px;
+        margin-bottom: 8px;
         color: var(--muted);
       }
 
@@ -318,8 +426,8 @@
         width: 100%;
         border: 1px solid var(--border);
         border-radius: 8px;
-        padding: 16px 18px;
-        font-size: 22px;
+        padding: 13px 14px;
+        font-size: 18px;
         color: var(--text);
         background: rgba(15, 23, 42, 0.92);
         outline: none;
@@ -331,11 +439,12 @@
       }
 
       .scanner-meta {
-        margin-top: 14px;
+        margin-top: 10px;
         display: grid;
-        gap: 6px;
+        gap: 4px;
         color: var(--muted);
-        font-size: 14px;
+        font-size: 12px;
+        line-height: 1.35;
       }
 
       .scanner-meta code {
@@ -344,18 +453,18 @@
       }
 
       .shortcut-stack {
-        margin-top: 16px;
+        margin-top: 12px;
         display: grid;
-        gap: 16px;
+        gap: 12px;
       }
 
       .shortcut-group {
         display: grid;
-        gap: 10px;
+        gap: 8px;
       }
 
       .shortcut-heading {
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.03em;
@@ -363,24 +472,50 @@
       }
 
       .shortcut-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+        gap: 6px;
       }
 
       .shortcut-btn {
-        padding: 10px 12px;
-        font-size: 13px;
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+        width: 100%;
+        padding: 8px 10px;
+        font-size: 12px;
         line-height: 1.25;
         font-weight: 700;
         border-radius: 8px;
         background: rgba(15, 23, 42, 0.9);
         color: var(--text);
         border: 1px solid rgba(148, 163, 184, 0.18);
+        text-align: left;
       }
 
       .shortcut-btn:hover:not(:disabled) {
         background: rgba(30, 41, 59, 0.96);
+      }
+
+      .shortcut-primary {
+        display: block;
+      }
+
+      .shortcut-secondary {
+        display: block;
+        font-size: 10px;
+        font-weight: 500;
+        line-height: 1.35;
+        color: var(--muted);
+        overflow: hidden;
+      }
+
+      @supports (-webkit-line-clamp: 2) {
+        .shortcut-secondary {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
       }
 
       .shortcut-btn-base {
@@ -397,15 +532,15 @@
 
       .shortcut-note {
         color: var(--muted);
-        font-size: 13px;
-        line-height: 1.45;
+        font-size: 11px;
+        line-height: 1.35;
       }
 
       .actions {
         display: flex;
-        gap: 12px;
-        justify-content: flex-end;
-        margin-top: 20px;
+        gap: 10px;
+        justify-content: flex-start;
+        margin-top: 0;
         flex-wrap: wrap;
       }
 
@@ -451,11 +586,11 @@
       }
 
       .summary-list {
-        margin-top: 14px;
+        margin-top: 12px;
         display: grid;
-        gap: 10px;
+        gap: 8px;
         color: var(--muted);
-        font-size: 14px;
+        font-size: 12px;
       }
 
       .summary-list strong {
@@ -463,18 +598,74 @@
       }
 
       .footer-note {
-        margin-top: 10px;
+        margin-top: 6px;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
+      }
+
+      .actions button {
+        padding: 12px 14px;
+        font-size: 14px;
       }
 
       [hidden] {
         display: none !important;
       }
 
+      @media (max-height: 820px) and (min-width: 1101px) {
+        .app-shell {
+          padding-top: 12px;
+          padding-bottom: 14px;
+        }
+
+        .header {
+          margin-bottom: 12px;
+        }
+
+        .stack {
+          gap: 12px;
+        }
+
+        .panel {
+          padding: 14px;
+        }
+
+        .scale-panel {
+          min-height: 220px;
+        }
+
+        .step-panel {
+          min-height: 160px;
+        }
+
+        .instruction {
+          font-size: clamp(26px, 2.4vw, 38px);
+        }
+
+        .step-panel-attention {
+          min-height: 188px;
+        }
+
+        .step-panel-attention .instruction {
+          font-size: clamp(28px, 2.35vw, 40px);
+        }
+
+        .step-panel-attention .instruction-meta {
+          font-size: clamp(17px, 1.45vw, 22px);
+        }
+
+        .shortcut-grid {
+          grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+        }
+      }
+
       @media (max-width: 1100px) {
         .layout {
           grid-template-columns: 1fr;
+          grid-template-areas:
+            "main"
+            "shortcuts"
+            "side";
         }
 
         .header {
@@ -488,6 +679,23 @@
 
         .badge-row {
           justify-content: flex-start;
+        }
+
+        .variant-picker {
+          justify-items: start;
+        }
+
+        .variant-picker-buttons {
+          justify-content: flex-start;
+        }
+
+        .variant-picker-note {
+          text-align: left;
+        }
+
+        .step-panel-attention .instruction,
+        .step-panel-attention .instruction-meta {
+          white-space: normal;
         }
       }
     </style>
@@ -509,11 +717,21 @@
             <div id="system-badge" class="badge badge-blue" hidden></div>
             <div id="variant-badge" class="badge badge-green" hidden></div>
           </div>
+          <div class="variant-picker">
+            <div class="variant-picker-label">Varijanta recepture</div>
+            <div class="variant-picker-buttons">
+              <button id="variant-topcoat-button" class="variant-btn" type="button">TOPCOAT</button>
+              <button id="variant-texture-button" class="variant-btn" type="button">TEXTURE</button>
+            </div>
+            <div class="variant-picker-note">
+              Određuje omjer vode i zaključava se nakon skeniranja baze.
+            </div>
+          </div>
         </div>
       </header>
 
       <div class="layout">
-        <div class="stack">
+        <div class="stack stack-main">
           <section class="panel scale-panel">
             <div class="scale-value" id="scale-value">0,0 g</div>
             <div class="stability">
@@ -528,66 +746,26 @@
             </div>
           </section>
 
-          <section class="panel">
-            <h2>Trenutni korak</h2>
+          <section id="step-panel" class="panel step-panel">
+            <div class="step-kicker">Trenutni korak</div>
             <p id="instruction-text" class="instruction">Ulijte bazu u posudu za miješanje</p>
+            <div id="instruction-meta" class="instruction-meta">
+              Odaberite TOPCOAT ili TEXTURE prije skeniranja baze.
+            </div>
             <div id="countdown" class="countdown" hidden></div>
             <div id="feedback" class="feedback"></div>
           </section>
 
-          <section class="panel" id="breakdown-panel" hidden>
-            <h2>Sastav mješavine</h2>
-            <p>Količine su interne u gramima; u STOQIO se šalje vrijednost u kilogramima.</p>
-            <div class="breakdown">
-              <div class="breakdown-row">
-                <div>
-                  <strong>Baza</strong>
-                  <div class="detail" id="base-detail">Nije još potvrđeno</div>
-                </div>
-                <div class="detail" id="base-meta">—</div>
-                <div class="status" id="base-status">Na čekanju</div>
-              </div>
-              <div class="breakdown-row">
-                <div>
-                  <strong>Učvršćivač</strong>
-                  <div class="detail" id="hardener-detail">Nije još potvrđeno</div>
-                </div>
-                <div class="detail" id="hardener-meta">—</div>
-                <div class="status" id="hardener-status">Na čekanju</div>
-              </div>
-              <div class="breakdown-row">
-                <div>
-                  <strong>Voda</strong>
-                  <div class="detail" id="water-detail">Informativno, ne šalje se u STOQIO</div>
-                </div>
-                <div class="detail" id="water-meta">—</div>
-                <div class="status" id="water-status">Na čekanju</div>
-              </div>
-            </div>
-          </section>
+          <div class="actions">
+            <button id="pour-button" class="btn-primary" hidden>Ulijevanje</button>
+            <button id="tare-button" class="btn-secondary" hidden>Tariranje</button>
+            <button id="retry-button" class="btn-secondary" hidden>Pokušaj ponovo</button>
+            <button id="override-button" class="btn-warning" hidden>Nastavi svejedno</button>
+            <button id="new-mix-button" class="btn-success" hidden>Novo miješanje</button>
+          </div>
         </div>
 
-        <div class="stack">
-          <section class="panel">
-            <h2>Skeniranje barkoda</h2>
-            <p>Polje je stalno vidljivo. Enter potvrđuje skeniranje.</p>
-            <form id="scanner-form" class="scanner-form" autocomplete="off">
-              <label class="scanner-label" for="scanner-input">Skeniraj barkod</label>
-              <input
-                id="scanner-input"
-                class="scanner-input"
-                type="text"
-                inputmode="text"
-                placeholder="Skeniraj ili upiši barkod"
-                autofocus
-              />
-            </form>
-            <div class="scanner-meta">
-              <div>Zadnje skenirano: <code id="last-scanned">—</code></div>
-              <div>Demo prihvaća i stvarni spremljeni batch barkod i batch code alias iz mape.</div>
-            </div>
-          </section>
-
+        <div class="stack stack-shortcuts">
           <section class="panel">
             <h2>Demo prečaci</h2>
             <p>Klik simulira skeniranje ili očitanje vage bez ručnog tipkanja.</p>
@@ -625,6 +803,59 @@
               </div>
             </div>
           </section>
+        </div>
+
+        <div class="stack stack-side">
+          <section class="panel">
+            <h2>Skeniranje barkoda</h2>
+            <p>Polje je stalno vidljivo. Enter potvrđuje skeniranje.</p>
+            <form id="scanner-form" class="scanner-form" autocomplete="off">
+              <label class="scanner-label" for="scanner-input">Skeniraj barkod</label>
+              <input
+                id="scanner-input"
+                class="scanner-input"
+                type="text"
+                inputmode="text"
+                placeholder="Skeniraj ili upiši barkod"
+                autofocus
+              />
+            </form>
+            <div class="scanner-meta">
+              <div>Zadnje skenirano: <code id="last-scanned">—</code></div>
+              <div>Demo prihvaća i stvarni spremljeni batch barkod i batch code alias iz mape.</div>
+            </div>
+          </section>
+
+          <section class="panel" id="breakdown-panel" hidden>
+            <h2>Sastav mješavine</h2>
+            <p>Količine su interne u gramima; u STOQIO se šalje vrijednost u kilogramima.</p>
+            <div class="breakdown">
+              <div class="breakdown-row">
+                <div>
+                  <strong>Baza</strong>
+                  <div class="detail" id="base-detail">Nije još potvrđeno</div>
+                </div>
+                <div class="detail" id="base-meta">—</div>
+                <div class="status" id="base-status">Na čekanju</div>
+              </div>
+              <div class="breakdown-row">
+                <div>
+                  <strong>Učvršćivač</strong>
+                  <div class="detail" id="hardener-detail">Nije još potvrđeno</div>
+                </div>
+                <div class="detail" id="hardener-meta">—</div>
+                <div class="status" id="hardener-status">Na čekanju</div>
+              </div>
+              <div class="breakdown-row">
+                <div>
+                  <strong>Voda</strong>
+                  <div class="detail" id="water-detail">Informativno, ne šalje se u STOQIO</div>
+                </div>
+                <div class="detail" id="water-meta">—</div>
+                <div class="status" id="water-status">Na čekanju</div>
+              </div>
+            </div>
+          </section>
 
           <section class="panel">
             <h2>Aktivna sesija</h2>
@@ -638,14 +869,6 @@
             </div>
           </section>
         </div>
-      </div>
-
-      <div class="actions">
-        <button id="pour-button" class="btn-primary" hidden>Ulijevanje</button>
-        <button id="tare-button" class="btn-secondary" hidden>Tariranje</button>
-        <button id="retry-button" class="btn-secondary" hidden>Pokušaj ponovo</button>
-        <button id="override-button" class="btn-warning" hidden>Nastavi svejedno</button>
-        <button id="new-mix-button" class="btn-success" hidden>Novo miješanje</button>
       </div>
     </div>
 

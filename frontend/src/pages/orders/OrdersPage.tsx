@@ -94,12 +94,7 @@ function OrdersTableSection({
       withBorder
       radius="lg"
       p="lg"
-      style={{
-        opacity: muted ? 0.66 : 1,
-        background: muted
-          ? 'linear-gradient(180deg, rgba(248, 249, 250, 1) 0%, rgba(244, 246, 248, 1) 100%)'
-          : 'linear-gradient(180deg, rgba(250, 252, 255, 1) 0%, rgba(244, 248, 251, 1) 100%)',
-      }}
+      style={{ opacity: muted ? 0.65 : 1 }}
     >
       <Stack gap="md">
         <Group justify="space-between">

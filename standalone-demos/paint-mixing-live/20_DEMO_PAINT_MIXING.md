@@ -15,6 +15,10 @@ The demo was implemented from the external planning document:
 
 - `/Users/grzzi/Desktop/STOQIO IZMJENE/20_DEMO_PAINT_MIXING.md`
 
+An additional external process specification is also relevant for the demo:
+
+- `/Users/grzzi/Desktop/STOQIO IZMJENE/ENAE-PWI-06.pdf`
+
 That external file was read fully before implementation. The most important
 sections used during implementation were:
 
@@ -23,9 +27,67 @@ sections used during implementation were:
 - `8.2` draft submission contract
 - `9` demo configuration
 
+The PDF was reviewed afterwards as the authoritative process/mixing table
+reference for the supported paint systems.
+
 This repo-local knowledge file does not replace the original concept document;
 it explains how that concept was translated into concrete files, data, and
 deployment steps inside this repo.
+
+## Additional source: ENAE-PWI-06
+
+`ENAE-PWI-06.pdf` is the manual mixing procedure document and is important
+because it confirms the real system-level mixing ratios and, for `346-57`,
+the required mixing order.
+
+Relevant PDF pages for the current demo scope:
+
+- page 10: `346-55 TOPCOAT` = `5 : 1 + 20% Water`
+- page 11: `346-55 TEXTURE` = `5 : 1 + 10% Water`
+- page 12: `346-56 TOPCOAT` = `5 : 1 + 20% Water`
+- page 13: `346-56 TEXTURE` = `5 : 1 + 10% Water`
+- page 14: `346-57 TOPCOAT` = `6 : 1 + 20% Water`
+- page 15: `346-57 TEXTURE` = `6 : 1 + 10% Water`
+- page 17-18: `346-65 TOPCOAT` = `4 : 1 + 20% Water`
+- page 19: `346-65 TEXTURE` = `4 : 1 + 10% Water`
+
+Important procedural note from the PDF:
+
+- `346-57` explicitly says: `Miješanje po sistemu baza, voda, herter`
+
+That note is important because it confirms the special order already used by
+the demo:
+
+- `346-57`: `base -> water -> hardener`
+- `346-55`, `346-56`, `346-65`: `base -> hardener -> water`
+
+The PDF tables also confirm that all quantities are expressed in grams, which
+matches the demo's internal calculation model before STOQIO submission is
+converted to kilograms.
+
+## Current demo vs PDF alignment
+
+The currently implemented demo is aligned with the PDF for the supported
+TOPCOAT systems:
+
+- `346-55 TOPCOAT` -> ratio `5:1`, water `20%`
+- `346-56 TOPCOAT` -> ratio `5:1`, water `20%`
+- `346-57 TOPCOAT` -> ratio `6:1`, water `20%`, special order `base -> water -> hardener`
+- `346-65 TOPCOAT` -> ratio `4:1`, water `20%`
+
+The demo now also supports `TEXTURE` as an explicit presenter/operator choice:
+
+- `346-55 TEXTURE` -> ratio `5:1`, water `10%`
+- `346-56 TEXTURE` -> ratio `5:1`, water `10%`
+- `346-57 TEXTURE` -> ratio `6:1`, water `10%`, special order `base -> water -> hardener`
+- `346-65 TEXTURE` -> ratio `4:1`, water `10%`
+
+Important implementation detail:
+
+- batch scan resolves the paint system family (`346-55`, `346-56`, `346-57`, `346-65`)
+- presenter selects the recipe variant via visible `TOPCOAT` / `TEXTURE` buttons
+- variant selection determines the water percentage and final recipe config
+- the selected variant is locked for the active mix after the base scan
 
 ## Demo architecture
 
@@ -80,14 +142,16 @@ Future agents should **not** move the runtime logic back into inline
 The demo currently does the following:
 
 1. Logs in to STOQIO on page load using `demo_operator`
-2. Simulates scale behavior and workflow states
-3. Accepts scan input for base and hardener only in the correct states
-4. Resolves system/variant from the scanned base batch barcode
-5. Calculates hardener and water quantities in grams
-6. Submits two STOQIO draft lines after countdown:
+2. Lets the presenter choose `TOPCOAT` or `TEXTURE` before base scan
+3. Simulates scale behavior and workflow states
+4. Accepts scan input for base and hardener only in the correct states
+5. Resolves the paint system from the scanned base batch barcode
+6. Applies the selected variant to determine the active mixing ratios
+7. Calculates hardener and water quantities in grams
+8. Submits two STOQIO draft lines after countdown:
    - base
    - hardener
-7. Does not submit water
+9. Does not submit water
 
 The API contract used is:
 
@@ -268,6 +332,7 @@ Rules kept from the planning doc:
 
 - scanner only acts in base-scan and hardener-scan states
 - base scan determines the whole mixing session
+- selected `TOPCOAT` / `TEXTURE` determines the recipe variant for that session
 - hardener tolerance uses 10%
 - water is informational and never submitted to STOQIO
 - `346-57` uses `base -> water -> hardener`
@@ -339,20 +404,13 @@ If any of the following change, the demo must be rewired:
 
 The map is intentionally explicit; it is not auto-discovered at runtime.
 
-### 3. The demo currently supports TOPCOAT variants only
+### 3. Variant is now user-selected, not inferred from batch map
 
-The implementation currently wires the systems actually needed for the demo:
+The batch map resolves the paint family/system, but the recipe variant is
+selected in the UI through explicit `TOPCOAT` / `TEXTURE` buttons.
 
-- `346-55 TOPCOAT`
-- `346-56 TOPCOAT`
-- `346-65 TOPCOAT`
-- `346-57 TOPCOAT`
-
-If TEXTURE variants are needed later, future agents must update:
-
-- `MIXING_SYSTEMS`
-- `BARCODE_MAP`
-- any presentation copy that assumes TOPCOAT only
+Future agents should preserve that separation unless the demo concept is
+deliberately changed again.
 
 ### 4. Draft submission was smoke-verified via login, not by deliberate bulk seeding
 

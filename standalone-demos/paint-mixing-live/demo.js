@@ -11,6 +11,8 @@
         submit_countdown_seconds: 4,
       };
 
+      const DEFAULT_VARIANT = "TOPCOAT";
+
       const MIXING_SYSTEMS = {
         "346-55:TOPCOAT": {
           system: "346-55",
@@ -19,6 +21,15 @@
           hardener_article_no: "800072",
           base_to_hardener_ratio: 5,
           water_pct: 0.20,
+          mixing_order: ["base", "hardener", "water"],
+        },
+        "346-55:TEXTURE": {
+          system: "346-55",
+          variant: "TEXTURE",
+          hardener_id: "345-55",
+          hardener_article_no: "800072",
+          base_to_hardener_ratio: 5,
+          water_pct: 0.10,
           mixing_order: ["base", "hardener", "water"],
         },
         "346-56:TOPCOAT": {
@@ -30,6 +41,15 @@
           water_pct: 0.20,
           mixing_order: ["base", "hardener", "water"],
         },
+        "346-56:TEXTURE": {
+          system: "346-56",
+          variant: "TEXTURE",
+          hardener_id: "345-55",
+          hardener_article_no: "800072",
+          base_to_hardener_ratio: 5,
+          water_pct: 0.10,
+          mixing_order: ["base", "hardener", "water"],
+        },
         "346-65:TOPCOAT": {
           system: "346-65",
           variant: "TOPCOAT",
@@ -37,6 +57,15 @@
           hardener_article_no: "800071",
           base_to_hardener_ratio: 4,
           water_pct: 0.20,
+          mixing_order: ["base", "hardener", "water"],
+        },
+        "346-65:TEXTURE": {
+          system: "346-65",
+          variant: "TEXTURE",
+          hardener_id: "345-19",
+          hardener_article_no: "800071",
+          base_to_hardener_ratio: 4,
+          water_pct: 0.10,
           mixing_order: ["base", "hardener", "water"],
         },
         "346-57:TOPCOAT": {
@@ -48,6 +77,52 @@
           water_pct: 0.20,
           mixing_order: ["base", "water", "hardener"],
         },
+        "346-57:TEXTURE": {
+          system: "346-57",
+          variant: "TEXTURE",
+          hardener_id: "345-57",
+          hardener_article_no: "800050",
+          base_to_hardener_ratio: 6,
+          water_pct: 0.10,
+          mixing_order: ["base", "water", "hardener"],
+        },
+      };
+
+      const SYSTEM_DISPLAY = {
+        "346-55": {
+          family: "MANKIEWICZ 346-55",
+          base: {
+            TOPCOAT: "ALEXIT Top Coat 346-55",
+            TEXTURE: "ALEXIT Top Coat 346-55",
+          },
+        },
+        "346-56": {
+          family: "MANKIEWICZ BioProtect 346-56",
+          base: {
+            TOPCOAT: "ALEXIT Top Coat 346-56",
+            TEXTURE: "ALEXIT Top Coat 346-56",
+          },
+        },
+        "346-57": {
+          family: "MANKIEWICZ 346-57",
+          base: {
+            TOPCOAT: "BASE 346-57",
+            TEXTURE: "BASE 346-57",
+          },
+        },
+        "346-65": {
+          family: "MANKIEWICZ 346-65",
+          base: {
+            TOPCOAT: "ALEXIT FST 346-65",
+            TEXTURE: "ALEXIT FST Strukturlack 346-65",
+          },
+        },
+      };
+
+      const HARDENER_COPY = {
+        "345-55": "ALEXIT-Härter / Hardener 345-55",
+        "345-19": "ALEXIT-Härter / Hardener 345-19",
+        "345-57": "ALEXIT-Hardener 345-57",
       };
 
       const BARCODE_MAP = {
@@ -201,6 +276,7 @@
       const INITIAL_STATE = () => ({
         connectionStatus: "connecting",
         accessToken: null,
+        selectedVariant: DEFAULT_VARIANT,
         phase: "IDLE",
         scaleGrams: 0,
         scaleStable: true,
@@ -248,10 +324,14 @@
         dom.connectionText = document.getElementById("connection-text");
         dom.systemBadge = document.getElementById("system-badge");
         dom.variantBadge = document.getElementById("variant-badge");
+        dom.variantTopcoatButton = document.getElementById("variant-topcoat-button");
+        dom.variantTextureButton = document.getElementById("variant-texture-button");
         dom.scaleValue = document.getElementById("scale-value");
         dom.stabilityDot = document.getElementById("stability-dot");
         dom.stabilityText = document.getElementById("stability-text");
+        dom.stepPanel = document.getElementById("step-panel");
         dom.instructionText = document.getElementById("instruction-text");
+        dom.instructionMeta = document.getElementById("instruction-meta");
         dom.countdown = document.getElementById("countdown");
         dom.feedback = document.getElementById("feedback");
         dom.breakdownPanel = document.getElementById("breakdown-panel");
@@ -295,19 +375,22 @@
               class="shortcut-btn shortcut-btn-base"
               data-scan-value="${entry.barcode}"
             >
-              ${entry.article_no} / ${entry.batch_code}
+              <span class="shortcut-primary">${entry.article_no} / ${entry.batch_code}</span>
+              <span class="shortcut-secondary">${getSystemDisplayLabel(entry.system)} • ${getBaseDisplayName(entry, state.selectedVariant)}</span>
             </button>
           `;
         }).join("");
 
         dom.hardenerShortcuts.innerHTML = HARDENER_SHORTCUTS.map((entry) => {
+          const supportedSystems = getSystemsForHardener(entry.hardener_id).join(" / ");
           return `
             <button
               type="button"
               class="shortcut-btn shortcut-btn-hardener"
               data-scan-value="${entry.barcode}"
             >
-              ${entry.article_no} / ${entry.batch_code}
+              <span class="shortcut-primary">${entry.article_no} / ${entry.batch_code}</span>
+              <span class="shortcut-secondary">${getHardenerDisplayName(entry)} • za ${supportedSystems}</span>
             </button>
           `;
         }).join("");
@@ -352,6 +435,12 @@
         dom.weightResetShortcut.addEventListener("click", () => {
           applyWeightShortcut("reset");
         });
+        dom.variantTopcoatButton.addEventListener("click", () => {
+          handleVariantChange("TOPCOAT");
+        });
+        dom.variantTextureButton.addEventListener("click", () => {
+          handleVariantChange("TEXTURE");
+        });
 
         dom.pourButton.addEventListener("click", () => {
           void handlePour();
@@ -370,6 +459,23 @@
         });
         window.addEventListener("click", () => focusScannerSoon());
         window.addEventListener("keydown", () => focusScannerSoon());
+      }
+
+      function handleVariantChange(nextVariant) {
+        if (state.selectedVariant === nextVariant) {
+          return;
+        }
+
+        if (!["IDLE", "WAITING_BASE_SCAN"].includes(state.phase)) {
+          state.inlineError = "Varijantu promijenite prije skeniranja baze za aktivnu mješavinu.";
+          render();
+          return;
+        }
+
+        clearMessages({ keepSuccess: true });
+        state.selectedVariant = nextVariant;
+        renderShortcutButtons();
+        render();
       }
 
       async function loginDemo() {
@@ -520,7 +626,8 @@
           return;
         }
 
-        const config = MIXING_SYSTEMS[`${entry.system}:${entry.variant}`];
+        const selectedVariant = state.selectedVariant || DEFAULT_VARIANT;
+        const config = MIXING_SYSTEMS[`${entry.system}:${selectedVariant}`];
         if (!config) {
           state.inlineError = "Konfiguracija sustava nije pronađena.";
           render();
@@ -530,7 +637,7 @@
         state.session.baseEntry = entry;
         state.session.config = config;
         state.session.system = entry.system;
-        state.session.variant = entry.variant;
+        state.session.variant = selectedVariant;
         state.session.baseGrams = state.scaleGrams;
         state.session.hardenerExpectedGrams = roundToOne(state.session.baseGrams / config.base_to_hardener_ratio);
         state.session.waterExpectedGrams = roundToOne(state.session.baseGrams * config.water_pct);
@@ -896,10 +1003,13 @@
         countdownInterval = null;
         const preservedToken = state.accessToken;
         const preservedConnection = state.connectionStatus;
+        const preservedVariant = state.selectedVariant;
         Object.assign(state, INITIAL_STATE());
         state.accessToken = preservedToken;
         state.connectionStatus = preservedConnection;
+        state.selectedVariant = preservedVariant;
         state.scaleStable = true;
+        renderShortcutButtons();
         render();
       }
 
@@ -927,14 +1037,14 @@
         dom.variantBadge.hidden = !state.session.variant;
         dom.systemBadge.textContent = state.session.system || "";
         dom.variantBadge.textContent = state.session.variant || "";
+        renderVariantButtons();
 
         dom.breakdownPanel.hidden = !state.session.config;
         renderBreakdown();
         renderFeedback();
         renderSessionSummary();
         renderButtons();
-
-        dom.instructionText.textContent = currentInstruction();
+        renderCurrentInstruction();
 
         if (state.phase !== "CONFIRMING" && state.phase !== "SUBMITTING") {
           dom.countdown.hidden = true;
@@ -942,9 +1052,29 @@
         }
       }
 
+      function renderVariantButtons() {
+        const variantLocked = !["IDLE", "WAITING_BASE_SCAN"].includes(state.phase);
+
+        dom.variantTopcoatButton.className =
+          "variant-btn" + (state.selectedVariant === "TOPCOAT" ? " variant-btn-active" : "");
+        dom.variantTextureButton.className =
+          "variant-btn" + (state.selectedVariant === "TEXTURE" ? " variant-btn-active" : "");
+
+        dom.variantTopcoatButton.disabled = variantLocked;
+        dom.variantTextureButton.disabled = variantLocked;
+      }
+
+      function renderCurrentInstruction() {
+        const instruction = currentInstructionContent();
+        dom.instructionText.textContent = instruction.headline;
+        dom.instructionMeta.textContent = instruction.meta || "";
+        dom.instructionMeta.hidden = !instruction.meta;
+        dom.stepPanel.classList.toggle("step-panel-attention", instruction.emphasis === true);
+      }
+
       function renderBreakdown() {
         const baseLabel = state.session.baseEntry
-          ? `${ARTICLE_COPY[state.session.baseEntry.article_no]} (${state.session.baseEntry.batch_code})`
+          ? `${getBaseDisplayName(state.session.baseEntry, state.session.variant)} (${state.session.baseEntry.batch_code})`
           : "Nije još potvrđeno";
         dom.baseDetail.textContent = baseLabel;
         dom.baseMeta.textContent = state.session.baseGrams != null ? formatGrams(state.session.baseGrams) : "—";
@@ -962,9 +1092,9 @@
             : "";
         dom.hardenerMeta.textContent = `${hardenerExpected}${hardenerActual}`;
         dom.hardenerDetail.textContent = state.session.hardenerEntry
-          ? `${ARTICLE_COPY[state.session.hardenerEntry.article_no]} (${state.session.hardenerEntry.batch_code})`
+          ? `${getHardenerDisplayName(state.session.hardenerEntry)} (${state.session.hardenerEntry.batch_code})`
           : state.session.config
-            ? `Očekivani hardener: ${state.session.config.hardener_id}`
+            ? `Očekivani učvršćivač: ${getHardenerDisplayName(state.session.config.hardener_id)}`
             : "Nije još potvrđeno";
         dom.hardenerStatus.textContent = hardenerStatusText();
         dom.hardenerStatus.className = "status " + hardenerStatusClass();
@@ -1003,15 +1133,15 @@
 
       function renderSessionSummary() {
         dom.sessionBase.textContent = state.session.baseEntry
-          ? `${ARTICLE_COPY[state.session.baseEntry.article_no]}`
+          ? `${getBaseDisplayName(state.session.baseEntry, state.session.variant)}`
           : "—";
         dom.sessionBaseBatch.textContent = state.session.baseEntry
           ? `${state.session.baseEntry.batch_code} / ${state.session.baseEntry.barcode}`
           : "—";
         dom.sessionHardener.textContent = state.session.hardenerEntry
-          ? `${ARTICLE_COPY[state.session.hardenerEntry.article_no]}`
+          ? `${getHardenerDisplayName(state.session.hardenerEntry)}`
           : state.session.config
-            ? `${state.session.config.hardener_id} (${state.session.config.hardener_article_no})`
+            ? `${getHardenerDisplayName(state.session.config.hardener_id)}`
             : "—";
         dom.sessionHardenerBatch.textContent = state.session.hardenerEntry
           ? `${state.session.hardenerEntry.batch_code} / ${state.session.hardenerEntry.barcode}`
@@ -1044,36 +1174,88 @@
         return "Ulij bazu";
       }
 
-      function currentInstruction() {
+      function currentInstructionContent() {
+        const activeVariant = state.session.variant || state.selectedVariant;
+        const hardenerCode = state.session.config?.hardener_id || "učvršćivač";
+        const hardenerName = getHardenerDisplayName(state.session.config?.hardener_id);
+        const baseName = state.session.baseEntry
+          ? getBaseDisplayName(state.session.baseEntry, state.session.variant)
+          : "bazu";
+
         switch (state.phase) {
           case "IDLE":
-            return "Ulijte bazu u posudu za miješanje";
+            return {
+              headline: "Odaberite varijantu i ulijte bazu",
+              meta: `Aktivna varijanta: ${activeVariant}. Omjer vode za recepturu zaključava se nakon skeniranja baze.`,
+            };
           case "WAITING_BASE_SCAN":
-            return "Skenirajte barkod boje";
+            return {
+              headline: "Skenirajte barkod baze",
+              meta: `${formatGrams(state.scaleGrams)} na vagi • varijanta ${activeVariant}`,
+            };
           case "TARE_AFTER_BASE":
-            return "Tarirajte vagu";
+            return {
+              headline: "Tarirajte vagu",
+              meta: `${baseName} potvrđena • ${formatGrams(state.session.baseGrams)}`,
+            };
           case "POURING_WATER_FIRST":
-            return "Ulijte vodu";
+            return {
+              headline: `Ulijte ${formatGrams(state.session.waterExpectedGrams)} vode`,
+              meta: "Za sustav 346-57 voda ide prije učvršćivača.",
+              emphasis: true,
+            };
           case "TARE_AFTER_WATER":
-            return "Tarirajte vagu";
+            return {
+              headline: "Tarirajte vagu",
+              meta: `${formatGrams(state.session.waterActualGrams)} vode prihvaćeno • sljedeći korak je učvršćivač`,
+            };
           case "POURING_HARDENER":
-            return "Ulijte učvršćivač";
+            return {
+              headline: `Ulijte ${formatGrams(state.session.hardenerExpectedGrams)} učvršćivača ${hardenerCode}`,
+              meta: hardenerName,
+              emphasis: true,
+            };
           case "WAITING_HARDENER_SCAN":
-            return "Skenirajte barkod učvršćivača";
+            return {
+              headline: `Skenirajte učvršćivač ${hardenerCode}`,
+              meta: `${hardenerName} • planirana količina ${formatGrams(state.session.hardenerExpectedGrams)}`,
+            };
           case "HARDENER_WARNING":
-            return "Količina učvršćivača je izvan tolerancije";
+            return {
+              headline: `Provjerite količinu učvršćivača ${hardenerCode}`,
+              meta: `Plan ${formatGrams(state.warning?.expected)} • izmjereno ${formatGrams(state.warning?.actual)} • dopušteno odstupanje ±10%`,
+            };
           case "POURING_WATER_LAST":
-            return "Ulijte vodu";
+            return {
+              headline: `Ulijte ${formatGrams(state.session.waterExpectedGrams)} vode`,
+              meta: "Voda je informativna i ne šalje se u STOQIO.",
+              emphasis: true,
+            };
           case "CONFIRMING":
-            return "Provjera završena — slanje u odobravanje kreće automatski";
+            return {
+              headline: "Provjera završena",
+              meta: `Slanje u odobravanje za ${state.session.system} ${state.session.variant} kreće automatski.`,
+            };
           case "SUBMITTING":
-            return "Šaljem draftove u STOQIO...";
+            return {
+              headline: "Šaljem draftove u STOQIO...",
+              meta: `Šalju se baza i učvršćivač za ${state.session.system} ${state.session.variant}.`,
+            };
           case "SUCCESS":
-            return "Uspješno poslano u odobravanje";
+            return {
+              headline: "Uspješno poslano u odobravanje",
+              meta: `Možete pokrenuti novo miješanje za istu ili drugu varijantu.`,
+            };
           case "ERROR":
-            return "Slanje nije završilo — pokušajte ponovo";
+            return {
+              headline: "Slanje nije završilo",
+              meta: "Provjerite poruku ispod i pokušajte ponovno.",
+            };
           default:
-            return "Ulijte bazu u posudu za miješanje";
+            return {
+              headline: "Ulijte bazu u posudu za miješanje",
+              meta: "",
+            };
         }
       }
 
@@ -1118,6 +1300,50 @@
           return "status-active";
         }
         return "status-info";
+      }
+
+      function getSystemDisplayLabel(systemCode) {
+        return SYSTEM_DISPLAY[systemCode]?.family || `Sustav ${systemCode}`;
+      }
+
+      function getBaseDisplayName(entry, variant) {
+        if (!entry) {
+          return "Baza";
+        }
+
+        const resolvedVariant = variant || state.session.variant || state.selectedVariant || DEFAULT_VARIANT;
+        return (
+          SYSTEM_DISPLAY[entry.system]?.base?.[resolvedVariant] ||
+          ARTICLE_COPY[entry.article_no] ||
+          `${entry.article_no}`
+        );
+      }
+
+      function getHardenerDisplayName(entryOrId) {
+        const hardenerId =
+          typeof entryOrId === "string"
+            ? entryOrId
+            : entryOrId?.hardener_id || null;
+
+        if (hardenerId && HARDENER_COPY[hardenerId]) {
+          return HARDENER_COPY[hardenerId];
+        }
+
+        if (typeof entryOrId !== "string" && entryOrId?.article_no && ARTICLE_COPY[entryOrId.article_no]) {
+          return ARTICLE_COPY[entryOrId.article_no];
+        }
+
+        return hardenerId || "Učvršćivač";
+      }
+
+      function getSystemsForHardener(hardenerId) {
+        return Array.from(
+          new Set(
+            Object.values(MIXING_SYSTEMS)
+              .filter((config) => config.hardener_id === hardenerId)
+              .map((config) => config.system)
+          )
+        ).sort();
       }
 
       function formatGrams(value) {

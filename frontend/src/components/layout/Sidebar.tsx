@@ -70,6 +70,9 @@ export default function Sidebar() {
         borderRight: `1px solid ${isDark ? '#373a40' : '#ddd'}`,
         display: 'flex',
         flexDirection: 'column',
+        height: '100%',
+        overflowY: 'auto',
+        flexShrink: 0,
       }}
     >
       <div style={{ marginBottom: '2rem' }}>
