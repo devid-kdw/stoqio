@@ -123,7 +123,38 @@ Paginated list of all inventory transactions for this article, newest first.
 | Reference | Order number or delivery note number if available |
 | User | Who performed the action |
 
-### 5.5 Article Actions
+### 5.5 Statistics Section (Statistika)
+
+The Statistics section is lazy-loaded on first expand. It does not fetch data on page mount.
+
+**Controls:**
+- Period selector: 30 dana / 90 dana / 180 dana (default: 90 dana).
+- Toggling the section open triggers the first fetch. Changing the period re-fetches.
+
+**Layout — three mini-dashboard cards:**
+
+| Card | Label | KPIs | Chart |
+|------|-------|------|-------|
+| Tjedni izlaz | TJEDNI IZLAZ | Ukupno izlaz + Aktivnih tjedana | Bar chart, weekly buckets |
+| Tjedni ulaz | TJEDNI ULAZ | Ukupno ulaz + Aktivnih tjedana | Bar chart, weekly buckets |
+| Povijest cijene | POVIJEST CIJENE | Zadnja cijena + Promjena (period) + Zapisa | Line chart, one point per receipt |
+
+Each card uses a theme-aware background that works in both light and dark mode. Chart grid lines and tick labels adapt to the active colour scheme.
+
+**Price history drill-in:**
+
+Within the "Povijest cijene" card, a "Prikaži sve zapise" / "Sakrij zapise" toggle opens a compact table below the chart. The table lists all price points in reverse chronological order (newest first):
+
+| Column | Notes |
+|--------|-------|
+| Datum primke | ISO date of the Receiving record, date portion only |
+| Cijena / jed. | Unit price at that date |
+
+**Empty state:** `"Nema dostupne povijesti transakcija."` when all three series are empty.
+
+---
+
+### 5.6 Article Actions
 
 - **"Uredi"** — enables inline editing of all article master data fields on this screen.
 - **"Deaktiviraj"** — deactivates the article. Shows confirmation: `"Deaktivirati ovaj artikl? Više se neće prikazivati na popisu aktivnih artikala."` Deactivated articles remain in the database and their history is preserved.

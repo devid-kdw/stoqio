@@ -18,6 +18,8 @@ import {
   TextInput,
   Title,
   UnstyledButton,
+  useMantineColorScheme,
+  useMantineTheme,
 } from '@mantine/core'
 import { IconX, IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import {
@@ -88,6 +90,18 @@ function DetailField({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** Format a quantity number — strip trailing decimal zeros. */
+function fmtStat(v: number): string {
+  if (v === 0) return '0'
+  const s = v.toFixed(3)
+  return s.replace(/\.?0+$/, '')
+}
+
+/** Format a unit price — up to 4 significant decimal places. */
+function fmtPrice(v: number): string {
+  return v.toFixed(4).replace(/\.?0+$/, '')
+}
+
 export default function ArticleDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -138,10 +152,38 @@ export default function ArticleDetailPage() {
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
   const statsLoadedForRef = useRef<{ articleId: number; period: StatPeriod } | null>(null)
+  // Price history drill-in within the stats section
+  const [priceTableOpen, setPriceTableOpen] = useState(false)
 
   const initialLoadDoneRef = useRef(false)
   const supplierOptionsLoadedRef = useRef(false)
   const uomMap = useMemo(() => buildUomMap(uoms), [uoms])
+
+  // Theme helpers for chart styling
+  const { colorScheme } = useMantineColorScheme()
+  const theme = useMantineTheme()
+  const isDark = colorScheme === 'dark'
+  const chartGridColor = isDark ? theme.colors.dark[4] : '#dee2e6'
+  const chartTickColor = isDark ? '#adb5bd' : '#868e96'
+
+  // Derived KPIs from loaded stats — recomputed only when stats changes
+  const statsKpis = useMemo(() => {
+    if (!stats) return null
+    const totalOut = stats.outbound_by_week.reduce((s, b) => s + b.quantity, 0)
+    const activeWeeksOut = stats.outbound_by_week.filter((b) => b.quantity > 0).length
+    const totalIn = stats.inbound_by_week.reduce((s, b) => s + b.quantity, 0)
+    const activeWeeksIn = stats.inbound_by_week.filter((b) => b.quantity > 0).length
+    const pricePoints = stats.price_history
+    const lastPrice = pricePoints.length > 0 ? pricePoints[pricePoints.length - 1].unit_price : null
+    const firstPrice = pricePoints.length > 0 ? pricePoints[0].unit_price : null
+    const delta =
+      lastPrice !== null && firstPrice !== null ? lastPrice - firstPrice : null
+    const deltaPct =
+      delta !== null && firstPrice !== null && firstPrice !== 0
+        ? (delta / firstPrice) * 100
+        : null
+    return { totalOut, activeWeeksOut, totalIn, activeWeeksIn, lastPrice, delta, deltaPct }
+  }, [stats])
 
   const applyArticleState = useCallback((nextArticle: WarehouseArticleDetail) => {
     setArticle(nextArticle)
@@ -1187,77 +1229,267 @@ export default function ArticleDetailPage() {
               stats.outbound_by_week.length === 0 &&
               stats.inbound_by_week.length === 0 &&
               stats.price_history.length === 0 ? (
-              <Text c="dimmed">No transaction history available yet.</Text>
-            ) : stats ? (
-              <Stack gap="xl">
-                <Stack gap="xs">
-                  <Text fw={600}>Tjedni izlaz</Text>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={stats.outbound_by_week} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="week_start"
-                        tick={{ fontSize: 11 }}
-                        tickFormatter={(v: string) => v.slice(5)}
-                      />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <RechartsTooltip
-                        formatter={(value) => [String(value), 'Izlaz']}
-                        labelFormatter={(label) => `Tjedan: ${String(label)}`}
-                      />
-                      <Bar dataKey="quantity" name="Izlaz" fill="#f03e3e" radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Stack>
+              <Text c="dimmed">Nema dostupne povijesti transakcija.</Text>
+            ) : stats && statsKpis ? (
+              <Stack gap="md">
 
-                <Stack gap="xs">
-                  <Text fw={600}>Tjedni ulaz</Text>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={stats.inbound_by_week} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="week_start"
-                        tick={{ fontSize: 11 }}
-                        tickFormatter={(v: string) => v.slice(5)}
-                      />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <RechartsTooltip
-                        formatter={(value) => [String(value), 'Ulaz']}
-                        labelFormatter={(label) => `Tjedan: ${String(label)}`}
-                      />
-                      <Bar dataKey="quantity" name="Ulaz" fill="#1c7ed6" radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Stack>
-
-                {stats.price_history.length > 0 ? (
+                {/* ─── Outbound chart card ─── */}
+                <Paper
+                  withBorder
+                  radius="md"
+                  p="md"
+                  style={{
+                    background: isDark ? theme.colors.dark[7] : theme.colors.gray[0],
+                    borderColor: isDark ? theme.colors.dark[5] : theme.colors.gray[3],
+                  }}
+                >
                   <Stack gap="xs">
-                    <Text fw={600}>Povijest cijene (primke)</Text>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={stats.price_history} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: '0.04em' }}>
+                      Tjedni izlaz
+                    </Text>
+                    <Group gap="xl" mb={4}>
+                      <Stack gap={1}>
+                        <Text size="xs" c="dimmed">Ukupno izlaz</Text>
+                        <Text fw={700} size="sm" ff="monospace">
+                          {fmtStat(statsKpis.totalOut)}{article.base_uom ? ` ${article.base_uom}` : ''}
+                        </Text>
+                      </Stack>
+                      <Stack gap={1}>
+                        <Text size="xs" c="dimmed">Aktivnih tjedana</Text>
+                        <Text fw={700} size="sm" ff="monospace">{statsKpis.activeWeeksOut}</Text>
+                      </Stack>
+                    </Group>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart
+                        data={stats.outbound_by_week}
+                        margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
                         <XAxis
-                          dataKey="date"
-                          tick={{ fontSize: 11 }}
-                          tickFormatter={(v: string) => v.slice(0, 10)}
+                          dataKey="week_start"
+                          tick={{ fontSize: 10, fill: chartTickColor }}
+                          tickFormatter={(v: string) => v.slice(5)}
+                          tickLine={false}
+                          axisLine={{ stroke: chartGridColor }}
                         />
-                        <YAxis tick={{ fontSize: 11 }} />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: chartTickColor }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={40}
+                        />
                         <RechartsTooltip
-                          formatter={(value) => [String(value), 'Cijena/jed.']}
-                          labelFormatter={(label) => String(label).slice(0, 10)}
+                          contentStyle={{
+                            background: isDark ? theme.colors.dark[6] : '#fff',
+                            border: `1px solid ${isDark ? theme.colors.dark[4] : '#dee2e6'}`,
+                            borderRadius: 6,
+                            fontSize: 12,
+                          }}
+                          labelStyle={{ color: chartTickColor }}
+                          formatter={(value) => [String(value), 'Izlaz']}
+                          labelFormatter={(label) => `Tjedan od ${String(label)}`}
                         />
-                        <Line
-                          type="monotone"
-                          dataKey="unit_price"
-                          name="Cijena/jed."
-                          stroke="#37b24d"
-                          strokeWidth={2}
-                          dot={{ r: 4 }}
-                          activeDot={{ r: 6 }}
-                        />
-                      </LineChart>
+                        <Bar dataKey="quantity" name="Izlaz" fill="#f03e3e" radius={[3, 3, 0, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </Stack>
+                </Paper>
+
+                {/* ─── Inbound chart card ─── */}
+                <Paper
+                  withBorder
+                  radius="md"
+                  p="md"
+                  style={{
+                    background: isDark ? theme.colors.dark[7] : theme.colors.gray[0],
+                    borderColor: isDark ? theme.colors.dark[5] : theme.colors.gray[3],
+                  }}
+                >
+                  <Stack gap="xs">
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: '0.04em' }}>
+                      Tjedni ulaz
+                    </Text>
+                    <Group gap="xl" mb={4}>
+                      <Stack gap={1}>
+                        <Text size="xs" c="dimmed">Ukupno ulaz</Text>
+                        <Text fw={700} size="sm" ff="monospace">
+                          {fmtStat(statsKpis.totalIn)}{article.base_uom ? ` ${article.base_uom}` : ''}
+                        </Text>
+                      </Stack>
+                      <Stack gap={1}>
+                        <Text size="xs" c="dimmed">Aktivnih tjedana</Text>
+                        <Text fw={700} size="sm" ff="monospace">{statsKpis.activeWeeksIn}</Text>
+                      </Stack>
+                    </Group>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart
+                        data={stats.inbound_by_week}
+                        margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                        <XAxis
+                          dataKey="week_start"
+                          tick={{ fontSize: 10, fill: chartTickColor }}
+                          tickFormatter={(v: string) => v.slice(5)}
+                          tickLine={false}
+                          axisLine={{ stroke: chartGridColor }}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: chartTickColor }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={40}
+                        />
+                        <RechartsTooltip
+                          contentStyle={{
+                            background: isDark ? theme.colors.dark[6] : '#fff',
+                            border: `1px solid ${isDark ? theme.colors.dark[4] : '#dee2e6'}`,
+                            borderRadius: 6,
+                            fontSize: 12,
+                          }}
+                          labelStyle={{ color: chartTickColor }}
+                          formatter={(value) => [String(value), 'Ulaz']}
+                          labelFormatter={(label) => `Tjedan od ${String(label)}`}
+                        />
+                        <Bar dataKey="quantity" name="Ulaz" fill="#339af0" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Stack>
+                </Paper>
+
+                {/* ─── Price history chart card ─── */}
+                {stats.price_history.length > 0 ? (
+                  <Paper
+                    withBorder
+                    radius="md"
+                    p="md"
+                    style={{
+                      background: isDark ? theme.colors.dark[7] : theme.colors.gray[0],
+                      borderColor: isDark ? theme.colors.dark[5] : theme.colors.gray[3],
+                    }}
+                  >
+                    <Stack gap="xs">
+                      <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: '0.04em' }}>
+                        Povijest cijene (primke)
+                      </Text>
+                      <Group gap="xl" mb={4}>
+                        {statsKpis.lastPrice !== null ? (
+                          <Stack gap={1}>
+                            <Text size="xs" c="dimmed">Zadnja cijena</Text>
+                            <Text fw={700} size="sm" ff="monospace">{fmtPrice(statsKpis.lastPrice)}</Text>
+                          </Stack>
+                        ) : null}
+                        {statsKpis.delta !== null ? (
+                          <Stack gap={1}>
+                            <Text size="xs" c="dimmed">Promjena (period)</Text>
+                            <Text
+                              fw={700}
+                              size="sm"
+                              ff="monospace"
+                              c={statsKpis.delta > 0 ? 'red' : statsKpis.delta < 0 ? 'green' : undefined}
+                            >
+                              {statsKpis.delta > 0 ? '+' : ''}{fmtPrice(statsKpis.delta)}
+                              {statsKpis.deltaPct !== null
+                                ? ` (${statsKpis.deltaPct > 0 ? '+' : ''}${statsKpis.deltaPct.toFixed(1)}%)`
+                                : ''}
+                            </Text>
+                          </Stack>
+                        ) : null}
+                        <Stack gap={1}>
+                          <Text size="xs" c="dimmed">Zapisa</Text>
+                          <Text fw={700} size="sm" ff="monospace">{stats.price_history.length}</Text>
+                        </Stack>
+                      </Group>
+
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart
+                          data={stats.price_history}
+                          margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 10, fill: chartTickColor }}
+                            tickFormatter={(v: string) => v.slice(0, 10)}
+                            tickLine={false}
+                            axisLine={{ stroke: chartGridColor }}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 10, fill: chartTickColor }}
+                            tickLine={false}
+                            axisLine={false}
+                            width={50}
+                          />
+                          <RechartsTooltip
+                            contentStyle={{
+                              background: isDark ? theme.colors.dark[6] : '#fff',
+                              border: `1px solid ${isDark ? theme.colors.dark[4] : '#dee2e6'}`,
+                              borderRadius: 6,
+                              fontSize: 12,
+                            }}
+                            labelStyle={{ color: chartTickColor }}
+                            formatter={(value) => [String(value), 'Cijena/jed.']}
+                            labelFormatter={(label) => String(label).slice(0, 10)}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="unit_price"
+                            name="Cijena/jed."
+                            stroke="#51cf66"
+                            strokeWidth={2}
+                            dot={{ r: 4, fill: '#51cf66' }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+
+                      {/* Price history drill-in table */}
+                      <UnstyledButton
+                        onClick={() => setPriceTableOpen((v) => !v)}
+                        style={{ alignSelf: 'flex-start' }}
+                      >
+                        <Group gap={4}>
+                          <Text size="xs" c="dimmed">
+                            {priceTableOpen ? 'Sakrij zapise' : 'Prikaži sve zapise'}
+                          </Text>
+                          {priceTableOpen ? (
+                            <IconChevronUp size={12} color={chartTickColor} />
+                          ) : (
+                            <IconChevronDown size={12} color={chartTickColor} />
+                          )}
+                        </Group>
+                      </UnstyledButton>
+
+                      <Collapse in={priceTableOpen}>
+                        <ScrollArea>
+                          <Table
+                            withTableBorder
+                            withColumnBorders
+                            verticalSpacing="xs"
+                            fz="xs"
+                            style={{ maxWidth: 360 }}
+                          >
+                            <Table.Thead>
+                              <Table.Tr>
+                                <Table.Th>Datum primke</Table.Th>
+                                <Table.Th style={{ textAlign: 'right' }}>Cijena / jed.</Table.Th>
+                              </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                              {[...stats.price_history].reverse().map((pt, idx) => (
+                                <Table.Tr key={idx}>
+                                  <Table.Td>{pt.date.slice(0, 10)}</Table.Td>
+                                  <Table.Td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                                    {fmtPrice(pt.unit_price)}
+                                  </Table.Td>
+                                </Table.Tr>
+                              ))}
+                            </Table.Tbody>
+                          </Table>
+                        </ScrollArea>
+                      </Collapse>
+                    </Stack>
+                  </Paper>
                 ) : null}
               </Stack>
             ) : null}

@@ -56,6 +56,27 @@ Acceptance Criteria
 
 Validation Notes
 - 2026-04-11: Orchestrator opened Wave 9 Phase 5 from the finalized Wave 9 feedback intake.
+- 2026-04-11: Orchestrator reviewed `frontend.md` and `testing.md` against the committed code
+  changes in `frontend/src/pages/warehouse/ArticleDetailPage.tsx` and
+  `stoqio_docs/13_UI_WAREHOUSE.md`.
+- 2026-04-11: Orchestrator re-ran validation:
+  - `cd frontend && npm run lint` → passed
+  - `cd frontend && npm run build` → passed
+- 2026-04-11: Accepted implementation details:
+  - Statistics section remains lazy-loaded and preserves the existing `30 / 90 / 180` day period
+    behavior
+  - the three stats charts now render inside theme-aware mini-dashboard cards with KPI context
+  - the local price-history drill-in stays article-centric and does not duplicate the Reports
+    price-movement feature
+  - Warehouse docs now describe the refreshed Statistics section and the local price table drill-in
+- 2026-04-11: Residual non-blocking gap:
+  - there is still no dedicated automated frontend test for the `priceTableOpen` interaction or
+    KPI rendering path in `ArticleDetailPage`
+  - current confidence comes from code review plus green lint/build gates
+
+Completion
+- Phase 5 accepted by orchestrator.
+- No blocking findings remained after orchestrator review.
 
 Next Action
-- Frontend worker implements and records `frontend.md`.
+- Wave 9 implementation phases are complete.
