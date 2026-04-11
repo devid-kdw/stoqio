@@ -15,13 +15,18 @@ interface IdentifierSearchItemBase {
   matched_alias: string | null
 }
 
+/** Returned for ADMIN and MANAGER — exact quantities and purchase price visible. */
 export interface IdentifierSearchQuantityItem extends IdentifierSearchItemBase {
   stock: number
-  surplus: number
+  is_ordered: boolean
+  ordered_quantity: number
+  latest_purchase_price: number | null
 }
 
+/** Returned for WAREHOUSE_STAFF and VIEWER — boolean availability only, no price. */
 export interface IdentifierSearchAvailabilityItem extends IdentifierSearchItemBase {
   in_stock: boolean
+  is_ordered: boolean
 }
 
 export type IdentifierSearchItem =

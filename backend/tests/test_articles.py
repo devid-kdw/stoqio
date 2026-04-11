@@ -25,9 +25,13 @@ from app.models.enums import (
     DraftStatus,
     DraftType,
     MissingArticleReportStatus,
+    OrderLineStatus,
+    OrderStatus,
     TxType,
     UserRole,
 )
+from app.models.order import Order
+from app.models.order_line import OrderLine
 from app.models.location import Location
 from app.models.missing_article_report import MissingArticleReport
 from app.models.receiving import Receiving
@@ -1605,9 +1609,10 @@ class TestIdentifier:
         assert payload["total"] == 0
         assert payload["items"] == []
 
-    def test_identifier_search_returns_alias_match_with_exact_quantities(
+    def test_identifier_search_returns_alias_match_with_boolean_stock_for_staff(
         self, client, warehouse_data
     ):
+        """WAREHOUSE_STAFF sees boolean in_stock + is_ordered, no exact quantities."""
         token = _login(client, "warehouse_staff")
         response = client.get(
             "/api/v1/identifier?q=p-9000",
@@ -1626,12 +1631,18 @@ class TestIdentifier:
         assert item["decimal_display"] is True
         assert item["matched_via"] == "alias"
         assert item["matched_alias"] == "P-9000"
-        assert item["stock"] == 103.0
-        assert item["surplus"] == 5.0
+        # W9 Phase 3: WAREHOUSE_STAFF gets boolean-only visibility
+        assert item["in_stock"] is True
+        assert item["is_ordered"] is False  # no open orders seeded
+        assert "stock" not in item
+        assert "surplus" not in item
+        assert "ordered_quantity" not in item
+        assert "latest_purchase_price" not in item
 
-    def test_identifier_search_viewer_receives_in_stock_only(
+    def test_identifier_search_viewer_receives_in_stock_and_is_ordered_only(
         self, client, warehouse_data
     ):
+        """VIEWER sees boolean in_stock + is_ordered, no exact quantities or prices."""
         token = _login(client, "warehouse_viewer")
         response = client.get(
             "/api/v1/identifier?q=whbar001",
@@ -1646,8 +1657,11 @@ class TestIdentifier:
         assert item["id"] == warehouse_data["active_article"].id
         assert item["matched_via"] == "barcode"
         assert item["in_stock"] is True
+        assert item["is_ordered"] is False  # no open orders seeded for this article
         assert "stock" not in item
         assert "surplus" not in item
+        assert "ordered_quantity" not in item
+        assert "latest_purchase_price" not in item
 
     def test_missing_report_submit_merges_duplicates_by_normalized_term(
         self, client, app, warehouse_data
@@ -1826,6 +1840,293 @@ class TestIdentifier:
             assert stored.status == MissingArticleReportStatus.RESOLVED
             assert stored.resolution_note == "Article added as WH-RESOLVE-001."
             assert stored.resolved_at is not None
+
+
+@pytest.fixture(scope="module")
+def identifier_order_data(app, warehouse_data):
+    """Seed open purchase orders for Identifier order-visibility tests."""
+    with app.app_context():
+        # Use the active article (WH-ACT-001) for order tests.
+        # It already has stock=9, surplus=0.5, and receiving/supplier data.
+        active_article = warehouse_data["active_article"]
+        batch_article = warehouse_data["batch_article"]
+        admin = warehouse_data["admin"]
+
+        supplier_primary = warehouse_data["supplier_primary"]
+        supplier_secondary = warehouse_data["supplier_secondary"]
+
+        # --- Order 1: 20 ordered, 5 received → 15 outstanding -----------
+        order1 = Order.query.filter_by(order_number="ID-ORD-001").first()
+        if order1 is None:
+            order1 = Order(
+                order_number="ID-ORD-001",
+                supplier_id=supplier_primary.id,
+                status=OrderStatus.OPEN,
+                created_by=admin.id,
+            )
+            _db.session.add(order1)
+            _db.session.flush()
+
+        line1 = (
+            OrderLine.query
+            .filter_by(order_id=order1.id, article_id=active_article.id)
+            .first()
+        )
+        if line1 is None:
+            line1 = OrderLine(
+                order_id=order1.id,
+                article_id=active_article.id,
+                ordered_qty=Decimal("20.000"),
+                received_qty=Decimal("5.000"),
+                uom="whkg",
+                unit_price=Decimal("1.5000"),
+                status=OrderLineStatus.OPEN,
+            )
+            _db.session.add(line1)
+            _db.session.flush()
+
+        # --- Order 2: 10 ordered, 0 received → 10 outstanding -----------
+        order2 = Order.query.filter_by(order_number="ID-ORD-002").first()
+        if order2 is None:
+            order2 = Order(
+                order_number="ID-ORD-002",
+                supplier_id=supplier_secondary.id,
+                status=OrderStatus.OPEN,
+                created_by=admin.id,
+            )
+            _db.session.add(order2)
+            _db.session.flush()
+
+        line2 = (
+            OrderLine.query
+            .filter_by(order_id=order2.id, article_id=active_article.id)
+            .first()
+        )
+        if line2 is None:
+            line2 = OrderLine(
+                order_id=order2.id,
+                article_id=active_article.id,
+                ordered_qty=Decimal("10.000"),
+                received_qty=Decimal("0.000"),
+                uom="whkg",
+                unit_price=Decimal("1.6000"),
+                status=OrderLineStatus.OPEN,
+            )
+            _db.session.add(line2)
+            _db.session.flush()
+
+        # --- Closed order (should NOT count) ----------------------------
+        order_closed = Order.query.filter_by(order_number="ID-ORD-CLOSED").first()
+        if order_closed is None:
+            order_closed = Order(
+                order_number="ID-ORD-CLOSED",
+                supplier_id=supplier_primary.id,
+                status=OrderStatus.CLOSED,
+                created_by=admin.id,
+            )
+            _db.session.add(order_closed)
+            _db.session.flush()
+
+        line_closed = (
+            OrderLine.query
+            .filter_by(order_id=order_closed.id, article_id=active_article.id)
+            .first()
+        )
+        if line_closed is None:
+            line_closed = OrderLine(
+                order_id=order_closed.id,
+                article_id=active_article.id,
+                ordered_qty=Decimal("99.000"),
+                received_qty=Decimal("0.000"),
+                uom="whkg",
+                status=OrderLineStatus.OPEN,
+            )
+            _db.session.add(line_closed)
+            _db.session.flush()
+
+        _db.session.commit()
+
+        yield {
+            "active_article": active_article,
+            "batch_article": batch_article,
+            "order1": order1,
+            "order2": order2,
+            "order_closed": order_closed,
+        }
+
+
+class TestIdentifierOrderVisibility:
+    """Wave 9 Phase 3: Identifier role-sensitive order/price visibility tests."""
+
+    def test_admin_sees_exact_stock_ordered_qty_and_purchase_price(
+        self, client, app, warehouse_data, identifier_order_data
+    ):
+        """ADMIN gets exact stock, is_ordered, ordered_quantity, latest_purchase_price."""
+        token = _login(client, "warehouse_admin")
+        article = identifier_order_data["active_article"]
+
+        response = client.get(
+            f"/api/v1/identifier?q={article.article_no}",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["total"] >= 1
+
+        item = next(i for i in payload["items"] if i["id"] == article.id)
+
+        # Exact stock (no surplus key)
+        assert "stock" in item
+        assert "surplus" not in item
+        assert item["stock"] == 9.0  # from warehouse_data seed
+
+        # Ordered visibility
+        assert item["is_ordered"] is True
+        # 15 outstanding from order1 + 10 from order2 = 25 total
+        assert item["ordered_quantity"] == 25.0
+
+        # Latest purchase price (from receiving seed: last was 4.3 for batch_article,
+        # active_article has no receiving but has no supplier link either in default seed.
+        # However the article has a stock row with average_price. The pricing hierarchy
+        # checks Receiving first, then preferred supplier, then any supplier.)
+        # active_article has no receiving and no article_supplier link in the default
+        # seed, so latest_purchase_price should be None.
+        assert "latest_purchase_price" in item
+
+        # No boolean in_stock for ADMIN
+        assert "in_stock" not in item
+
+    def test_manager_sees_same_shape_as_admin(
+        self, client, warehouse_data, identifier_order_data
+    ):
+        """MANAGER gets the same data shape as ADMIN."""
+        token = _login(client, "warehouse_manager")
+        article = identifier_order_data["active_article"]
+
+        response = client.get(
+            f"/api/v1/identifier?q={article.article_no}",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        item = next(i for i in payload["items"] if i["id"] == article.id)
+
+        assert "stock" in item
+        assert item["is_ordered"] is True
+        assert item["ordered_quantity"] == 25.0
+        assert "latest_purchase_price" in item
+        assert "surplus" not in item
+        assert "in_stock" not in item
+
+    def test_warehouse_staff_sees_boolean_only(
+        self, client, warehouse_data, identifier_order_data
+    ):
+        """WAREHOUSE_STAFF gets in_stock + is_ordered booleans only."""
+        token = _login(client, "warehouse_staff")
+        article = identifier_order_data["active_article"]
+
+        response = client.get(
+            f"/api/v1/identifier?q={article.article_no}",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        item = next(i for i in payload["items"] if i["id"] == article.id)
+
+        assert item["in_stock"] is True
+        assert item["is_ordered"] is True
+        assert "stock" not in item
+        assert "surplus" not in item
+        assert "ordered_quantity" not in item
+        assert "latest_purchase_price" not in item
+
+    def test_viewer_sees_boolean_only(
+        self, client, warehouse_data, identifier_order_data
+    ):
+        """VIEWER gets in_stock + is_ordered booleans only."""
+        token = _login(client, "warehouse_viewer")
+        article = identifier_order_data["active_article"]
+
+        response = client.get(
+            f"/api/v1/identifier?q={article.article_no}",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        item = next(i for i in payload["items"] if i["id"] == article.id)
+
+        assert item["in_stock"] is True
+        assert item["is_ordered"] is True
+        assert "stock" not in item
+        assert "surplus" not in item
+        assert "ordered_quantity" not in item
+        assert "latest_purchase_price" not in item
+
+    def test_ordered_quantity_sums_across_multiple_open_orders(
+        self, client, warehouse_data, identifier_order_data
+    ):
+        """ordered_quantity sums outstanding qty across multiple open orders."""
+        token = _login(client, "warehouse_admin")
+        article = identifier_order_data["active_article"]
+
+        response = client.get(
+            f"/api/v1/identifier?q={article.article_no}",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        item = next(i for i in response.get_json()["items"] if i["id"] == article.id)
+
+        # Order 1: 20 ordered − 5 received = 15 outstanding
+        # Order 2: 10 ordered − 0 received = 10 outstanding
+        # Closed order: 99 ordered − 0 received → excluded (order is CLOSED)
+        assert item["ordered_quantity"] == 25.0
+        assert item["is_ordered"] is True
+
+    def test_latest_purchase_price_from_receiving(
+        self, client, app, warehouse_data, identifier_order_data
+    ):
+        """latest_purchase_price comes from the most recent Receiving.unit_price."""
+        token = _login(client, "warehouse_admin")
+        batch_article = identifier_order_data["batch_article"]
+
+        response = client.get(
+            f"/api/v1/identifier?q={batch_article.article_no}",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        item = next(
+            i for i in response.get_json()["items"] if i["id"] == batch_article.id
+        )
+
+        # batch_article has two receivings: WH-REC-001 at 4.20, WH-REC-002 at 4.30
+        # WH-REC-002 is more recent → latest_purchase_price = 4.30
+        assert item["latest_purchase_price"] == pytest.approx(4.3)
+
+    def test_alias_match_still_works_with_new_contract(
+        self, client, warehouse_data, identifier_order_data
+    ):
+        """Alias search continues to resolve correctly under the new contract."""
+        token = _login(client, "warehouse_admin")
+
+        response = client.get(
+            "/api/v1/identifier?q=batch paint",
+            headers=_auth_header(token),
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["total"] >= 1
+
+        item = next(
+            (i for i in payload["items"] if i["article_no"] == "WH-BATCH-002"), None
+        )
+        assert item is not None
+        assert item["matched_via"] == "alias"
+        assert item["matched_alias"] == "Batch Paint"
+        # ADMIN shape
+        assert "stock" in item
+        assert "is_ordered" in item
+        assert "ordered_quantity" in item
+        assert "latest_purchase_price" in item
 
 
 @pytest.fixture(scope="module")

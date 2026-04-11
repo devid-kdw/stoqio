@@ -43,6 +43,7 @@ import {
 import { showErrorToast, showSuccessToast } from '../../utils/toasts'
 import {
   formatIdentifierDateTime,
+  formatIdentifierPrice,
   formatIdentifierQuantity,
   getIdentifierReportStatusColor,
   getIdentifierReportStatusLabel,
@@ -135,10 +136,16 @@ function IdentifierResultCard({ item }: { item: IdentifierSearchItem }) {
           <ResultMetaField label="JM" value={item.base_uom ?? '—'} />
 
           {isAvailabilityOnlyResult(item) ? (
-            <ResultMetaField
-              label="Dostupnost"
-              value={item.in_stock ? 'Na stanju' : 'Nije na stanju'}
-            />
+            <>
+              <ResultMetaField
+                label="Dostupnost"
+                value={item.in_stock ? 'Na stanju' : 'Nije na stanju'}
+              />
+              <ResultMetaField
+                label="Naručeno"
+                value={item.is_ordered ? 'Da' : 'Ne'}
+              />
+            </>
           ) : (
             <>
               <ResultMetaField
@@ -150,12 +157,20 @@ function IdentifierResultCard({ item }: { item: IdentifierSearchItem }) {
                 )}
               />
               <ResultMetaField
-                label="Višak"
+                label="Naručeno"
+                value={item.is_ordered ? 'Da' : 'Ne'}
+              />
+              <ResultMetaField
+                label="Naručena količina"
                 value={formatIdentifierQuantity(
-                  item.surplus,
+                  item.ordered_quantity,
                   item.base_uom,
                   item.decimal_display
                 )}
+              />
+              <ResultMetaField
+                label="Zadnja nabavna cijena"
+                value={formatIdentifierPrice(item.latest_purchase_price)}
               />
             </>
           )}

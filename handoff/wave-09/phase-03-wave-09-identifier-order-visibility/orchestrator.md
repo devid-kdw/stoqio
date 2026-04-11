@@ -75,6 +75,33 @@ Acceptance Criteria
 
 Validation Notes
 - 2026-04-11: Orchestrator opened Wave 9 Phase 3 from the finalized Wave 9 feedback intake.
+- 2026-04-11: Orchestrator reviewed `backend.md`, `frontend.md`, and `testing.md` against the
+  committed code changes.
+- 2026-04-11: Orchestrator re-ran validation:
+  - `backend/venv/bin/python -m pytest backend/tests/test_articles.py -q --tb=short` → `59 passed`
+  - `backend/venv/bin/python -m pytest backend/tests/test_aliases.py -q --tb=short` → `8 passed`
+  - `cd frontend && npm run lint` → passed
+  - `cd frontend && npm run build` → passed
+- 2026-04-11: Accepted implementation details:
+  - backend Identifier serialization now removes `surplus`, adds ordered visibility, and applies
+    the locked ADMIN/MANAGER vs WAREHOUSE_STAFF/VIEWER shape split
+  - outstanding ordered quantity is summed across multiple open purchase orders
+  - alias-match behavior remains intact
+  - frontend Identifier cards render the new role-sensitive fields and remove `Višak`
+  - docs in `03_RBAC.md` and `14_UI_IDENTIFIER.md` align with the accepted Wave 9 contract
+- 2026-04-11: Orchestrator remediation closed the prior frontend coverage gap by adding dedicated
+  Identifier role-matrix render tests in
+  `frontend/src/pages/identifier/__tests__/IdentifierPage.test.tsx`.
+- 2026-04-11: Orchestrator remediation validation:
+  - `cd frontend && npx vitest run src/pages/identifier/__tests__/IdentifierPage.test.tsx`
+    → `2 passed`
+  - `cd frontend && npm run lint` → passed
+  - `cd frontend && npm run build` → passed
+- 2026-04-11: The earlier non-blocking frontend Identifier render-test gap is now resolved.
+
+Completion
+- Phase 3 accepted by orchestrator.
+- No blocking findings remained after orchestrator review.
 
 Next Action
-- Backend, frontend, and testing workers implement and record their handoffs.
+- Proceed to Phase 4.

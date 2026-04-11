@@ -19,7 +19,9 @@ from app.models.article_supplier import ArticleSupplier
 from app.models.batch import Batch
 from app.models.category import Category
 from app.models.draft import Draft
-from app.models.enums import DraftStatus, MissingArticleReportStatus, TxType
+from app.models.enums import DraftStatus, MissingArticleReportStatus, OrderLineStatus, OrderStatus, TxType
+from app.models.order import Order
+from app.models.order_line import OrderLine
 from app.models.receiving import Receiving
 from app.models.missing_article_report import MissingArticleReport
 from app.models.stock import Stock
@@ -653,6 +655,103 @@ def _resolve_identifier_match(
     return None
 
 
+def _build_identifier_ordered_map(article_ids: list[int]) -> dict[int, Decimal]:
+    """Return {article_id: outstanding_ordered_qty} for open purchase-order lines.
+
+    Outstanding qty = ordered_qty − received_qty for each OPEN line on an OPEN order.
+    If the same article appears on multiple open order lines the quantities are summed.
+    """
+    if not article_ids:
+        return {}
+
+    rows = (
+        db.session.query(
+            OrderLine.article_id,
+            func.coalesce(
+                func.sum(OrderLine.ordered_qty - OrderLine.received_qty), 0
+            ),
+        )
+        .join(Order, Order.id == OrderLine.order_id)
+        .filter(
+            OrderLine.article_id.in_(article_ids),
+            Order.status == OrderStatus.OPEN,
+            OrderLine.status == OrderLineStatus.OPEN,
+        )
+        .group_by(OrderLine.article_id)
+        .all()
+    )
+    return {
+        article_id: _decimal_from_model(qty)
+        for article_id, qty in rows
+    }
+
+
+def _build_identifier_latest_purchase_price_map(
+    article_ids: list[int],
+) -> dict[int, Decimal | None]:
+    """Return {article_id: latest_purchase_price} using the pricing hierarchy.
+
+    Pricing hierarchy (first non-null wins):
+      1. Latest Receiving.unit_price ordered by received_at DESC
+      2. Preferred ArticleSupplier.last_price
+      3. Any ArticleSupplier.last_price ordered by last_ordered_at DESC
+    """
+    if not article_ids:
+        return {}
+
+    result: dict[int, Decimal | None] = {}
+
+    # 1. Latest receiving unit_price per article
+    from sqlalchemy import desc
+
+    # Subquery: row_number over (partition by article_id order by received_at desc)
+    # SQLite doesn't support window functions in all SQLAlchemy layers easily,
+    # so we do a simple grouped max-date approach.
+    for aid in article_ids:
+        receiving = (
+            Receiving.query
+            .filter(
+                Receiving.article_id == aid,
+                Receiving.unit_price.isnot(None),
+            )
+            .order_by(Receiving.received_at.desc())
+            .first()
+        )
+        if receiving is not None:
+            result[aid] = _decimal_from_model(receiving.unit_price)
+            continue
+
+        # 2. Preferred supplier last_price
+        preferred_link = (
+            ArticleSupplier.query
+            .filter(
+                ArticleSupplier.article_id == aid,
+                ArticleSupplier.is_preferred.is_(True),
+                ArticleSupplier.last_price.isnot(None),
+            )
+            .first()
+        )
+        if preferred_link is not None:
+            result[aid] = _decimal_from_model(preferred_link.last_price)
+            continue
+
+        # 3. Any supplier last_price, most recently ordered
+        any_link = (
+            ArticleSupplier.query
+            .filter(
+                ArticleSupplier.article_id == aid,
+                ArticleSupplier.last_price.isnot(None),
+            )
+            .order_by(ArticleSupplier.last_ordered_at.desc())
+            .first()
+        )
+        if any_link is not None:
+            result[aid] = _decimal_from_model(any_link.last_price)
+        # else: no price found, article not in result dict
+
+    return result
+
+
 def _serialize_identifier_item(
     article: Article,
     *,
@@ -660,8 +759,16 @@ def _serialize_identifier_item(
     surplus_total: Decimal,
     match: IdentifierMatch,
     role: str,
+    ordered_qty: Decimal,
+    latest_purchase_price: Decimal | None,
 ) -> dict[str, Any]:
-    item = {
+    """Serialize one Identifier search result.
+
+    Wave 9 Phase 3 role visibility contract:
+      ADMIN / MANAGER   → exact stock, is_ordered, ordered_quantity, latest_purchase_price
+      WAREHOUSE_STAFF / VIEWER → boolean in_stock, is_ordered only
+    """
+    item: dict[str, Any] = {
         "id": article.id,
         "article_no": article.article_no,
         "description": article.description,
@@ -675,11 +782,21 @@ def _serialize_identifier_item(
         "matched_via": match.matched_via,
         "matched_alias": match.matched_alias,
     }
-    if role == "VIEWER":
-        item["in_stock"] = (stock_total + surplus_total) > 0
-    else:
+
+    is_ordered = ordered_qty > 0
+
+    if role in ("ADMIN", "MANAGER"):
         item["stock"] = float(stock_total)
-        item["surplus"] = float(surplus_total)
+        item["is_ordered"] = is_ordered
+        item["ordered_quantity"] = float(ordered_qty)
+        item["latest_purchase_price"] = (
+            float(latest_purchase_price) if latest_purchase_price is not None else None
+        )
+    else:
+        # WAREHOUSE_STAFF and VIEWER: boolean-only visibility
+        item["in_stock"] = (stock_total + surplus_total) > 0
+        item["is_ordered"] = is_ordered
+
     return item
 
 
@@ -1259,7 +1376,10 @@ def list_articles(
 
 
 def search_identifier_articles(query: str | None, *, role: str) -> dict[str, Any]:
-    """Search active articles across identifier fields for the Identifier module."""
+    """Search active articles across identifier fields for the Identifier module.
+
+    Wave 9 Phase 3: result shape is role-sensitive.  See _serialize_identifier_item.
+    """
     normalized_query = _normalize_identifier_term(query)
     if normalized_query is None or len(normalized_query) < 2:
         return {
@@ -1310,6 +1430,9 @@ def search_identifier_articles(query: str | None, *, role: str) -> dict[str, Any
         aliases_by_article.setdefault(alias.article_id, []).append(alias)
 
     totals = _build_article_totals_map(article_ids)
+    ordered_map = _build_identifier_ordered_map(article_ids)
+    price_map = _build_identifier_latest_purchase_price_map(article_ids)
+
     matched_rows: list[tuple[int, str, dict[str, Any]]] = []
     for article in articles:
         match = _resolve_identifier_match(
@@ -1330,6 +1453,8 @@ def search_identifier_articles(query: str | None, *, role: str) -> dict[str, Any
                     surplus_total=surplus_total,
                     match=match,
                     role=role,
+                    ordered_qty=ordered_map.get(article.id, Decimal("0")),
+                    latest_purchase_price=price_map.get(article.id),
                 ),
             )
         )

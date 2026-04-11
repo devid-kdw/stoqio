@@ -13,6 +13,14 @@ export function normalizeOptionalText(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+export function formatIdentifierPrice(price: number | null | undefined): string {
+  if (price == null) return '—'
+  return new Intl.NumberFormat(getActiveLocale(), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(price)
+}
+
 export function formatIdentifierQuantity(
   quantity: number,
   uom: string | null | undefined,

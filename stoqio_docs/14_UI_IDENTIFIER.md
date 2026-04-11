@@ -45,19 +45,35 @@ Each matching article is displayed as a card showing:
 | Category | Category label (HR) |
 | UOM | Base unit of measure |
 | Stock | Depends on role — see section 4 |
-| Surplus | Depends on role — see section 4 |
+| Is Ordered | Whether the article has outstanding open purchase-order lines |
+| Ordered Quantity | Depends on role — see section 4 |
+| Latest Purchase Price | Depends on role — see section 4 |
 | Matched alias | If result was found via alias, show which alias matched (e.g. "Found via alias: 12.36-57") |
 
 ---
 
-## 4. Stock Visibility by Role
+## 4. Stock & Order Visibility by Role (Wave 9 Phase 3)
 
-| Role | Stock display |
-|------|--------------|
-| ADMIN | Exact quantity (e.g. "42.50 kg") |
-| MANAGER | Exact quantity |
-| WAREHOUSE_STAFF | Exact quantity |
-| VIEWER | Availability only ("In stock" / "Out of stock") |
+| Role | Stock display | Ordered | Ordered Quantity | Latest Purchase Price |
+|------|--------------|---------|------------------|-----------------------|
+| ADMIN | Exact quantity (e.g. "42.50 kg") | Boolean | Exact quantity | Shown |
+| MANAGER | Exact quantity | Boolean | Exact quantity | Shown |
+| WAREHOUSE_STAFF | Availability only ("In stock" / "Out of stock") | Boolean | Hidden | Hidden |
+| VIEWER | Availability only ("In stock" / "Out of stock") | Boolean | Hidden | Hidden |
+
+### Ordered quantity definition
+
+`ordered_quantity` = sum of `(ordered_qty − received_qty)` across all OPEN order lines on OPEN purchase orders for the article.
+
+`is_ordered` = `true` when `ordered_quantity > 0`.
+
+### Latest purchase price hierarchy
+
+1. Most recent `Receiving.unit_price` (by `received_at` descending)
+2. Preferred `ArticleSupplier.last_price`
+3. Any `ArticleSupplier.last_price` (by `last_ordered_at` descending)
+
+If none found, `latest_purchase_price` is `null`.
 
 ---
 
@@ -125,7 +141,7 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
 
 ### GET `/api/v1/identifier?q=12.36` — Search
 
-**Response (200):**
+**Response (200) — ADMIN / MANAGER:**
 ```json
 {
   "items": [
@@ -137,7 +153,9 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
       "base_uom": "kg",
       "decimal_display": true,
       "stock": 42.50,
-      "surplus": 0.0,
+      "is_ordered": true,
+      "ordered_quantity": 15.0,
+      "latest_purchase_price": 4.30,
       "matched_via": "alias",
       "matched_alias": "12.36-57"
     }
@@ -146,7 +164,27 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
 }
 ```
 
-> For VIEWER role, `stock` is replaced with `in_stock: true/false` and `surplus` is omitted.
+**Response (200) — WAREHOUSE_STAFF / VIEWER:**
+```json
+{
+  "items": [
+    {
+      "id": 42,
+      "article_no": "BOJ-001",
+      "description": "ALEXIT-FST Strukturlack 346-65",
+      "category_label_hr": "Operativni potrošni materijal",
+      "base_uom": "kg",
+      "decimal_display": true,
+      "in_stock": true,
+      "is_ordered": true,
+      "matched_via": "alias",
+      "matched_alias": "12.36-57"
+    }
+  ],
+  "total": 1
+}
+```
+
 > `decimal_display` follows the base UOM catalog entry so the client can format exact quantities without guessing from the UOM code.
 
 ### POST `/api/v1/identifier/reports` — Submit report
@@ -219,6 +257,7 @@ Accessible to ADMIN only — displayed as a separate section or tab within the I
 | Search term less than 2 characters | Frontend does not trigger search. If the endpoint is called anyway, backend returns `200` with an empty `items[]` payload. |
 | Multiple articles match | All matching articles shown as cards. |
 | Same search term reported multiple times | Report counter incremented, no duplicate record created. |
-| VIEWER tries to see exact stock | Stock shown as "In stock" or "Out of stock" only. |
+| VIEWER tries to see exact stock | Stock shown as "In stock" or "Out of stock" only. `ordered_quantity` and `latest_purchase_price` are hidden. |
+| WAREHOUSE_STAFF tries to see exact stock | Same boolean-only visibility as VIEWER. |
 | Article found via barcode scan | Barcode input works as plain text in the search field — scanner acts as keyboard input. |
 | No search term entered | Results area is empty, no empty state shown. |
